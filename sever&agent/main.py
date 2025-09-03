@@ -94,7 +94,7 @@ async def healthz():
 async def selftest():
     import pathlib
     from PIL import Image
-    root = pathlib.Path(".")
+    root = pathlib.Path("..")
     inp = root / "selftest_in.jpg"
     outp = root / "selftest_out.jpg"
     Image.new("RGB", (320, 200), (180, 200, 240)).save(inp)
