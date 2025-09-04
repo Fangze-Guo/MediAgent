@@ -3,8 +3,17 @@ import asyncio, os
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from agent import MCPAgent
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="MediAgent Backend")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 agent = MCPAgent()
 _init_lock = asyncio.Lock()
@@ -45,15 +54,17 @@ async def refresh_tools():
 
 @app.post("/chat", response_model=ChatResp)
 async def chat(req: ChatReq):
-    if not _initialized:
-        await startup()
-
-    msgs = [{"role": "system", "content": "你可以在需要时调用可用工具来完成任务，工具返回JSON，请先解析后用中文总结关键结果。"}]
-    msgs += req.history
-    msgs += [{"role": "user", "content": req.message}]
-
-    result = await agent.chat(msgs)
-    return ChatResp(conversation_id=req.conversation_id, answer=result["content"], tool_calls=result["tool_calls"])
+    try:
+        if not _initialized:
+            await startup()
+        msgs = [{"role": "system", "content": "你可以在需要时调用可用工具来完成任务，工具返回JSON，请先解析后用中文总结关键结果。"}]
+        msgs += req.history
+        msgs += [{"role": "user", "content": req.message}]
+        result = await agent.chat(msgs)
+        return ChatResp(conversation_id=req.conversation_id, answer=result["content"], tool_calls=result["tool_calls"])
+    except Exception as e:
+        print(f"/chat 调用失败: {e}")
+        raise HTTPException(status_code=500, detail=f"聊天服务错误: {str(e)}")
 
 # === 直连工具：绕过 LLM，快速排障 ===
 @app.post("/call-tool")
