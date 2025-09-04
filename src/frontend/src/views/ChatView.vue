@@ -3,42 +3,41 @@
     <div class="chat-fixed">
       <a-layout class="chat-layout">
         <a-layout-header class="chat-header">
-          <h2 class="chat-title">健康咨询</h2>
+          <div class="header-left">
+            <h2 class="chat-title">{{ currentConversation?.title || '新对话' }}</h2>
+          </div>
+          <div class="header-right">
+            <a-button size="small" @click="createNewConversation" :loading="sending">新建对话</a-button>
+          </div>
         </a-layout-header>
-        <a-layout-content class="chat-messages">
-          <div class="message ai">
-            <div class="avatar ai-avatar">
+        <div class="history-bar" v-if="conversations.length > 0">
+          <div
+            v-for="c in conversations"
+            :key="c.id"
+            :class="['history-item', { active: c.id === activeId }]"
+            @click="activeId = c.id"
+          >
+            {{ c.title || c.id }}
+          </div>
+        </div>
+        <a-layout-content class="chat-messages" ref="messagesEl">
+          <div 
+            v-for="(m, idx) in currentMessages" 
+            :key="idx"
+            :class="['message', m.role === 'user' ? 'user' : 'ai']"
+          >
+            <div v-if="m.role !== 'user'" class="avatar ai-avatar">
               <a-icon type="robot" />
             </div>
-            <div class="message-content">你好！我是 MediAgent AI，有什么可以帮助你的吗？</div>
-          </div>
-          <div class="message user">
-            <div class="message-content">我想了解一下如何保持健康的生活方式</div>
-            <div class="avatar user-avatar">
+            <div class="message-content">{{ m.content }}</div>
+            <div v-if="m.role === 'user'" class="avatar user-avatar">
               <a-icon type="user" />
             </div>
-          </div>
-          <div class="message ai">
-            <div class="avatar ai-avatar">
-              <a-icon type="robot" />
-            </div>
-            <div class="message-content">保持健康的生活方式很重要！建议规律作息、均衡饮食、适量运动。每天保持7-8小时睡眠，多吃蔬菜水果，每周至少运动3-4次。</div>
-          </div>
-          <div class="message user">
-            <div class="message-content">运动方面有什么具体建议吗？</div>
-            <div class="avatar user-avatar">
-              <a-icon type="user" />
-            </div>
-          </div>
-          <div class="message ai">
-            <div class="avatar ai-avatar">
-              <a-icon type="robot" />
-            </div>
-            <div class="message-content">运动对身体很有好处！建议每天进行30分钟以上的中等强度运动，比如快走、慢跑、游泳或骑自行车。也可以尝试力量训练来增强肌肉。</div>
           </div>
         </a-layout-content>
         <a-layout-footer class="chat-input">
           <a-textarea 
+            v-model:value="inputMessage"
             class="message-input"
             placeholder="输入消息，按 Enter 换行"
             :auto-size="{ minRows: 1, maxRows: 6 }"
@@ -46,6 +45,8 @@
           <a-button 
             type="primary" 
             class="send-btn"
+            :loading="sending"
+            @click="sendMessage"
           >
             发送
           </a-button>
@@ -56,6 +57,81 @@
 </template>
 
 <script setup lang="ts">
+import { ref, nextTick, computed } from 'vue'
+import { chat as chatApi } from '@/apis/chat'
+
+type ChatMessage = { role: 'user' | 'assistant'; content: string }
+type Conversation = { id: string; title: string; messages: ChatMessage[] }
+
+import { useRoute, useRouter } from 'vue-router'
+import { getConversation, createConversation, appendMessage } from '@/store/conversations'
+
+const route = useRoute()
+const router = useRouter()
+const inputMessage = ref('')
+const sending = ref(false)
+const conversations = ref<Conversation[]>([])
+const activeId = ref<string>('')
+const messagesEl = ref<HTMLElement | null>(null)
+
+const scrollToBottom = async () => {
+  await nextTick()
+  const el = messagesEl.value
+  if (el) el.scrollTop = el.scrollHeight
+}
+
+const currentConversation = computed(() => conversations.value.find(c => c.id === activeId.value) || null)
+const currentMessages = computed<ChatMessage[]>(() => currentConversation.value?.messages || [])
+
+const createNewConversation = () => {
+  const id = 'web-' + Date.now()
+  const conv: Conversation = { id, title: '', messages: [] }
+  conversations.value.unshift(conv)
+  activeId.value = id
+}
+
+// 根据路由参数加载/创建会话
+const routeId = (route.params.id as string | undefined) || ''
+if (routeId) {
+  const found = getConversation(routeId)
+  if (found) {
+    conversations.value = [found, ...conversations.value.filter(c => c.id !== routeId)]
+    activeId.value = routeId
+  } else {
+    const conv = createConversation()
+    conversations.value.unshift(conv)
+    activeId.value = conv.id
+    router.replace({ name: 'Chat', params: { id: conv.id } })
+  }
+} else {
+  const conv = createConversation()
+  conversations.value.unshift(conv)
+  activeId.value = conv.id
+  router.replace({ name: 'Chat', params: { id: conv.id } })
+}
+
+const sendMessage = async () => {
+  const text = inputMessage.value.trim()
+  if (!text || sending.value) return
+  inputMessage.value = ''
+  if (!currentConversation.value) createNewConversation()
+  appendMessage(currentConversation.value!.id, { role: 'user', content: text })
+  await scrollToBottom()
+  sending.value = true
+  try {
+    const data = await chatApi({
+      conversation_id: currentConversation.value!.id,
+      message: text,
+      history: currentMessages.value.map(m => ({ role: m.role, content: m.content }))
+    })
+    appendMessage(currentConversation.value!.id, { role: 'assistant', content: data.answer ?? '' })
+  } catch (e) {
+    currentConversation.value!.messages.push({ role: 'assistant', content: '抱歉，请求失败，请稍后再试。' })
+  } finally {
+    sending.value = false
+    await scrollToBottom()
+  }
+}
 </script>
 
 <style scoped>
@@ -105,7 +181,7 @@
   border-bottom: 1px solid #f0f0f0;
   display: flex;
   align-items: center;
-  padding: 0 24px;
+  padding: 0 16px;
   height: 56px;
 }
 
@@ -116,6 +192,26 @@
   font-size: 18px;
   font-weight: 600;
 }
+
+.header-left { flex: 1; min-width: 0; }
+.header-right { display: flex; gap: 8px; }
+
+.history-bar {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fff;
+}
+.history-item {
+  padding: 6px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  font-size: 12px;
+  color: #555;
+  cursor: pointer;
+}
+.history-item.active { background: #e3f2fd; border-color: #2196f3; color: #1a1a1a; }
 
 /* 消息列表：可滚动区域，撑满除头尾外的剩余高度 */
 .chat-messages {

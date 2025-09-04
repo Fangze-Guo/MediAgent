@@ -5,24 +5,22 @@
     </div>
     
     <div class="sidebar-content">
-      <a-button type="primary" block class="new-chat-btn">
-        新建对话
-      </a-button>
+      <router-link to="/" class="new-chat-link">
+        <a-button type="primary" block class="new-chat-btn">新建对话</a-button>
+      </router-link>
       
       <div class="history-section">
         <h4>历史对话</h4>
         <a-list class="chat-list" :split="false">
-          <a-list-item class="chat-item active">
-            <div class="chat-title">健康咨询</div>
-            <div class="chat-preview">关于健康生活的问题</div>
-          </a-list-item>
-          <a-list-item class="chat-item">
-            <div class="chat-title">运动建议</div>
-            <div class="chat-preview">适合的运动方式推荐</div>
-          </a-list-item>
-          <a-list-item class="chat-item">
-            <div class="chat-title">睡眠改善</div>
-            <div class="chat-preview">如何获得更好的睡眠</div>
+          <a-list-item 
+            v-for="c in conversations" 
+            :key="c.id" 
+            class="chat-item"
+          >
+            <router-link :to="`/chat/${c.id}`" class="chat-item-link">
+              <div class="chat-title">{{ c.title || c.id }}</div>
+              <div class="chat-preview">{{ c.messages[c.messages.length - 1]?.content || '...' }}</div>
+            </router-link>
           </a-list-item>
         </a-list>
       </div>
@@ -31,7 +29,7 @@
 </template>
 
 <script setup lang="ts">
-// 静态展示，无需逻辑
+import { conversations } from '@/store/conversations'
 </script>
 
 <style scoped>
@@ -80,6 +78,8 @@
   margin-bottom: 24px;
   transition: all 0.2s ease;
 }
+
+.new-chat-link, .chat-item-link { text-decoration: none; color: inherit; display: block; }
 
 /* 新建对话按钮悬停效果：轻微上移与阴影 */
 .new-chat-btn:hover {

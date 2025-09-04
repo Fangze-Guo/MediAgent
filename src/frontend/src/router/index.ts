@@ -4,11 +4,15 @@ import type { RouteRecordRaw } from 'vue-router'
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
+    name: 'Home',
+    component: () => import('@/views/HomeView.vue'),
+    meta: { title: 'MediAgent - 首页' }
+  },
+  {
+    path: '/chat/:id',
     name: 'Chat',
     component: () => import('@/views/ChatView.vue'),
-    meta: {
-      title: 'MediAgent - 聊天'
-    }
+    meta: { title: 'MediAgent - 聊天' }
   },
   {
     path: '/settings',
