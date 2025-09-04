@@ -33,11 +33,12 @@ class ToolReq(BaseModel):
     name: str
     args: dict
 
+#各项功能以及内部需要等待IO的调用等都要写成协程，防止阻塞整个服务器
 @app.on_event("startup")
 async def startup():
     global _initialized
-    async with _init_lock:
-        if not _initialized:
+    async with _init_lock:#进入一个 异步锁（_init_lock = asyncio.Lock() 通常在模块顶层创建）。作用：避免竞态——如果有多个并发路径可能触发初始化（例如你在路由里也做了“懒加载兜底”），只有第一个协程能进入临界区，其它协程会等待；等初始化完成再放行。
+        if not _initialized:#双保险。即使多个并发都到达这里，只有第一个会执行真正的初始化；后面进来的看到标记已置位，就直接跳过
             await agent.init_tools()
             _initialized = True
 
