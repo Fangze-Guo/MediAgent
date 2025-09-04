@@ -13,7 +13,7 @@ def ask(text: str) -> dict:
         "message": text,
         "history": history
     }
-    r = requests.post(SERVER, json=payload, timeout=120)
+    r = requests.post(SERVER, json=payload, timeout=120, proxies={'http': None, 'https': None})
     r.raise_for_status()
     return r.json()
 
