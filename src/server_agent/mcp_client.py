@@ -17,7 +17,7 @@ class MCPClient:
         self.session: ClientSession | None = None
 
     async def __aenter__(self):
-        parts = shlex.split(self.launch_cmd)
+        parts = shlex.split(self.launch_cmd, posix=(os.name != "nt"))
         params = StdioServerParameters(command=parts[0], args=parts[1:], env=None)
         stdio_transport = await self.exit_stack.enter_async_context(stdio_client(params))
         stdio, write = stdio_transport

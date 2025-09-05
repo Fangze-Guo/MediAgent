@@ -1,10 +1,8 @@
 # agent.py
 import os, json, asyncio
-from dotenv import load_dotenv
 from openai import OpenAI
 from mcp_client import load_all_clients
 
-load_dotenv()
 BASE_URL = os.getenv("BASE_URL", "http://localhost:1234/v1")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "not-needed")
 MODEL = os.getenv("MODEL", "qwen2.5-7b-instruct")
@@ -53,29 +51,22 @@ class MCPAgent:
         #一轮对话内模型可能多次调用工具，这边属于LLM和agent之间的内部行为，直到LLM不再调用工具才认为已经可以向用户返回结果了
         tool_calls_log = []
         for _ in range(max_iters):
-            try:
-                resp = self.client.chat.completions.create(
-                    model=MODEL,
-                    messages=messages,
-                    tools=self.tools,
-                    tool_choice="auto",
-                    temperature=0.2,
-                )
-                choice = resp.choices[0]
-                msg = choice.message
-            except Exception as e:
-                # LLM 调用失败时，直接返回友好提示，避免 502
-                return {"role": "assistant", "content": f"抱歉，模型服务不可用: {e}", "tool_calls": tool_calls_log}
+            resp = self.client.chat.completions.create(
+                model=MODEL,
+                messages=messages,
+                tools=self.tools,#工具列表在这边暴露给模型
+                tool_choice="auto",
+                temperature=0.2,
+            )
+            choice = resp.choices[0]
+            msg = choice.message
 
             if msg.tool_calls:
                 # 模型要求调用工具
                 for tc in msg.tool_calls:
                     name = tc.function.name
                     arguments = tc.function.arguments or "{}"
-                    try:
-                        tool_result = await self._call_tool(name, arguments)
-                    except Exception as e:
-                        tool_result = json.dumps({"error": f"工具调用失败: {e}"}, ensure_ascii=False)
+                    tool_result = await self._call_tool(name, arguments)
                     tool_calls_log.append({"name": name, "arguments": arguments, "result": tool_result})
                     # 把工具结果回灌给模型
                     messages.append({
