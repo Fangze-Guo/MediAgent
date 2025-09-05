@@ -30,7 +30,35 @@
             <div v-if="m.role !== 'user'" class="avatar ai-avatar">
               <a-icon type="robot" />
             </div>
-            <div class="message-content">{{ m.content }}</div>
+            <div class="message-content" :class="{ 'typing-complete': m.typingComplete }">
+              <!-- 解析并展示思考过程和回复内容 -->
+              <div v-if="m.parsedContent">
+                <!-- 思考过程 -->
+                <div v-if="m.parsedContent.thinking" class="thinking-section">
+                  <div class="thinking-header">
+                    <a-icon type="bulb" />
+                    <span>思考过程</span>
+                    <a-button 
+                      type="text" 
+                      size="small" 
+                      @click="toggleThinking(idx)"
+                      class="toggle-thinking-btn"
+                    >
+                      {{ m.showThinking ? '收起' : '展开' }}
+                    </a-button>
+                  </div>
+                  <div v-show="m.showThinking" class="thinking-content">
+                    {{ m.parsedContent.thinking }}
+                  </div>
+                </div>
+                <!-- 回复内容 -->
+                <div v-if="m.parsedContent.response" class="response-content">
+                  {{ m.parsedContent.response }}
+                </div>
+              </div>
+              <!-- 原始内容（如果没有解析出思考过程） -->
+              <div v-else>{{ m.content }}</div>
+            </div>
             <div v-if="m.role === 'user'" class="avatar user-avatar">
               <a-icon type="user" />
             </div>
@@ -65,7 +93,7 @@
 import { ref, nextTick, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Modal, message } from 'ant-design-vue'
-import { chat as chatApi } from '@/apis/chat'
+import { chatStream } from '@/apis/chat'
 import { useConversationsStore } from '@/store/conversations'
 
 // 路由相关
@@ -88,6 +116,34 @@ const activeId = ref<string>('')
 const messagesEl = ref<HTMLElement | null>(null)
 
 /**
+ * 解析消息内容，提取思考过程和回复内容
+ * @param content 原始消息内容
+ * @returns 解析后的内容对象
+ */
+const parseMessageContent = (content: string) => {
+  const thinkMatch = content.match(/<think>(.*?)<\/think>/s)
+  if (thinkMatch) {
+    const thinking = thinkMatch[1].trim()
+    const response = content.replace(/<think>.*?<\/think>/s, '').trim()
+    return {
+      thinking,
+      response: response || null
+    }
+  }
+  return null
+}
+
+/**
+ * 切换思考过程的显示/隐藏
+ * @param messageIndex 消息索引
+ */
+const toggleThinking = (messageIndex: number) => {
+  const messageKey = `${activeId.value}-${messageIndex}`
+  thinkingStates.value[messageKey] = !thinkingStates.value[messageKey]
+}
+
+
+/**
  * 滚动消息容器到底部
  * 在发送消息后自动滚动到最新消息
  */
@@ -97,11 +153,26 @@ const scrollToBottom = async () => {
   if (el) el.scrollTop = el.scrollHeight
 }
 
+// 响应式数据
+/** 思考过程显示状态 */
+const thinkingStates = ref<Record<string, boolean>>({})
+
 // 计算属性
 /** 当前活跃的会话对象 */
 const currentConversation = computed(() => conversationsStore.getConversation(activeId.value) || null)
-/** 当前会话的消息列表 */
-const currentMessages = computed(() => currentConversation.value?.messages || [])
+/** 当前会话的消息列表，包含解析后的内容 */
+const currentMessages = computed(() => {
+  const messages = currentConversation.value?.messages || []
+  return messages.map((msg, index) => {
+    const messageKey = `${activeId.value}-${index}`
+    return {
+      ...msg,
+      parsedContent: parseMessageContent(msg.content),
+      showThinking: thinkingStates.value[messageKey] || false,
+      typingComplete: (msg as any).typingComplete || false
+    }
+  })
+})
 
 /**
  * 创建新会话
@@ -159,33 +230,85 @@ const sendMessageToAI = async (messageText: string) => {
   
   sending.value = true
   
+  // 创建AI消息占位符
+  const aiMessage = { 
+    role: 'assistant' as const, 
+    content: '' 
+  }
+  conversationsStore.appendMessage(currentConversation.value.id, aiMessage)
+  
   try {
-    // 调用聊天API
-    const data = await chatApi({
+    // 使用流式聊天API
+    await chatStream({
       conversation_id: currentConversation.value.id,
       message: messageText,
       history: currentMessages.value.map(m => ({ 
         role: m.role, 
         content: m.content 
       }))
-    })
-    
-    // 添加AI回复到会话
-    conversationsStore.appendMessage(currentConversation.value.id, { 
-      role: 'assistant', 
-      content: data.answer ?? '' 
+    }, {
+      onStart: (conversationId) => {
+        console.log('开始流式对话:', conversationId)
+      },
+      onContent: (content) => {
+        // 逐步更新AI消息内容
+        const conversation = conversationsStore.getConversation(currentConversation.value!.id)
+        if (conversation && conversation.messages.length > 0) {
+          const lastMessage = conversation.messages[conversation.messages.length - 1]
+          if (lastMessage.role === 'assistant') {
+            lastMessage.content += content
+            // 实时滚动到底部
+            scrollToBottom()
+          }
+        }
+      },
+      onToolCall: (tool) => {
+        console.log('调用工具:', tool)
+        // 可以在这里显示工具调用状态
+      },
+      onComplete: (toolCalls) => {
+        console.log('对话完成，工具调用:', toolCalls)
+        // 对话完成，移除打字机效果
+        const conversation = conversationsStore.getConversation(currentConversation.value!.id)
+        if (conversation && conversation.messages.length > 0) {
+          const lastMessage = conversation.messages[conversation.messages.length - 1]
+          if (lastMessage.role === 'assistant') {
+            // 添加完成标记，用于CSS移除光标效果
+            lastMessage.typingComplete = true
+          }
+        }
+        // 确保滚动到底部
+        scrollToBottom()
+      },
+      onError: (error) => {
+        console.error('流式聊天错误:', error)
+        // 更新最后一条消息为错误信息
+        const conversation = conversationsStore.getConversation(currentConversation.value!.id)
+        if (conversation && conversation.messages.length > 0) {
+          const lastMessage = conversation.messages[conversation.messages.length - 1]
+          if (lastMessage.role === 'assistant') {
+            lastMessage.content = `抱歉，请求失败：${error}`
+            lastMessage.typingComplete = true // 移除光标
+          }
+        }
+        scrollToBottom()
+      }
     })
   } catch (error) {
     // 处理错误，显示错误消息
     console.error('发送消息失败:', error)
-    conversationsStore.appendMessage(currentConversation.value.id, { 
-      role: 'assistant', 
-      content: '抱歉，请求失败，请稍后再试。' 
-    })
-  } finally {
-    // 重置发送状态并滚动到底部
-    sending.value = false
+    const conversation = conversationsStore.getConversation(currentConversation.value!.id)
+    if (conversation && conversation.messages.length > 0) {
+      const lastMessage = conversation.messages[conversation.messages.length - 1]
+      if (lastMessage.role === 'assistant') {
+        lastMessage.content = '抱歉，请求失败，请稍后再试。'
+        lastMessage.typingComplete = true // 移除光标
+      }
+    }
     await scrollToBottom()
+  } finally {
+    // 重置发送状态
+    sending.value = false
   }
 }
 
@@ -445,4 +568,72 @@ const handleDeleteConversation = () => {
 .send-btn {
   white-space: nowrap;
 }
+
+/* 思考过程样式 */
+.thinking-section {
+  margin-bottom: 12px;
+  border: 1px solid #e8f4fd;
+  border-radius: 8px;
+  background: #f8fcff;
+}
+
+.thinking-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #e3f2fd;
+  border-radius: 8px 8px 0 0;
+  font-size: 12px;
+  color: #1976d2;
+  font-weight: 500;
+}
+
+.thinking-header .anticon {
+  color: #ff9800;
+}
+
+.toggle-thinking-btn {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 2px 6px;
+  height: auto;
+  line-height: 1.2;
+}
+
+.thinking-content {
+  padding: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #666;
+  background: #fafafa;
+  border-radius: 0 0 8px 8px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.response-content {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #333;
+}
+
+/* 流式输出时的打字机效果 */
+.message.ai .message-content:not(.typing-complete)::after {
+  content: '|';
+  animation: blink 1s infinite;
+  color: #999;
+  font-weight: normal;
+}
+
+/* 完成时移除光标 */
+.message.ai .message-content.typing-complete::after {
+  display: none;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
 </style>

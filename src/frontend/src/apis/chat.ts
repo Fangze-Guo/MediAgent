@@ -72,6 +72,125 @@ export async function chat(req: ChatReqDto, signal?: AbortSignal): Promise<ChatR
 }
 
 /**
+ * 流式聊天接口类型定义
+ */
+export interface StreamChunk {
+  type: 'start' | 'content' | 'tool_call' | 'complete' | 'error'
+  content?: string
+  tool?: string
+  tool_calls?: unknown[]
+  error?: string
+  conversation_id?: string
+}
+
+/**
+ * 流式聊天回调函数类型
+ */
+export interface StreamCallbacks {
+  onStart?: (conversationId: string) => void
+  onContent?: (content: string) => void
+  onToolCall?: (tool: string) => void
+  onComplete?: (toolCalls: unknown[]) => void
+  onError?: (error: string) => void
+}
+
+/**
+ * 流式发送聊天消息到后端
+ * @param req 聊天请求参数
+ * @param callbacks 流式回调函数
+ * @param signal 可选的取消信号，用于中断请求
+ * @returns Promise<void>
+ * 
+ * @example
+ * ```typescript
+ * await chatStream({
+ *   conversation_id: 'web-1234567890',
+ *   message: '你好，我想咨询健康问题',
+ *   history: []
+ * }, {
+ *   onStart: (id) => console.log('开始对话:', id),
+ *   onContent: (content) => console.log('收到内容:', content),
+ *   onComplete: (toolCalls) => console.log('对话完成')
+ * })
+ * ```
+ */
+export async function chatStream(
+  req: ChatReqDto, 
+  callbacks: StreamCallbacks,
+  signal?: AbortSignal
+): Promise<void> {
+  try {
+    // 获取正确的API基础URL
+    const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
+    const response = await fetch(`${baseURL}/chat/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(req),
+      signal
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('无法获取响应流')
+    }
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        
+        if (done) break
+        
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || '' // 保留最后一个不完整的行
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6)) as StreamChunk
+              
+              switch (data.type) {
+                case 'start':
+                  callbacks.onStart?.(data.conversation_id || '')
+                  break
+                case 'content':
+                  callbacks.onContent?.(data.content || '')
+                  break
+                case 'tool_call':
+                  callbacks.onToolCall?.(data.tool || '')
+                  break
+                case 'complete':
+                  callbacks.onComplete?.(data.tool_calls || [])
+                  return
+                case 'error':
+                  callbacks.onError?.(data.error || '未知错误')
+                  return
+              }
+            } catch (parseError) {
+              console.warn('解析流数据失败:', parseError, '原始数据:', line)
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock()
+    }
+  } catch (error) {
+    console.error('流式聊天请求失败:', error)
+    callbacks.onError?.(error instanceof Error ? error.message : '发送消息失败，请稍后再试')
+  }
+}
+
+/**
  * 注意：删除会话功能已改为本地实现
  * 由于后端暂未提供删除会话的API接口，
  * 删除功能通过localStorage在客户端实现
