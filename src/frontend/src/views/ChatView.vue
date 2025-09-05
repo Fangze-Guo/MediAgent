@@ -57,22 +57,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, computed } from 'vue'
+import { ref, nextTick, computed, watch } from 'vue'
 import { chat as chatApi } from '@/apis/chat'
 
 type ChatMessage = { role: 'user' | 'assistant'; content: string }
 type Conversation = { id: string; title: string; messages: ChatMessage[] }
 
 import { useRoute, useRouter } from 'vue-router'
-import { getConversation, createConversation, appendMessage } from '@/store/conversations'
+import { conversations as convList, getConversation, createConversation, appendMessage } from '@/store/conversations'
 
 const route = useRoute()
 const router = useRouter()
 const inputMessage = ref('')
 const sending = ref(false)
-const conversations = ref<Conversation[]>([])
 const activeId = ref<string>('')
 const messagesEl = ref<HTMLElement | null>(null)
+const conversations = convList
 
 const scrollToBottom = async () => {
   await nextTick()
@@ -80,35 +80,29 @@ const scrollToBottom = async () => {
   if (el) el.scrollTop = el.scrollHeight
 }
 
-const currentConversation = computed(() => conversations.value.find(c => c.id === activeId.value) || null)
+const currentConversation = computed(() => getConversation(activeId.value) || null)
 const currentMessages = computed<ChatMessage[]>(() => currentConversation.value?.messages || [])
 
 const createNewConversation = () => {
-  const id = 'web-' + Date.now()
-  const conv: Conversation = { id, title: '', messages: [] }
-  conversations.value.unshift(conv)
-  activeId.value = id
+  const conv = createConversation()
+  activeId.value = conv.id
+  router.replace({ name: 'Chat', params: { id: conv.id } })
 }
 
 // 根据路由参数加载/创建会话
 const routeId = (route.params.id as string | undefined) || ''
-if (routeId) {
-  const found = getConversation(routeId)
-  if (found) {
-    conversations.value = [found, ...conversations.value.filter(c => c.id !== routeId)]
-    activeId.value = routeId
-  } else {
-    const conv = createConversation()
-    conversations.value.unshift(conv)
-    activeId.value = conv.id
-    router.replace({ name: 'Chat', params: { id: conv.id } })
-  }
+if (routeId && getConversation(routeId)) {
+  activeId.value = routeId
 } else {
-  const conv = createConversation()
-  conversations.value.unshift(conv)
-  activeId.value = conv.id
-  router.replace({ name: 'Chat', params: { id: conv.id } })
+  createNewConversation()
 }
+
+watch(() => route.params.id, (val) => {
+  const id = String(val || '')
+  if (id && id !== activeId.value) {
+    activeId.value = id
+  }
+})
 
 const sendMessage = async () => {
   const text = inputMessage.value.trim()
@@ -126,7 +120,7 @@ const sendMessage = async () => {
     })
     appendMessage(currentConversation.value!.id, { role: 'assistant', content: data.answer ?? '' })
   } catch (e) {
-    currentConversation.value!.messages.push({ role: 'assistant', content: '抱歉，请求失败，请稍后再试。' })
+    appendMessage(currentConversation.value!.id, { role: 'assistant', content: '抱歉，请求失败，请稍后再试。' })
   } finally {
     sending.value = false
     await scrollToBottom()

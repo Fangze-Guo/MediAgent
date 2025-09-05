@@ -15,12 +15,13 @@
           <a-list-item 
             v-for="c in conversations" 
             :key="c.id" 
-            class="chat-item"
+            :class="['chat-item', { active: c.id === currentId }]"
+            @click="openConversation(c.id)"
           >
-            <router-link :to="`/chat/${c.id}`" class="chat-item-link">
+            <div class="chat-item-link">
               <div class="chat-title">{{ c.title || c.id }}</div>
               <div class="chat-preview">{{ c.messages[c.messages.length - 1]?.content || '...' }}</div>
-            </router-link>
+            </div>
           </a-list-item>
         </a-list>
       </div>
@@ -30,6 +31,15 @@
 
 <script setup lang="ts">
 import { conversations } from '@/store/conversations'
+import { useRouter, useRoute } from 'vue-router'
+import { computed } from 'vue'
+
+const router = useRouter()
+const route = useRoute()
+const currentId = computed(() => String(route.params.id || ''))
+const openConversation = (id: string) => {
+  if (id && id !== currentId.value) router.push(`/chat/${id}`)
+}
 </script>
 
 <style scoped>
@@ -108,8 +118,9 @@ import { conversations } from '@/store/conversations'
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
-  border: 1px solid transparent;
+  border: 1px solid #e5e7eb;
   margin-bottom: 10px;
+  background: #fff;
 }
 
 /* 对话项悬停：浅灰背景与边框高亮 */
@@ -136,6 +147,8 @@ import { conversations } from '@/store/conversations'
 .chat-preview {
   color: #666;
   font-size: 12px;
+  display: block;
+  max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
