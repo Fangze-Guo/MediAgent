@@ -141,3 +141,96 @@ class MCPAgent:
 
         # 超过迭代上限也返回（避免死循环）
         return {"role": "assistant", "content": "(对话达到最大迭代次数)", "tool_calls": tool_calls_log}
+
+    async def chat_stream(self, messages: list[dict], max_iters=5):
+        """
+        流式聊天方法，逐步返回AI回复内容
+        messages: [{"role":"user","content":"..."}] 累积历史
+        返回：异步生成器，产生 {"type": "content", "content": "..."} 等
+        """
+        tool_calls_log = []
+        
+        # 若当前没有任何工具（例如 init_tools 失败），仍允许纯 LLM 对话
+        for _ in range(max_iters):
+            try:
+                # 使用流式API调用
+                stream = await self.client.chat.completions.create(
+                    model=MODEL,
+                    messages=messages,
+                    tools=self.tools,
+                    tool_choice="auto",
+                    temperature=0.2,
+                    stream=True  # 启用流式输出
+                )
+                
+                assistant_message = {"role": "assistant", "content": "", "tool_calls": []}
+                current_tool_calls = []
+                
+                async for chunk in stream:
+                    if chunk.choices and chunk.choices[0].delta:
+                        delta = chunk.choices[0].delta
+                        
+                        # 处理内容流
+                        if delta.content:
+                            assistant_message["content"] += delta.content
+                            yield {"type": "content", "content": delta.content}
+                        
+                        # 处理工具调用
+                        if delta.tool_calls:
+                            for tool_call in delta.tool_calls:
+                                if tool_call.index is not None:
+                                    # 确保工具调用列表足够长
+                                    while len(current_tool_calls) <= tool_call.index:
+                                        current_tool_calls.append({
+                                            "id": "",
+                                            "type": "function",
+                                            "function": {"name": "", "arguments": ""}
+                                        })
+                                    
+                                    tc = current_tool_calls[tool_call.index]
+                                    if tool_call.id:
+                                        tc["id"] = tool_call.id
+                                    if tool_call.function:
+                                        if tool_call.function.name:
+                                            tc["function"]["name"] = tool_call.function.name
+                                        if tool_call.function.arguments:
+                                            tc["function"]["arguments"] += tool_call.function.arguments
+                
+                # 处理工具调用
+                if current_tool_calls:
+                    assistant_message["tool_calls"] = current_tool_calls
+                    messages.append(assistant_message)
+                    
+                    for tc in current_tool_calls:
+                        name = tc["function"]["name"]
+                        arguments = tc["function"]["arguments"] or "{}"
+                        
+                        yield {"type": "tool_call", "tool": name}
+                        
+                        tool_result = await self._call_tool(name, arguments)
+                        tool_calls_log.append({"name": name, "arguments": arguments, "result": tool_result})
+                        
+                        # 把工具结果回灌给模型
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc["id"],
+                            "content": tool_result
+                        })
+                    continue
+                else:
+                    # 没有工具调用，返回最终答案
+                    yield {"type": "complete", "tool_calls": tool_calls_log}
+                    return
+                    
+            except asyncio.TimeoutError:
+                yield {"type": "content", "content": "(LLM 超时未响应，请稍后重试)"}
+                yield {"type": "complete", "tool_calls": tool_calls_log}
+                return
+            except Exception as e:
+                yield {"type": "content", "content": f"(LLM 异常：{e})"}
+                yield {"type": "complete", "tool_calls": tool_calls_log}
+                return
+        
+        # 超过迭代上限
+        yield {"type": "content", "content": "(对话达到最大迭代次数)"}
+        yield {"type": "complete", "tool_calls": tool_calls_log}

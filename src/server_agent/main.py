@@ -1,7 +1,9 @@
 # main.py
 import asyncio, os
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+import json
 from agent import MCPAgent
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -66,6 +68,51 @@ async def chat(req: ChatReq):
     except Exception as e:
         print(f"/chat 调用失败: {e}")
         raise HTTPException(status_code=500, detail=f"聊天服务错误: {str(e)}")
+
+@app.post("/chat/stream")
+async def chat_stream(req: ChatReq):
+    """流式聊天接口，支持实时输出"""
+    try:
+        if not _initialized:
+            await startup()
+        
+        msgs = [{"role": "system", "content": "你可以在需要时调用可用工具来完成任务，工具返回JSON，请先解析后用中文总结关键结果。"}]
+        msgs += req.history
+        msgs += [{"role": "user", "content": req.message}]
+        
+        async def generate():
+            try:
+                # 发送开始信号
+                yield f"data: {json.dumps({'type': 'start', 'conversation_id': req.conversation_id}, ensure_ascii=False)}\n\n"
+                
+                # 流式获取AI回复
+                async for chunk in agent.chat_stream(msgs):
+                    if chunk['type'] == 'content':
+                        yield f"data: {json.dumps({'type': 'content', 'content': chunk['content']}, ensure_ascii=False)}\n\n"
+                    elif chunk['type'] == 'tool_call':
+                        yield f"data: {json.dumps({'type': 'tool_call', 'tool': chunk['tool']}, ensure_ascii=False)}\n\n"
+                    elif chunk['type'] == 'complete':
+                        yield f"data: {json.dumps({'type': 'complete', 'tool_calls': chunk.get('tool_calls', [])}, ensure_ascii=False)}\n\n"
+                        break
+                
+            except Exception as e:
+                print(f"流式聊天错误: {e}")
+                yield f"data: {json.dumps({'type': 'error', 'error': str(e)}, ensure_ascii=False)}\n\n"
+        
+        return StreamingResponse(
+            generate(),
+            media_type="text/plain",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "*",
+            }
+        )
+        
+    except Exception as e:
+        print(f"/chat/stream 调用失败: {e}")
+        raise HTTPException(status_code=500, detail=f"流式聊天服务错误: {str(e)}")
 
 # === 直连工具：绕过 LLM，快速排障 ===
 @app.post("/call-tool")
