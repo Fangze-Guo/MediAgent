@@ -15,6 +15,8 @@ export type ChatMessage = {
   role: 'user' | 'assistant'
   /** 消息内容 */
   content: string 
+  /** 消息是否完成 */
+  typingComplete?: boolean
 }
 
 /**

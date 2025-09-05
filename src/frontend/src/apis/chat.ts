@@ -16,6 +16,24 @@ export interface ChatMessageDto {
 }
 
 /**
+ * 文件信息接口
+ */
+export interface FileInfo {
+  /** 文件ID */
+  id: string
+  /** 原始文件名 */
+  originalName: string
+  /** 文件大小（字节） */
+  size: number
+  /** 文件类型 */
+  type: string
+  /** 文件路径 */
+  path: string
+  /** 上传时间 */
+  uploadTime: string
+}
+
+/**
  * 聊天请求数据传输对象
  * 发送给后端的聊天请求参数
  */
@@ -26,6 +44,8 @@ export interface ChatReqDto {
   message: string
   /** 历史消息列表，用于上下文理解 */
   history: ChatMessageDto[]
+  /** 当前会话关联的文件信息 */
+  files?: FileInfo[]
 }
 
 /**

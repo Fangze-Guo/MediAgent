@@ -65,20 +65,52 @@
           </div>
         </a-layout-content>
         <a-layout-footer class="chat-input">
-          <a-textarea 
-            v-model:value="inputMessage"
-            class="message-input"
-            placeholder="输入消息，按 Enter 换行"
-            :auto-size="{ minRows: 1, maxRows: 6 }"
-          />
-          <a-button 
-            type="primary" 
-            class="send-btn"
-            :loading="sending"
-            @click="sendMessage"
-          >
-            发送
-          </a-button>
+          <!-- 文件上传区域 -->
+          <div v-if="showFileUpload" class="file-upload-section">
+            <a-button 
+              type="text" 
+              size="small"
+              @click="showFileUpload = false"
+              class="close-upload-btn"
+            >
+              <CloseOutlined />
+            </a-button>
+            <FileUpload 
+              @upload-success="handleFileUploadSuccess"
+              @upload-error="handleFileUploadError"
+              @use-file="handleUseFile"
+            />
+
+          </div>
+          
+          <!-- 输入区域 -->
+          <div class="input-section">
+            <a-textarea 
+              v-model:value="inputMessage"
+              class="message-input"
+              placeholder="输入消息，按 Enter 换行"
+              :auto-size="{ minRows: 1, maxRows: 6 }"
+            />
+            <div class="input-actions">
+              <a-button 
+                type="text" 
+                class="upload-btn"
+                @click="showFileUpload = !showFileUpload"
+                :title="showFileUpload ? '隐藏文件上传' : '上传文件'"
+              >
+                <PlusOutlined v-if="!showFileUpload" />
+                <CloseOutlined v-else />
+              </a-button>
+              <a-button 
+                type="primary" 
+                class="send-btn"
+                :loading="sending"
+                @click="sendMessage"
+              >
+                发送
+              </a-button>
+            </div>
+          </div>
         </a-layout-footer>
       </a-layout>
     </div>
@@ -95,6 +127,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { Modal, message } from 'ant-design-vue'
 import { chatStream } from '@/apis/chat'
 import { useConversationsStore } from '@/store/conversations'
+import FileUpload from '@/components/FileUpload.vue'
+import { type FileUploadResponse } from '@/apis/files'
+import { PlusOutlined, CloseOutlined } from '@ant-design/icons-vue'
 
 // 路由相关
 const route = useRoute()
@@ -114,6 +149,12 @@ const deleting = ref(false)
 const activeId = ref<string>('')
 /** 消息容器的DOM引用，用于滚动到底部 */
 const messagesEl = ref<HTMLElement | null>(null)
+/** 是否显示文件上传区域 */
+const showFileUpload = ref(false)
+/** 已上传的文件列表 */
+const uploadedFiles = ref<FileUploadResponse['file'][]>([])
+/** 当前会话关联的文件信息 */
+const currentSessionFiles = ref<FileUploadResponse['file'][]>([])
 
 /**
  * 解析消息内容，提取思考过程和回复内容
@@ -152,6 +193,47 @@ const scrollToBottom = async () => {
   const el = messagesEl.value
   if (el) el.scrollTop = el.scrollHeight
 }
+
+/**
+ * 处理文件上传成功
+ * @param file 上传成功的文件信息
+ */
+const handleFileUploadSuccess = (file: FileUploadResponse['file']) => {
+  uploadedFiles.value.push(file)
+  console.log('文件上传成功:', file)
+}
+
+/**
+ * 处理文件上传失败
+ * @param error 错误信息
+ */
+const handleFileUploadError = (error: string) => {
+  console.error('文件上传失败:', error)
+}
+
+/**
+ * 使用文件
+ * @param file 要使用的文件
+ */
+const handleUseFile = (file: FileUploadResponse['file']) => {
+  // 将文件添加到当前会话的文件列表中
+  currentSessionFiles.value.push(file)
+  
+  // 根据文件类型生成不同的提示信息
+  let message = ''
+  if (file.type.startsWith('image/')) {
+    message = `我已经上传了图片文件 "${file.originalName}"，文件路径是：${file.path}。你可以让我帮你调整图片大小，比如"将图片调整为800x600像素"。`
+  } else if (file.type.includes('csv')) {
+    message = `我已经上传了CSV文件 "${file.originalName}"，文件路径是：${file.path}。你可以让我帮你分析这个文件，比如"生成这个CSV文件的摘要"。`
+  } else {
+    message = `我已经上传了文件 "${file.originalName}"，文件路径是：${file.path}。请告诉我你想要如何处理这个文件。`
+  }
+  
+  // 将文件信息添加到输入消息中
+  inputMessage.value = message
+  showFileUpload.value = false
+}
+
 
 // 响应式数据
 /** 思考过程显示状态 */
@@ -199,6 +281,8 @@ watch(() => route.params.id, (val) => {
   const id = String(val || '')
   if (id && id !== activeId.value) {
     activeId.value = id
+    // 切换会话时清空当前会话的文件列表
+    currentSessionFiles.value = []
   }
 })
 
@@ -238,14 +322,15 @@ const sendMessageToAI = async (messageText: string) => {
   conversationsStore.appendMessage(currentConversation.value.id, aiMessage)
   
   try {
-    // 使用流式聊天API
+    // 使用流式聊天API，包含文件信息
     await chatStream({
       conversation_id: currentConversation.value.id,
       message: messageText,
       history: currentMessages.value.map(m => ({ 
         role: m.role, 
         content: m.content 
-      }))
+      })),
+      files: currentSessionFiles.value // 添加文件信息
     }, {
       onStart: (conversationId) => {
         console.log('开始流式对话:', conversationId)
@@ -274,7 +359,7 @@ const sendMessageToAI = async (messageText: string) => {
           const lastMessage = conversation.messages[conversation.messages.length - 1]
           if (lastMessage.role === 'assistant') {
             // 添加完成标记，用于CSS移除光标效果
-            lastMessage.typingComplete = true
+            ;(lastMessage as any).typingComplete = true
           }
         }
         // 确保滚动到底部
@@ -288,7 +373,7 @@ const sendMessageToAI = async (messageText: string) => {
           const lastMessage = conversation.messages[conversation.messages.length - 1]
           if (lastMessage.role === 'assistant') {
             lastMessage.content = `抱歉，请求失败：${error}`
-            lastMessage.typingComplete = true // 移除光标
+            ;(lastMessage as any).typingComplete = true // 移除光标
           }
         }
         scrollToBottom()
@@ -302,7 +387,7 @@ const sendMessageToAI = async (messageText: string) => {
       const lastMessage = conversation.messages[conversation.messages.length - 1]
       if (lastMessage.role === 'assistant') {
         lastMessage.content = '抱歉，请求失败，请稍后再试。'
-        lastMessage.typingComplete = true // 移除光标
+        ;(lastMessage as any).typingComplete = true // 移除光标
       }
     }
     await scrollToBottom()
@@ -552,11 +637,78 @@ const handleDeleteConversation = () => {
 /* 输入区：底部工具栏容器 */
 .chat-input {
   display: flex;
+  flex-direction: column;
   gap: 12px;
-  align-items: flex-end;
   padding: 16px 24px;
   background: white;
   border-top: 1px solid #f0f0f0;
+}
+
+/* 文件上传区域 */
+.file-upload-section {
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  padding: 16px;
+  position: relative;
+  max-height: 300px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+
+.close-upload-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transition: all 0.3s ease;
+  color: #666;
+}
+
+.close-upload-btn:hover {
+  background: rgba(255, 77, 79, 0.1);
+  color: #ff4d4f;
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(255, 77, 79, 0.2);
+}
+
+/* 输入区域 */
+.input-section {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+/* 输入操作按钮组 */
+.input-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.upload-btn {
+  color: #666;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.upload-btn:hover {
+  color: #1890ff;
+  border-color: #1890ff;
 }
 
 /* 文本域：占满剩余空间，支持自适应高度 */
@@ -618,8 +770,8 @@ const handleDeleteConversation = () => {
   color: #333;
 }
 
-/* 流式输出时的打字机效果 */
-.message.ai .message-content:not(.typing-complete)::after {
+/* 流式输出时的打字机效果 - 只有内容不为空且未完成的消息才显示光标 */
+.message.ai .message-content:not(.typing-complete):not(:empty)::after {
   content: '|';
   animation: blink 1s infinite;
   color: #999;

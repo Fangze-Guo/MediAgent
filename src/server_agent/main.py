@@ -1,11 +1,14 @@
 # main.py
-import asyncio, os
-from fastapi import FastAPI, HTTPException, Request
+import asyncio, os, uuid
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import json
 from agent import MCPAgent
 from fastapi.middleware.cors import CORSMiddleware
+import pathlib
+import shutil
+from datetime import datetime
 
 app = FastAPI(title="MediAgent Backend")
 
@@ -21,10 +24,19 @@ agent = MCPAgent()
 _init_lock = asyncio.Lock()
 _initialized = False
 
+class FileInfo(BaseModel):
+    id: str
+    originalName: str
+    size: int
+    type: str
+    path: str
+    uploadTime: str
+
 class ChatReq(BaseModel):
     conversation_id: str
     message: str
     history: list[dict] = []
+    files: list[FileInfo] = []
 
 class ChatResp(BaseModel):
     conversation_id: str
@@ -34,6 +46,28 @@ class ChatResp(BaseModel):
 class ToolReq(BaseModel):
     name: str
     args: dict
+
+class FileInfo(BaseModel):
+    id: str
+    originalName: str
+    size: int
+    type: str
+    path: str
+    uploadTime: str
+
+class FileUploadResp(BaseModel):
+    success: bool
+    file: FileInfo
+    error: str = None
+
+class FileListResp(BaseModel):
+    files: list[FileInfo]
+
+# 文件上传配置
+UPLOAD_DIR = pathlib.Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.csv'}
 
 #各项功能以及内部需要等待IO的调用等都要写成协程，防止阻塞整个服务器
 @app.on_event("startup")
@@ -76,7 +110,23 @@ async def chat_stream(req: ChatReq):
         if not _initialized:
             await startup()
         
-        msgs = [{"role": "system", "content": "你可以在需要时调用可用工具来完成任务，工具返回JSON，请先解析后用中文总结关键结果。"}]
+        # 构建系统消息，包含文件信息
+        system_content = "你是一个智能助手，可以调用工具来帮助用户完成任务。当需要调用工具时，请直接调用，不要过度思考。工具返回JSON格式，请解析后用中文总结关键结果。"
+        
+        # 如果有文件，添加文件信息到系统消息
+        if req.files:
+            system_content += f"\n\n可用文件："
+            for file in req.files:
+                if file.type.startswith('image/'):
+                    system_content += f"\n- {file.originalName} → {file.path}"
+                elif 'csv' in file.type:
+                    system_content += f"\n- {file.originalName} → {file.path}"
+                else:
+                    system_content += f"\n- {file.originalName} → {file.path}"
+            
+            system_content += f"\n\n注意：调用工具时使用完整路径，不要使用原始文件名。"
+        
+        msgs = [{"role": "system", "content": system_content}]
         msgs += req.history
         msgs += [{"role": "user", "content": req.message}]
         
@@ -147,6 +197,98 @@ async def healthz():
         "tools_count": len(agent.tools),
         "python": mcp_py,
     }
+
+# === 文件上传和管理 ===
+@app.post("/upload", response_model=FileUploadResp)
+async def upload_file(file: UploadFile = File(...)):
+    """上传文件接口"""
+    try:
+        # 检查文件大小
+        if file.size > MAX_FILE_SIZE:
+            return FileUploadResp(
+                success=False,
+                file=None,
+                error=f"文件大小超过限制 ({MAX_FILE_SIZE // (1024*1024)}MB)"
+            )
+        
+        # 检查文件扩展名
+        file_ext = pathlib.Path(file.filename).suffix.lower()
+        if file_ext not in ALLOWED_EXTENSIONS:
+            return FileUploadResp(
+                success=False,
+                file=None,
+                error=f"不支持的文件类型: {file_ext}"
+            )
+        
+        # 生成唯一文件名
+        file_id = str(uuid.uuid4())
+        file_name = f"{file_id}{file_ext}"
+        file_path = UPLOAD_DIR / file_name
+        
+        # 保存文件
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # 创建文件信息
+        file_info = FileInfo(
+            id=file_id,
+            originalName=file.filename,
+            size=file.size,
+            type=file.content_type,
+            path=str(file_path.resolve()),
+            uploadTime=datetime.now().isoformat()
+        )
+        
+        return FileUploadResp(success=True, file=file_info)
+        
+    except Exception as e:
+        print(f"文件上传失败: {e}")
+        return FileUploadResp(
+            success=False,
+            file=None,
+            error=f"文件上传失败: {str(e)}"
+        )
+
+@app.post("/files", response_model=FileListResp)
+async def list_files():
+    """获取已上传文件列表"""
+    try:
+        files = []
+        for file_path in UPLOAD_DIR.iterdir():
+            if file_path.is_file():
+                # 从文件名提取ID
+                file_id = file_path.stem
+                file_ext = file_path.suffix
+                
+                # 获取文件信息
+                stat = file_path.stat()
+                file_info = FileInfo(
+                    id=file_id,
+                    originalName=f"{file_id}{file_ext}",  # 简化显示
+                    size=stat.st_size,
+                    type=get_content_type(file_ext),
+                    path=str(file_path.resolve()),
+                    uploadTime=datetime.fromtimestamp(stat.st_mtime).isoformat()
+                )
+                files.append(file_info)
+        
+        return FileListResp(files=files)
+        
+    except Exception as e:
+        print(f"获取文件列表失败: {e}")
+        raise HTTPException(status_code=500, detail=f"获取文件列表失败: {str(e)}")
+
+def get_content_type(ext: str) -> str:
+    """根据文件扩展名获取内容类型"""
+    content_types = {
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp',
+        '.csv': 'text/csv'
+    }
+    return content_types.get(ext.lower(), 'application/octet-stream')
 
 # === 自测：生成、缩放、校验（本地磁盘） ===
 @app.get("/selftest")

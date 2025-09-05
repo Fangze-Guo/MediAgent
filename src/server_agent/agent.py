@@ -159,7 +159,7 @@ class MCPAgent:
                     messages=messages,
                     tools=self.tools,
                     tool_choice="auto",
-                    temperature=0.2,
+                    temperature=0.1,  # 降低温度，减少随机性
                     stream=True  # 启用流式输出
                 )
                 
