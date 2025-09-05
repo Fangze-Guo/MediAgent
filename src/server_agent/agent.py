@@ -13,7 +13,7 @@ MODEL = os.getenv("MODEL", "qwen2.5-7b-instruct")
 # === 可按需调整的超时/重试策略（集中配置更清晰） ===
 LLM_REQUEST_TIMEOUT_SEC = 60          # 单次 LLM 请求的总超时（上层保护）
 LLM_CLIENT_TIMEOUT_SEC = 60           # AsyncOpenAI 内部 httpx 的超时
-TOOL_CALL_OUTER_TIMEOUT_SEC = 180     # 对 MCP 工具调用再套一层总超时，防止卡住
+TOOL_CALL_OUTER_TIMEOUT_SEC = 360     # 对 MCP 工具调用再套一层总超时，防止卡住
 
 class MCPAgent:
     def __init__(self):
