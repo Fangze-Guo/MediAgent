@@ -30,25 +30,31 @@
             <div v-if="m.role !== 'user'" class="avatar ai-avatar">
               <a-icon type="robot" />
             </div>
-            <div class="message-content" :class="{ 'typing-complete': m.typingComplete }">
+            <div class="message-content">
               <!-- 解析并展示思考过程和回复内容 -->
               <div v-if="m.parsedContent">
-                <!-- 思考过程 -->
-                <div v-if="m.parsedContent.thinking" class="thinking-section">
-                  <div class="thinking-header">
-                    <a-icon type="bulb" />
-                    <span>思考过程</span>
-                    <a-button 
-                      type="text" 
-                      size="small" 
-                      @click="toggleThinking(idx)"
-                      class="toggle-thinking-btn"
-                    >
-                      {{ m.showThinking ? '收起' : '展开' }}
-                    </a-button>
-                  </div>
-                  <div v-show="m.showThinking" class="thinking-content">
-                    {{ m.parsedContent.thinking }}
+                <!-- 多个思考过程 -->
+                <div v-if="m.parsedContent.thinkingList && m.parsedContent.thinkingList.length > 0">
+                  <div 
+                    v-for="(thinking, thinkingIdx) in m.parsedContent.thinkingList" 
+                    :key="thinkingIdx"
+                    class="thinking-section"
+                  >
+                    <div class="thinking-header">
+                      <a-icon type="bulb" />
+                      <span>思考过程 {{ m.parsedContent.thinkingList.length > 1 ? thinkingIdx + 1 : '' }}</span>
+                      <a-button 
+                        type="text" 
+                        size="small" 
+                        @click="toggleThinking(idx, thinkingIdx)"
+                        class="toggle-thinking-btn"
+                      >
+                        {{ m.showThinkingList && m.showThinkingList[thinkingIdx] ? '收起' : '展开' }}
+                      </a-button>
+                    </div>
+                    <div v-show="m.showThinkingList && m.showThinkingList[thinkingIdx]" class="thinking-content">
+                      {{ thinking }}
+                    </div>
                   </div>
                 </div>
                 <!-- 回复内容 -->
@@ -162,12 +168,19 @@ const currentSessionFiles = ref<FileUploadResponse['file'][]>([])
  * @returns 解析后的内容对象
  */
 const parseMessageContent = (content: string) => {
-  const thinkMatch = content.match(/<think>(.*?)<\/think>/s)
-  if (thinkMatch) {
-    const thinking = thinkMatch[1].trim()
-    const response = content.replace(/<think>.*?<\/think>/s, '').trim()
+  // 匹配所有<think>标签
+  const thinkMatches = content.match(/<think>(.*?)<\/think>/gs)
+  if (thinkMatches && thinkMatches.length > 0) {
+    const thinkingList = thinkMatches.map(match => {
+      const thinkContent = match.replace(/<\/?think>/g, '').trim()
+      return thinkContent
+    })
+    
+    // 移除所有<think>标签，获取回复内容
+    const response = content.replace(/<think>.*?<\/think>/gs, '').trim()
+    
     return {
-      thinking,
+      thinkingList, // 改为数组，支持多个思考过程
       response: response || null
     }
   }
@@ -177,10 +190,18 @@ const parseMessageContent = (content: string) => {
 /**
  * 切换思考过程的显示/隐藏
  * @param messageIndex 消息索引
+ * @param thinkingIndex 思考过程索引（可选，用于多个思考过程）
  */
-const toggleThinking = (messageIndex: number) => {
+const toggleThinking = (messageIndex: number, thinkingIndex?: number) => {
   const messageKey = `${activeId.value}-${messageIndex}`
-  thinkingStates.value[messageKey] = !thinkingStates.value[messageKey]
+  if (thinkingIndex !== undefined) {
+    // 多个思考过程的情况
+    const thinkingKey = `${messageKey}-${thinkingIndex}`
+    thinkingStates.value[thinkingKey] = !thinkingStates.value[thinkingKey]
+  } else {
+    // 单个思考过程的情况（向后兼容）
+    thinkingStates.value[messageKey] = !thinkingStates.value[messageKey]
+  }
 }
 
 
@@ -222,11 +243,11 @@ const handleUseFile = (file: FileUploadResponse['file']) => {
   // 根据文件类型生成不同的提示信息
   let message = ''
   if (file.type.startsWith('image/')) {
-    message = `我已经上传了图片文件 "${file.originalName}"，文件路径是：${file.path}。你可以让我帮你调整图片大小，比如"将图片调整为800x600像素"。`
+    message = `我已经上传了图片文件 "${file.originalName}"，文件路径是：${file.path}。帮我调整图片大小，"将图片调整为800x600像素"，输出路径为./output/${file.originalName}。`
   } else if (file.type.includes('csv')) {
-    message = `我已经上传了CSV文件 "${file.originalName}"，文件路径是：${file.path}。你可以让我帮你分析这个文件，比如"生成这个CSV文件的摘要"。`
+    message = `我已经上传了CSV文件 "${file.originalName}"，文件路径是：${file.path}。帮我分析这个文件，"生成这个CSV文件的摘要"，输出路径为./output/${file.originalName}。。`
   } else {
-    message = `我已经上传了文件 "${file.originalName}"，文件路径是：${file.path}。请告诉我你想要如何处理这个文件。`
+    message = `无法处理该文件`
   }
   
   // 将文件信息添加到输入消息中
@@ -247,11 +268,22 @@ const currentMessages = computed(() => {
   const messages = currentConversation.value?.messages || []
   return messages.map((msg, index) => {
     const messageKey = `${activeId.value}-${index}`
+    const parsedContent = parseMessageContent(msg.content)
+    
+    // 为多个思考过程生成显示状态
+    let showThinkingList = null
+    if (parsedContent && parsedContent.thinkingList) {
+      showThinkingList = parsedContent.thinkingList.map((_, thinkingIdx) => {
+        const thinkingKey = `${messageKey}-${thinkingIdx}`
+        return thinkingStates.value[thinkingKey] || false
+      })
+    }
+    
     return {
       ...msg,
-      parsedContent: parseMessageContent(msg.content),
-      showThinking: thinkingStates.value[messageKey] || false,
-      typingComplete: (msg as any).typingComplete || false
+      parsedContent,
+      showThinking: thinkingStates.value[messageKey] || false, // 保持向后兼容
+      showThinkingList, // 新增：多个思考过程的显示状态
     }
   })
 })
@@ -317,7 +349,7 @@ const sendMessageToAI = async (messageText: string) => {
   // 创建AI消息占位符
   const aiMessage = { 
     role: 'assistant' as const, 
-    content: '' 
+    content: '',
   }
   conversationsStore.appendMessage(currentConversation.value.id, aiMessage)
   
@@ -358,8 +390,6 @@ const sendMessageToAI = async (messageText: string) => {
         if (conversation && conversation.messages.length > 0) {
           const lastMessage = conversation.messages[conversation.messages.length - 1]
           if (lastMessage.role === 'assistant') {
-            // 添加完成标记，用于CSS移除光标效果
-            ;(lastMessage as any).typingComplete = true
           }
         }
         // 确保滚动到底部
@@ -373,7 +403,6 @@ const sendMessageToAI = async (messageText: string) => {
           const lastMessage = conversation.messages[conversation.messages.length - 1]
           if (lastMessage.role === 'assistant') {
             lastMessage.content = `抱歉，请求失败：${error}`
-            ;(lastMessage as any).typingComplete = true // 移除光标
           }
         }
         scrollToBottom()
@@ -387,7 +416,6 @@ const sendMessageToAI = async (messageText: string) => {
       const lastMessage = conversation.messages[conversation.messages.length - 1]
       if (lastMessage.role === 'assistant') {
         lastMessage.content = '抱歉，请求失败，请稍后再试。'
-        ;(lastMessage as any).typingComplete = true // 移除光标
       }
     }
     await scrollToBottom()
@@ -770,22 +798,5 @@ const handleDeleteConversation = () => {
   color: #333;
 }
 
-/* 流式输出时的打字机效果 - 只有内容不为空且未完成的消息才显示光标 */
-.message.ai .message-content:not(.typing-complete):not(:empty)::after {
-  content: '|';
-  animation: blink 1s infinite;
-  color: #999;
-  font-weight: normal;
-}
-
-/* 完成时移除光标 */
-.message.ai .message-content.typing-complete::after {
-  display: none;
-}
-
-@keyframes blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
-}
 
 </style>
