@@ -30,15 +30,36 @@
 </template>
 
 <script setup lang="ts">
-import { conversations } from '@/store/conversations'
+/**
+ * 侧边栏组件
+ * 显示应用标题、新建对话按钮和历史会话列表
+ * 提供会话切换功能
+ */
+import { useConversationsStore } from '@/store/conversations'
 import { useRouter, useRoute } from 'vue-router'
 import { computed } from 'vue'
 
+// 路由相关
 const router = useRouter()
 const route = useRoute()
+
+// 状态管理
+const conversationsStore = useConversationsStore()
+
+// 计算属性
+/** 当前活跃的会话ID，从路由参数获取 */
 const currentId = computed(() => String(route.params.id || ''))
+/** 会话列表，从store获取 */
+const conversations = computed(() => conversationsStore.conversations)
+
+/**
+ * 打开指定会话
+ * @param id 会话ID
+ */
 const openConversation = (id: string) => {
-  if (id && id !== currentId.value) router.push(`/chat/${id}`)
+  if (id && id !== currentId.value) {
+    router.push(`/chat/${id}`)
+  }
 }
 </script>
 
@@ -148,7 +169,7 @@ const openConversation = (id: string) => {
   color: #666;
   font-size: 12px;
   display: block;
-  max-width: 100%;
+  width: 200px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

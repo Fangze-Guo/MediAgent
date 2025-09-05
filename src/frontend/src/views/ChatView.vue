@@ -7,19 +7,20 @@
             <h2 class="chat-title">{{ currentConversation?.title || '新对话' }}</h2>
           </div>
           <div class="header-right">
-            <a-button size="small" @click="createNewConversation" :loading="sending">新建对话</a-button>
+            <a-button 
+              v-if="currentConversation" 
+              type="text" 
+              danger 
+              @click="handleDeleteConversation"
+              :loading="deleting"
+            >
+              <template #icon>
+                <a-icon type="delete" />
+              </template>
+              删除会话
+            </a-button>
           </div>
         </a-layout-header>
-        <div class="history-bar" v-if="conversations.length > 0">
-          <div
-            v-for="c in conversations"
-            :key="c.id"
-            :class="['history-item', { active: c.id === activeId }]"
-            @click="activeId = c.id"
-          >
-            {{ c.title || c.id }}
-          </div>
-        </div>
         <a-layout-content class="chat-messages" ref="messagesEl">
           <div 
             v-for="(m, idx) in currentMessages" 
@@ -57,46 +58,72 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 聊天视图组件
+ * 提供完整的聊天界面，包括消息显示、输入、发送和会话管理功能
+ */
 import { ref, nextTick, computed, watch } from 'vue'
-import { chat as chatApi } from '@/apis/chat'
-
-type ChatMessage = { role: 'user' | 'assistant'; content: string }
-type Conversation = { id: string; title: string; messages: ChatMessage[] }
-
 import { useRoute, useRouter } from 'vue-router'
-import { conversations as convList, getConversation, createConversation, appendMessage } from '@/store/conversations'
+import { Modal, message } from 'ant-design-vue'
+import { chat as chatApi } from '@/apis/chat'
+import { useConversationsStore } from '@/store/conversations'
 
+// 路由相关
 const route = useRoute()
 const router = useRouter()
-const inputMessage = ref('')
-const sending = ref(false)
-const activeId = ref<string>('')
-const messagesEl = ref<HTMLElement | null>(null)
-const conversations = convList
 
+// 状态管理
+const conversationsStore = useConversationsStore()
+
+// 响应式数据
+/** 用户输入的消息内容 */
+const inputMessage = ref('')
+/** 是否正在发送消息 */
+const sending = ref(false)
+/** 是否正在删除会话 */
+const deleting = ref(false)
+/** 当前活跃的会话ID */
+const activeId = ref<string>('')
+/** 消息容器的DOM引用，用于滚动到底部 */
+const messagesEl = ref<HTMLElement | null>(null)
+
+/**
+ * 滚动消息容器到底部
+ * 在发送消息后自动滚动到最新消息
+ */
 const scrollToBottom = async () => {
   await nextTick()
   const el = messagesEl.value
   if (el) el.scrollTop = el.scrollHeight
 }
 
-const currentConversation = computed(() => getConversation(activeId.value) || null)
-const currentMessages = computed<ChatMessage[]>(() => currentConversation.value?.messages || [])
+// 计算属性
+/** 当前活跃的会话对象 */
+const currentConversation = computed(() => conversationsStore.getConversation(activeId.value) || null)
+/** 当前会话的消息列表 */
+const currentMessages = computed(() => currentConversation.value?.messages || [])
 
+/**
+ * 创建新会话
+ * 生成新的会话ID并跳转到聊天页面
+ */
 const createNewConversation = () => {
-  const conv = createConversation()
+  const conv = conversationsStore.createConversation()
   activeId.value = conv.id
   router.replace({ name: 'Chat', params: { id: conv.id } })
 }
 
-// 根据路由参数加载/创建会话
+// 初始化：根据路由参数加载或创建会话
 const routeId = (route.params.id as string | undefined) || ''
-if (routeId && getConversation(routeId)) {
+if (routeId && conversationsStore.getConversation(routeId)) {
+  // 如果路由ID存在且对应会话存在，则加载该会话
   activeId.value = routeId
 } else {
+  // 否则创建新会话
   createNewConversation()
 }
 
+// 监听路由变化，切换会话
 watch(() => route.params.id, (val) => {
   const id = String(val || '')
   if (id && id !== activeId.value) {
@@ -104,27 +131,138 @@ watch(() => route.params.id, (val) => {
   }
 })
 
-const sendMessage = async () => {
-  const text = inputMessage.value.trim()
-  if (!text || sending.value) return
-  inputMessage.value = ''
-  if (!currentConversation.value) createNewConversation()
-  appendMessage(currentConversation.value!.id, { role: 'user', content: text })
-  await scrollToBottom()
+// 监听当前会话变化，检查是否需要自动发送消息
+watch(currentConversation, (newConv) => {
+  if (newConv && newConv.messages.length > 0) {
+    // 检查最后一条消息是否是用户消息且没有对应的AI回复
+    const lastMessage = newConv.messages[newConv.messages.length - 1]
+    if (lastMessage.role === 'user') {
+      // 检查是否有对应的AI回复（下一条消息应该是assistant）
+      const nextMessage = newConv.messages[newConv.messages.length]
+      if (!nextMessage || nextMessage.role !== 'assistant') {
+        // 自动发送消息获取AI回复
+        console.log('检测到未回复的用户消息，自动发送给AI')
+        setTimeout(() => {
+          sendMessageToAI(lastMessage.content)
+        }, 100)
+      }
+    }
+  }
+}, { immediate: true })
+
+/**
+ * 发送消息给AI（内部函数）
+ * @param messageText 要发送的消息内容
+ */
+const sendMessageToAI = async (messageText: string) => {
+  if (!currentConversation.value || sending.value) return
+  
   sending.value = true
+  
   try {
+    // 调用聊天API
     const data = await chatApi({
-      conversation_id: currentConversation.value!.id,
-      message: text,
-      history: currentMessages.value.map(m => ({ role: m.role, content: m.content }))
+      conversation_id: currentConversation.value.id,
+      message: messageText,
+      history: currentMessages.value.map(m => ({ 
+        role: m.role, 
+        content: m.content 
+      }))
     })
-    appendMessage(currentConversation.value!.id, { role: 'assistant', content: data.answer ?? '' })
-  } catch (e) {
-    appendMessage(currentConversation.value!.id, { role: 'assistant', content: '抱歉，请求失败，请稍后再试。' })
+    
+    // 添加AI回复到会话
+    conversationsStore.appendMessage(currentConversation.value.id, { 
+      role: 'assistant', 
+      content: data.answer ?? '' 
+    })
+  } catch (error) {
+    // 处理错误，显示错误消息
+    console.error('发送消息失败:', error)
+    conversationsStore.appendMessage(currentConversation.value.id, { 
+      role: 'assistant', 
+      content: '抱歉，请求失败，请稍后再试。' 
+    })
   } finally {
+    // 重置发送状态并滚动到底部
     sending.value = false
     await scrollToBottom()
   }
+}
+
+/**
+ * 发送消息
+ * 处理用户输入的消息，发送到后端并显示AI回复
+ */
+const sendMessage = async () => {
+  const text = inputMessage.value.trim()
+  
+  // 验证输入和状态
+  if (!text || sending.value) return
+  
+  // 清空输入框
+  inputMessage.value = ''
+  
+  // 确保有当前会话，没有则创建
+  if (!currentConversation.value) {
+    createNewConversation()
+  }
+  
+  // 添加用户消息到会话
+  conversationsStore.appendMessage(currentConversation.value!.id, { 
+    role: 'user', 
+    content: text 
+  })
+  
+  // 滚动到底部显示用户消息
+  await scrollToBottom()
+  
+  // 发送消息给AI
+  await sendMessageToAI(text)
+}
+
+/**
+ * 处理删除会话操作
+ * 显示确认对话框，确认后删除当前会话并创建新会话
+ */
+const handleDeleteConversation = () => {
+  if (!currentConversation.value) return
+  
+  Modal.confirm({
+    title: '确认删除',
+    content: `确定要删除会话"${currentConversation.value.title || '未命名会话'}"吗？此操作不可撤销。`,
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: async () => {
+      deleting.value = true
+      try {
+        const deletedId = currentConversation.value!.id
+        const deletedTitle = currentConversation.value!.title || '未命名会话'
+        console.log('准备删除会话:', deletedId, deletedTitle)
+        
+        // 从本地store删除会话（纯本地实现，不调用后端API）
+        conversationsStore.deleteConversation(deletedId)
+        
+        console.log('会话删除完成，当前会话列表:', conversationsStore.conversations)
+        message.success(`会话"${deletedTitle}"已删除`)
+        
+        // 检查是否还有其他会话
+        if (conversationsStore.conversations.length > 0) {
+          // 如果有其他会话，跳转到第一个会话
+          const firstConversation = conversationsStore.conversations[0]
+          router.push(`/chat/${firstConversation.id}`)
+        } else {
+          // 如果没有其他会话了，跳转到首页让用户选择
+          router.push('/')
+        }
+      } catch (error) {
+        message.error('删除会话失败，请稍后再试')
+        console.error('Delete conversation error:', error)
+      } finally {
+        deleting.value = false
+      }
+    }
+  })
 }
 </script>
 
@@ -188,7 +326,11 @@ const sendMessage = async () => {
 }
 
 .header-left { flex: 1; min-width: 0; }
-.header-right { display: flex; gap: 8px; }
+.header-right { 
+  display: flex; 
+  gap: 8px; 
+  align-items: center;
+}
 
 .history-bar {
   display: flex;

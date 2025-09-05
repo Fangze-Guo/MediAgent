@@ -1,13 +1,37 @@
+/**
+ * 应用入口文件
+ * 初始化Vue应用，配置插件和挂载根组件
+ */
 import { createApp } from 'vue'
+import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 import './style.css'
 import Antd from 'ant-design-vue'
-import 'ant-design-vue/dist/reset.css';
+import 'ant-design-vue/dist/reset.css'
 
+/**
+ * 创建Vue应用实例
+ */
 const app = createApp(App)
 
+/**
+ * 创建Pinia状态管理实例
+ */
+const pinia = createPinia()
+
+/**
+ * 注册插件
+ * 1. Pinia - 状态管理
+ * 2. Vue Router - 路由管理
+ * 3. Ant Design Vue - UI组件库
+ */
+app.use(pinia)
 app.use(router)
 app.use(Antd)
 
+/**
+ * 挂载应用到DOM
+ * 将Vue应用挂载到id为'app'的DOM元素上
+ */
 app.mount('#app')
