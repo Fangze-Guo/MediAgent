@@ -243,9 +243,9 @@ const handleUseFile = (file: FileUploadResponse['file']) => {
   // 根据文件类型生成不同的提示信息
   let message = ''
   if (file.type.startsWith('image/')) {
-    message = `我已经上传了图片文件 "${file.originalName}"，文件路径是：${file.path}。帮我调整图片大小，"将图片调整为800x600像素"，输出路径为./output/${file.originalName}。`
+    message = `我已经上传了图片文件 "${file.originalName}"，"将图片调整为800x600像素"，输出路径为./output/${file.originalName}。`
   } else if (file.type.includes('csv')) {
-    message = `我已经上传了CSV文件 "${file.originalName}"，文件路径是：${file.path}。帮我分析这个文件，"生成这个CSV文件的摘要"，输出路径为./output/${file.originalName}。。`
+    message = `我已经上传了CSV文件 "${file.originalName}"，"生成这个CSV文件的摘要"，输出路径为./output/${file.originalName}。。`
   } else {
     message = `无法处理该文件`
   }

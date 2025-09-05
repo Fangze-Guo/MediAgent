@@ -220,10 +220,20 @@ async def upload_file(file: UploadFile = File(...)):
                 error=f"不支持的文件类型: {file_ext}"
             )
         
-        # 生成唯一文件名
-        file_id = str(uuid.uuid4())
-        file_name = f"{file_id}{file_ext}"
-        file_path = UPLOAD_DIR / file_name
+        # 使用原始文件名，如果文件已存在则添加时间戳
+        original_name = file.filename
+        file_path = UPLOAD_DIR / original_name
+        
+        # 如果文件已存在，添加时间戳避免冲突
+        if file_path.exists():
+            name_without_ext = pathlib.Path(original_name).stem
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            new_name = f"{name_without_ext}_{timestamp}{file_ext}"
+            file_path = UPLOAD_DIR / new_name
+            original_name = new_name
+        
+        # 使用文件名作为ID（去掉扩展名）
+        file_id = pathlib.Path(original_name).stem
         
         # 保存文件
         with open(file_path, "wb") as buffer:
@@ -232,7 +242,7 @@ async def upload_file(file: UploadFile = File(...)):
         # 创建文件信息
         file_info = FileInfo(
             id=file_id,
-            originalName=file.filename,
+            originalName=original_name,  # 使用处理后的文件名
             size=file.size,
             type=file.content_type,
             path=str(file_path.resolve()),
