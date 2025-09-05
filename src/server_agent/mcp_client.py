@@ -14,7 +14,7 @@ class MCPClient:
         """
         self.launch_cmd = launch_cmd
         self.exit_stack = AsyncExitStack()
-        self.session: ClientSession | None = None
+        self.session: ClientSession | None = None#这边的session仍然还是一个空对象，ClientSessio只是一个类型提示，后续才完成session的初始化
 
     async def __aenter__(self):
         parts = shlex.split(self.launch_cmd, posix=(os.name != "nt"))

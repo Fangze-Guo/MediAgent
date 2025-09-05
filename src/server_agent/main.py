@@ -11,7 +11,7 @@ app = FastAPI(title="MediAgent Backend")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -98,18 +98,18 @@ async def chat_stream(req: ChatReq):
             except Exception as e:
                 print(f"流式聊天错误: {e}")
                 yield f"data: {json.dumps({'type': 'error', 'error': str(e)}, ensure_ascii=False)}\n\n"
-        
+
         return StreamingResponse(
             generate(),
-            media_type="text/plain",
+            media_type="text/event-stream",  # ← 改成 SSE 正确类型
             headers={
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Headers": "*",
-            }
+                "X-Accel-Buffering": "no",  # ← 反向代理(如Nginx)禁缓冲，避免卡流
+            },
         )
-        
+
+
     except Exception as e:
         print(f"/chat/stream 调用失败: {e}")
         raise HTTPException(status_code=500, detail=f"流式聊天服务错误: {str(e)}")
