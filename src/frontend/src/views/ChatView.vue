@@ -8,7 +8,7 @@
             <!-- 消息列表 -->
             <div class="messages-container" ref="messagesEl">
               <div v-for="(m, idx) in currentMessages" :key="idx"
-                :class="['message', m.role === 'user' ? 'user' : 'ai']">
+                   :class="['message', m.role === 'user' ? 'user' : 'ai']">
                 <!-- 用户和AI的头像 -->
                 <div v-if="m.role !== 'user'" class="avatar ai-avatar">
                   <RobotOutlined />
@@ -19,12 +19,12 @@
                     <!-- 多个思考过程 -->
                     <div v-if="m.parsedContent.thinkingList && m.parsedContent.thinkingList.length > 0">
                       <div v-for="(thinking, thinkingIdx) in m.parsedContent.thinkingList" :key="thinkingIdx"
-                        class="thinking-section">
+                           class="thinking-section">
                         <div class="thinking-header">
                           <a-icon type="bulb" />
                           <span>思考过程 {{ m.parsedContent.thinkingList.length > 1 ? thinkingIdx + 1 : '' }}</span>
                           <a-button type="text" size="small" @click="toggleThinking(idx, thinkingIdx)"
-                            class="toggle-thinking-btn">
+                                    class="toggle-thinking-btn">
                             {{ m.showThinkingList && m.showThinkingList[thinkingIdx] ? '收起' : '展开' }}
                           </a-button>
                         </div>
@@ -67,7 +67,7 @@
                 <CloseOutlined />
               </a-button>
               <FileUpload @upload-success="handleFileUploadSuccess" @upload-error="handleFileUploadError"
-                @use-file="handleUseFile" />
+                          @use-file="handleUseFile" />
             </div>
             <!-- 输入容器 -->
             <div class="input-container">
@@ -84,7 +84,7 @@
                   <!-- 功能图标 -->
                   <div class="toolbar-icons">
                     <a-button type="text" class="toolbar-icon" @click="showFileUpload = !showFileUpload"
-                      :title="showFileUpload ? '隐藏文件上传' : '上传文件'">
+                              :title="showFileUpload ? '隐藏文件上传' : '上传文件'">
                       <PaperClipOutlined />
                     </a-button>
                     <a-button type="text" class="toolbar-icon" title="文档管理">
@@ -113,13 +113,13 @@
               <!-- 输入框 -->
               <div class="input-field">
                 <textarea v-model="inputMessage" class="message-input" placeholder="" @keydown="handleKeyDown"
-                  rows="1"></textarea>
+                          rows="1"></textarea>
               </div>
               <!-- 底部工具栏 -->
               <div class="input-bottom">
                 <div class="send-group">
                   <a-button type="primary" class="send-btn" :loading="sending" @click="sendMessage"
-                    :disabled="!inputMessage.trim()">
+                            :disabled="!inputMessage.trim()">
                     发送
                   </a-button>
                 </div>
@@ -137,25 +137,24 @@
  * 聊天视图组件
  * 提供完整的聊天界面，包括消息显示、输入、发送和会话管理功能
  */
-import { ref, nextTick, computed, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Modal, message } from 'ant-design-vue'
 import { chatStream } from '@/apis/chat'
 import { useConversationsStore } from '@/store/conversations'
 import FileUpload from '@/components/FileUpload.vue'
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
 import { type FileUploadResponse } from '@/apis/files'
 import {
+  AppstoreOutlined,
+  AudioOutlined,
   CloseOutlined,
-  UserOutlined,
-  RobotOutlined,
-  PaperClipOutlined,
   DeleteOutlined,
   ExpandOutlined,
-  SettingOutlined,
-  AudioOutlined,
-  AppstoreOutlined,
   FileTextOutlined,
+  PaperClipOutlined,
+  RobotOutlined,
+  SettingOutlined,
+  UserOutlined,
 } from '@ant-design/icons-vue'
 
 // 路由相关
@@ -170,8 +169,6 @@ const conversationsStore = useConversationsStore()
 const inputMessage = ref('')
 /** 是否正在发送消息 */
 const sending = ref(false)
-/** 是否正在删除会话 */
-const deleting = ref(false)
 /** 当前活跃的会话ID */
 const activeId = ref<string>('')
 /** 消息容器的DOM引用，用于滚动到底部 */
@@ -319,7 +316,7 @@ const currentMessages = computed(() => {
 const createNewConversation = () => {
   const conv = conversationsStore.createConversation()
   activeId.value = conv.id
-  router.replace({ name: 'Chat', params: { id: conv.id } })
+  router.replace({name: 'Chat', params: {id: conv.id}})
 }
 
 // 初始化：根据路由参数加载或创建会话
@@ -359,7 +356,7 @@ watch(currentConversation, (newConv) => {
       }
     }
   }
-}, { immediate: true })
+}, {immediate: true})
 
 /**
  * 发送消息给AI（内部函数）
@@ -464,8 +461,7 @@ const handleKeyDown = (event: KeyboardEvent) => {
       const value = textarea.value
 
       // 在光标位置插入换行符
-      const newValue = value.substring(0, start) + '\n' + value.substring(end)
-      inputMessage.value = newValue
+      inputMessage.value = value.substring(0, start) + '\n' + value.substring(end)
 
       // 设置光标位置到换行符后
       nextTick(() => {
@@ -512,51 +508,6 @@ const sendMessage = async () => {
   // 发送消息给AI
   await sendMessageToAI(text)
 }
-
-/**
- * 处理删除会话操作
- * 显示确认对话框，确认后删除当前会话并创建新会话
- */
-const handleDeleteConversation = () => {
-  if (!currentConversation.value) return
-
-  Modal.confirm({
-    title: '确认删除',
-    content: `确定要删除会话"${currentConversation.value.title || '未命名会话'}"吗？此操作不可撤销。`,
-    okText: '删除',
-    okType: 'danger',
-    cancelText: '取消',
-    onOk: async () => {
-      deleting.value = true
-      try {
-        const deletedId = currentConversation.value!.id
-        const deletedTitle = currentConversation.value!.title || '未命名会话'
-        console.log('准备删除会话:', deletedId, deletedTitle)
-
-        // 从本地store删除会话（纯本地实现，不调用后端API）
-        conversationsStore.deleteConversation(deletedId)
-
-        console.log('会话删除完成，当前会话列表:', conversationsStore.conversations)
-        message.success(`会话"${deletedTitle}"已删除`)
-
-        // 检查是否还有其他会话
-        if (conversationsStore.conversations.length > 0) {
-          // 如果有其他会话，跳转到第一个会话
-          const firstConversation = conversationsStore.conversations[0]
-          router.push(`/chat/${firstConversation.id}`)
-        } else {
-          // 如果没有其他会话了，跳转到首页让用户选择
-          router.push('/')
-        }
-      } catch (error) {
-        message.error('删除会话失败，请稍后再试')
-        console.error('Delete conversation error:', error)
-      } finally {
-        deleting.value = false
-      }
-    }
-  })
-}
 </script>
 
 <style scoped>
@@ -597,11 +548,10 @@ const handleDeleteConversation = () => {
 /* 消息容器 */
 .messages-container {
   max-width: 80%;
-  margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 20px;
-  margin-bottom: 10px;
+  margin: 10px auto 10px;
 }
 
 /* 消息列表：可滚动区域，撑满除头尾外的剩余高度 */
@@ -985,50 +935,11 @@ const handleDeleteConversation = () => {
   height: 20%;
 }
 
-.bottom-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.copy-btn {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  color: #6b7280;
-  transition: all 0.2s ease;
-}
-
-.copy-btn:hover {
-  background: #e5e7eb;
-  color: #374151;
-}
-
 /* 发送按钮组 */
 .send-group {
   display: flex;
   align-items: center;
   border-radius: 8px;
   overflow: hidden;
-}
-
-.send-dropdown {
-  background: #374151;
-  border: none;
-  color: white;
-  padding: 8px;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-}
-
-.send-dropdown:hover {
-  background: #1f2937;
 }
 </style>
