@@ -1,13 +1,15 @@
 # client_stream_test.py
-import requests
 import json
-import uuid
 import sys
+import uuid
 from typing import List, Dict
 
+import requests
+
+from constants.EnvConfig import BASE_URL
+
 # === 基本配置 ===
-BASE_URL = "http://127.0.0.1:8000"
-ENDPOINT = f"{BASE_URL}/chat/stream"     # 你的流式接口
+ENDPOINT = f"{BASE_URL}/chat/stream"  # 你的流式接口
 TIMEOUT = (5, 600)  # (连接超时, 读取超时) 读取设长一点以便持续流
 
 # 可固定会话，或每次随机新会话
@@ -15,6 +17,7 @@ CONV_ID = f"c-{uuid.uuid4().hex[:8]}"
 
 # 维护与后端对齐的最简消息格式
 history: List[Dict[str, str]] = []
+
 
 def sse_events(resp: requests.Response):
     """
@@ -54,6 +57,7 @@ def sse_events(resp: requests.Response):
         if payload:
             yield payload
 
+
 def ask_stream(text: str):
     """
     发送一条用户消息，流式打印模型回复。
@@ -71,12 +75,12 @@ def ask_stream(text: str):
     }
 
     with requests.post(
-        ENDPOINT,
-        json=payload,
-        headers=headers,
-        stream=True,
-        timeout=TIMEOUT,
-        proxies={'http': None, 'https': None},
+            ENDPOINT,
+            json=payload,
+            headers=headers,
+            stream=True,
+            timeout=TIMEOUT,
+            proxies={'http': None, 'https': None},
     ) as resp:
         resp.raise_for_status()
 
@@ -124,6 +128,7 @@ def ask_stream(text: str):
         # 返回聚合后的文本
         return "".join(final_answer_chunks)
 
+
 def main():
     try:
         # 尽量保证控制台能打印中文
@@ -166,6 +171,7 @@ def main():
 
     except KeyboardInterrupt:
         print("\n(已中断) 再见！")
+
 
 if __name__ == "__main__":
     main()

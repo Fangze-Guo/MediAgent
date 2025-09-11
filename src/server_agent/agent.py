@@ -1,32 +1,31 @@
-# agent.py
-import os, json, asyncio
+import asyncio
+import json
 from typing import Any
-from openai import AsyncOpenAI
-import httpx  # 用于更精细地捕获底层 HTTP 异常
-from mcp_client import load_all_clients
 
-BASE_URL = os.getenv("BASE_URL", "http://localhost:1234/v1")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "not-needed")
-MODEL = os.getenv("MODEL", "qwen2.5-7b-instruct")
-#读取.env中指定的环境变量，若不存在则使用默认值
+import httpx  # 用于更精细地捕获底层 HTTP 异常
+from openai import AsyncOpenAI
+
+from mcp_client import load_all_clients
+from constants.EnvConfig import BASE_URL, API_KEY, MODEL
 
 # === 可按需调整的超时/重试策略（集中配置更清晰） ===
-LLM_REQUEST_TIMEOUT_SEC = 60          # 单次 LLM 请求的总超时（上层保护）
-LLM_CLIENT_TIMEOUT_SEC = 60           # AsyncOpenAI 内部 httpx 的超时
-TOOL_CALL_OUTER_TIMEOUT_SEC = 360     # 对 MCP 工具调用再套一层总超时，防止卡住
+LLM_REQUEST_TIMEOUT_SEC = 60  # 单次 LLM 请求的总超时（上层保护）
+LLM_CLIENT_TIMEOUT_SEC = 60  # AsyncOpenAI 内部 httpx 的超时
+TOOL_CALL_OUTER_TIMEOUT_SEC = 360  # 对 MCP 工具调用再套一层总超时，防止卡住
+
 
 class MCPAgent:
     def __init__(self):
         self.client = AsyncOpenAI(
             base_url=BASE_URL,
-            api_key=OPENAI_API_KEY,
-            timeout=LLM_CLIENT_TIMEOUT_SEC,    # 负责和LLM直接对话，将用户的输入格式化传入给LLM，将LLM的格式化输出解析为具体行为，如回复直接传给用户，调用工具则进行调用
+            api_key=API_KEY,
+            timeout=LLM_CLIENT_TIMEOUT_SEC,  # 负责和LLM直接对话，将用户的输入格式化传入给LLM，将LLM的格式化输出解析为具体行为，如回复直接传给用户，调用工具则进行调用
             # max_retries=0,  # 如需禁用 SDK 的自动重试可打开
         )
         self.mcp_clients = []  # MCP 工具服连接池。它让你的 Agent 能够同时管理多台 MCP 服务器，统一发现工具，并把每次工具调用路由到正确的那台服务器
         self.tools = []  # OpenAI tools schema
         self._tool_map = {}  # name -> mcp_client
-        #动态维护工具列表和工具到服务器的映射，但是目前没有做重名工具的处理，后续有需要可能需要添加命名空间的功能
+        # 动态维护工具列表和工具到服务器的映射，但是目前没有做重名工具的处理，后续有需要可能需要添加命名空间的功能
 
     async def init_tools(self):
         self.mcp_clients = await load_all_clients()
@@ -81,8 +80,8 @@ class MCPAgent:
         messages: [{"role":"user","content":"..."}] 累积历史
         返回：{"role":"assistant","content":"...", "tool_calls":[...]}
         """
-        #处理一轮对话，要实现上下文功能还需要外部控制
-        #一轮对话内模型可能多次调用工具，这边属于LLM和agent之间的内部行为，直到LLM不再调用工具才认为已经可以向用户返回结果了
+        # 处理一轮对话，要实现上下文功能还需要外部控制
+        # 一轮对话内模型可能多次调用工具，这边属于LLM和agent之间的内部行为，直到LLM不再调用工具才认为已经可以向用户返回结果了
         tool_calls_log = []
 
         # 若当前没有任何工具（例如 init_tools 失败），仍允许纯 LLM 对话
@@ -93,7 +92,7 @@ class MCPAgent:
                     self.client.chat.completions.create(
                         model=MODEL,
                         messages=messages,
-                        tools=self.tools,           # 工具列表在这边暴露给模型
+                        tools=self.tools,  # 工具列表在这边暴露给模型
                         tool_choice="auto",
                         temperature=0.2,
                     ),
@@ -149,7 +148,7 @@ class MCPAgent:
         返回：异步生成器，产生 {"type": "content", "content": "..."} 等
         """
         tool_calls_log = []
-        
+
         # 若当前没有任何工具（例如 init_tools 失败），仍允许纯 LLM 对话
         for _ in range(max_iters):
             try:
@@ -162,19 +161,19 @@ class MCPAgent:
                     temperature=0.1,  # 降低温度，减少随机性
                     stream=True  # 启用流式输出
                 )
-                
+
                 assistant_message = {"role": "assistant", "content": "", "tool_calls": []}
                 current_tool_calls = []
-                
+
                 async for chunk in stream:
                     if chunk.choices and chunk.choices[0].delta:
                         delta = chunk.choices[0].delta
-                        
+
                         # 处理内容流
                         if delta.content:
                             assistant_message["content"] += delta.content
                             yield {"type": "content", "content": delta.content}
-                        
+
                         # 处理工具调用
                         if delta.tool_calls:
                             for tool_call in delta.tool_calls:
@@ -186,7 +185,7 @@ class MCPAgent:
                                             "type": "function",
                                             "function": {"name": "", "arguments": ""}
                                         })
-                                    
+
                                     tc = current_tool_calls[tool_call.index]
                                     if tool_call.id:
                                         tc["id"] = tool_call.id
@@ -195,21 +194,21 @@ class MCPAgent:
                                             tc["function"]["name"] = tool_call.function.name
                                         if tool_call.function.arguments:
                                             tc["function"]["arguments"] += tool_call.function.arguments
-                
+
                 # 处理工具调用
                 if current_tool_calls:
                     assistant_message["tool_calls"] = current_tool_calls
                     messages.append(assistant_message)
-                    
+
                     for tc in current_tool_calls:
                         name = tc["function"]["name"]
                         arguments = tc["function"]["arguments"] or "{}"
-                        
+
                         yield {"type": "tool_call", "tool": name}
-                        
+
                         tool_result = await self._call_tool(name, arguments)
                         tool_calls_log.append({"name": name, "arguments": arguments, "result": tool_result})
-                        
+
                         # 把工具结果回灌给模型
                         messages.append({
                             "role": "tool",
@@ -221,7 +220,7 @@ class MCPAgent:
                     # 没有工具调用，返回最终答案
                     yield {"type": "complete", "tool_calls": tool_calls_log}
                     return
-                    
+
             except asyncio.TimeoutError:
                 yield {"type": "content", "content": "(LLM 超时未响应，请稍后重试)"}
                 yield {"type": "complete", "tool_calls": tool_calls_log}
@@ -230,7 +229,7 @@ class MCPAgent:
                 yield {"type": "content", "content": f"(LLM 异常：{e})"}
                 yield {"type": "complete", "tool_calls": tool_calls_log}
                 return
-        
+
         # 超过迭代上限
         yield {"type": "content", "content": "(对话达到最大迭代次数)"}
         yield {"type": "complete", "tool_calls": tool_calls_log}

@@ -1,14 +1,17 @@
 # main.py
-import asyncio, os, uuid
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+import asyncio
 import json
-from agent import MCPAgent
-from fastapi.middleware.cors import CORSMiddleware
 import pathlib
 import shutil
 from datetime import datetime
+
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+
+from agent import MCPAgent
+from constants.EnvConfig import BASE_URL, MODEL
 
 app = FastAPI(title="MediAgent Backend")
 
@@ -24,6 +27,7 @@ agent = MCPAgent()
 _init_lock = asyncio.Lock()
 _initialized = False
 
+
 class FileInfo(BaseModel):
     id: str
     originalName: str
@@ -31,6 +35,7 @@ class FileInfo(BaseModel):
     type: str
     path: str
     uploadTime: str
+
 
 class ChatReq(BaseModel):
     conversation_id: str
@@ -38,30 +43,27 @@ class ChatReq(BaseModel):
     history: list[dict] = []
     files: list[FileInfo] = []
 
+
 class ChatResp(BaseModel):
     conversation_id: str
     answer: str
     tool_calls: list = []
 
+
 class ToolReq(BaseModel):
     name: str
     args: dict
 
-class FileInfo(BaseModel):
-    id: str
-    originalName: str
-    size: int
-    type: str
-    path: str
-    uploadTime: str
 
 class FileUploadResp(BaseModel):
     success: bool
     file: FileInfo
     error: str = None
 
+
 class FileListResp(BaseModel):
     files: list[FileInfo]
+
 
 # 文件上传配置
 UPLOAD_DIR = pathlib.Path("uploads")
@@ -69,14 +71,16 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.csv'}
 
-#各项功能以及内部需要等待IO的调用等都要写成协程，防止阻塞整个服务器
+
+# 各项功能以及内部需要等待IO的调用等都要写成协程，防止阻塞整个服务器
 @app.on_event("startup")
 async def startup():
     global _initialized
-    async with _init_lock:#进入一个 异步锁（_init_lock = asyncio.Lock() 通常在模块顶层创建）。作用：避免竞态——如果有多个并发路径可能触发初始化（例如你在路由里也做了“懒加载兜底”），只有第一个协程能进入临界区，其它协程会等待；等初始化完成再放行。
-        if not _initialized:#双保险。即使多个并发都到达这里，只有第一个会执行真正的初始化；后面进来的看到标记已置位，就直接跳过
+    async with _init_lock:  # 进入一个 异步锁（_init_lock = asyncio.Lock() 通常在模块顶层创建）。作用：避免竞态——如果有多个并发路径可能触发初始化（例如你在路由里也做了“懒加载兜底”），只有第一个协程能进入临界区，其它协程会等待；等初始化完成再放行。
+        if not _initialized:  # 双保险。即使多个并发都到达这里，只有第一个会执行真正的初始化；后面进来的看到标记已置位，就直接跳过
             await agent.init_tools()
             _initialized = True
+
 
 @app.get("/tools")
 async def list_tools():
@@ -84,17 +88,20 @@ async def list_tools():
         await startup()
     return {"tools": agent.tools}
 
+
 @app.post("/refresh-tools")
 async def refresh_tools():
     await agent.init_tools()
     return {"ok": True, "count": len(agent.tools)}
+
 
 @app.post("/chat", response_model=ChatResp)
 async def chat(req: ChatReq):
     try:
         if not _initialized:
             await startup()
-        msgs = [{"role": "system", "content": "你可以在需要时调用可用工具来完成任务，工具返回JSON，请先解析后用中文总结关键结果。"}]
+        msgs = [{"role": "system",
+                 "content": "你可以在需要时调用可用工具来完成任务，工具返回JSON，请先解析后用中文总结关键结果。"}]
         msgs += req.history
         msgs += [{"role": "user", "content": req.message}]
         result = await agent.chat(msgs)
@@ -103,16 +110,17 @@ async def chat(req: ChatReq):
         print(f"/chat 调用失败: {e}")
         raise HTTPException(status_code=500, detail=f"聊天服务错误: {str(e)}")
 
+
 @app.post("/chat/stream")
 async def chat_stream(req: ChatReq):
     """流式聊天接口，支持实时输出"""
     try:
         if not _initialized:
             await startup()
-        
+
         # 构建系统消息，包含文件信息
         system_content = "你是一个智能助手，可以调用工具来帮助用户完成任务。\n\n重要规则：\n1. 当需要调用工具时，请直接调用，不要输出<think>标签或思考过程\n2. 工具返回JSON格式，请解析后用中文总结关键结果\n3. 回复要简洁明了，避免冗余的思考过程"
-        
+
         # 如果有文件，添加文件信息到系统消息
         if req.files:
             system_content += f"\n\n可用文件："
@@ -123,18 +131,18 @@ async def chat_stream(req: ChatReq):
                     system_content += f"\n- {file.originalName} → {file.path}"
                 else:
                     system_content += f"\n- {file.originalName} → {file.path}"
-            
+
             system_content += f"\n\n注意：调用工具时使用完整路径，不要使用原始文件名。"
-        
+
         msgs = [{"role": "system", "content": system_content}]
         msgs += req.history
         msgs += [{"role": "user", "content": req.message}]
-        
+
         async def generate():
             try:
                 # 发送开始信号
                 yield f"data: {json.dumps({'type': 'start', 'conversation_id': req.conversation_id}, ensure_ascii=False)}\n\n"
-                
+
                 # 流式获取AI回复
                 async for chunk in agent.chat_stream(msgs):
                     if chunk['type'] == 'content':
@@ -144,7 +152,7 @@ async def chat_stream(req: ChatReq):
                     elif chunk['type'] == 'complete':
                         yield f"data: {json.dumps({'type': 'complete', 'tool_calls': chunk.get('tool_calls', [])}, ensure_ascii=False)}\n\n"
                         break
-                
+
             except Exception as e:
                 print(f"流式聊天错误: {e}")
                 yield f"data: {json.dumps({'type': 'error', 'error': str(e)}, ensure_ascii=False)}\n\n"
@@ -164,6 +172,7 @@ async def chat_stream(req: ChatReq):
         print(f"/chat/stream 调用失败: {e}")
         raise HTTPException(status_code=500, detail=f"流式聊天服务错误: {str(e)}")
 
+
 # === 直连工具：绕过 LLM，快速排障 ===
 @app.post("/call-tool")
 async def call_tool(req: ToolReq):
@@ -176,11 +185,12 @@ async def call_tool(req: ToolReq):
     result = await agent._call_tool(req.name, req.args)
     return {"ok": True, "result": result}
 
+
 # === 健康检查 ===
 @app.get("/healthz")
 async def healthz():
-    base_url = os.getenv("BASE_URL", "http://localhost:1234/v1")
-    model = os.getenv("MODEL", "unknown")
+    base_url = BASE_URL
+    model = MODEL
     mcp_py = "unknown"
     try:
         # 从 tools_server 日志里已经能看到 sys.executable；这里简单带回当前进程信息
@@ -198,6 +208,7 @@ async def healthz():
         "python": mcp_py,
     }
 
+
 # === 文件上传和管理 ===
 @app.post("/upload", response_model=FileUploadResp)
 async def upload_file(file: UploadFile = File(...)):
@@ -208,9 +219,9 @@ async def upload_file(file: UploadFile = File(...)):
             return FileUploadResp(
                 success=False,
                 file=None,
-                error=f"文件大小超过限制 ({MAX_FILE_SIZE // (1024*1024)}MB)"
+                error=f"文件大小超过限制 ({MAX_FILE_SIZE // (1024 * 1024)}MB)"
             )
-        
+
         # 检查文件扩展名
         file_ext = pathlib.Path(file.filename).suffix.lower()
         if file_ext not in ALLOWED_EXTENSIONS:
@@ -219,11 +230,11 @@ async def upload_file(file: UploadFile = File(...)):
                 file=None,
                 error=f"不支持的文件类型: {file_ext}"
             )
-        
+
         # 使用原始文件名，如果文件已存在则添加时间戳
         original_name = file.filename
         file_path = UPLOAD_DIR / original_name
-        
+
         # 如果文件已存在，添加时间戳避免冲突
         if file_path.exists():
             name_without_ext = pathlib.Path(original_name).stem
@@ -231,14 +242,14 @@ async def upload_file(file: UploadFile = File(...)):
             new_name = f"{name_without_ext}_{timestamp}{file_ext}"
             file_path = UPLOAD_DIR / new_name
             original_name = new_name
-        
+
         # 使用文件名作为ID（去掉扩展名）
         file_id = pathlib.Path(original_name).stem
-        
+
         # 保存文件
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        
+
         # 创建文件信息
         file_info = FileInfo(
             id=file_id,
@@ -248,9 +259,9 @@ async def upload_file(file: UploadFile = File(...)):
             path=str(file_path.resolve()),
             uploadTime=datetime.now().isoformat()
         )
-        
+
         return FileUploadResp(success=True, file=file_info)
-        
+
     except Exception as e:
         print(f"文件上传失败: {e}")
         return FileUploadResp(
@@ -258,6 +269,7 @@ async def upload_file(file: UploadFile = File(...)):
             file=None,
             error=f"文件上传失败: {str(e)}"
         )
+
 
 @app.post("/files", response_model=FileListResp)
 async def list_files():
@@ -269,7 +281,7 @@ async def list_files():
                 # 从文件名提取ID
                 file_id = file_path.stem
                 file_ext = file_path.suffix
-                
+
                 # 获取文件信息
                 stat = file_path.stat()
                 file_info = FileInfo(
@@ -281,12 +293,13 @@ async def list_files():
                     uploadTime=datetime.fromtimestamp(stat.st_mtime).isoformat()
                 )
                 files.append(file_info)
-        
+
         return FileListResp(files=files)
-        
+
     except Exception as e:
         print(f"获取文件列表失败: {e}")
         raise HTTPException(status_code=500, detail=f"获取文件列表失败: {str(e)}")
+
 
 def get_content_type(ext: str) -> str:
     """根据文件扩展名获取内容类型"""
@@ -299,6 +312,7 @@ def get_content_type(ext: str) -> str:
         '.csv': 'text/csv'
     }
     return content_types.get(ext.lower(), 'application/octet-stream')
+
 
 # === 自测：生成、缩放、校验（本地磁盘） ===
 @app.get("/selftest")
