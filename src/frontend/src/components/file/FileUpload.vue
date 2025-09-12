@@ -111,7 +111,7 @@ import {
   formatFileSize, 
   isSupportedFileType, 
   type FileUploadResponse 
-} from '@/apis/files'
+} from '@/apis/files.ts'
 
 // Props
 interface Props {

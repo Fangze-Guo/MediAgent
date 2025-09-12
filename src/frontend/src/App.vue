@@ -7,7 +7,7 @@
 
 <script setup lang="ts">
 import Layout from '@/layout/Layout.vue'
-import GlobalFileUpload from '@/components/GlobalFileUpload.vue'
+import GlobalFileUpload from '@/components/file/GlobalFileUpload.vue'
 </script>
 
 <style>

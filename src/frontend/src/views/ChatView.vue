@@ -4,9 +4,9 @@
       <a-layout class="chat-layout">
         <a-layout-content>
           <!-- 聊天内容区域 -->
-          <div class="chat-content">
+          <div class="chat-content" ref="messagesEl" @scroll="handleScroll">
             <!-- 消息列表 -->
-            <div class="messages-container" ref="messagesEl">
+            <div class="messages-container">
               <div v-for="(m, idx) in currentMessages" :key="idx"
                    :class="['message', m.role === 'user' ? 'user' : 'ai']">
                 <!-- 用户和AI的头像 -->
@@ -56,6 +56,15 @@
                 </div>
               </div>
             </div>
+          </div>
+
+          <!-- 回到底部按钮 -->
+          <div v-if="userScrolled" class="scroll-to-bottom-btn" @click="scrollToBottom">
+            <a-button type="primary" shape="circle" size="small">
+              <template #icon>
+                <DownOutlined />
+              </template>
+            </a-button>
           </div>
         </a-layout-content>
         <a-layout-footer>
@@ -124,16 +133,16 @@
 
     <!-- 文件上传模态框 -->
     <a-modal
-      v-model:open="showFileUpload"
-      title="上传文件"
-      width="600px"
-      :footer="null"
-      @cancel="showFileUpload = false"
+        v-model:open="showFileUpload"
+        title="上传文件"
+        width="600px"
+        :footer="null"
+        @cancel="showFileUpload = false"
     >
       <FileUpload
-        @upload-success="handleFileUploadSuccess"
-        @upload-error="handleFileUploadError"
-        @use-file="handleUseFile"
+          @upload-success="handleFileUploadSuccess"
+          @upload-error="handleFileUploadError"
+          @use-file="handleUseFile"
       />
     </a-modal>
   </div>
@@ -148,13 +157,14 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { chatStream } from '@/apis/chat'
 import { useConversationsStore } from '@/store/conversations'
-import FileUpload from '@/components/FileUpload.vue'
+import FileUpload from '@/components/file/FileUpload.vue'
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
 import { type FileUploadResponse } from '@/apis/files'
 import {
   AppstoreOutlined,
   AudioOutlined,
   DeleteOutlined,
+  DownOutlined,
   ExpandOutlined,
   FileTextOutlined,
   PaperClipOutlined,
@@ -181,12 +191,14 @@ const activeId = ref<string>('')
 const messagesEl = ref<HTMLElement | null>(null)
 /** 是否显示文件上传区域 */
 const showFileUpload = ref(false)
-/** 已上传的文件列表 */
-const uploadedFiles = ref<FileUploadResponse['file'][]>([])
 /** 当前会话关联的文件信息 */
 const currentSessionFiles = ref<FileUploadResponse['file'][]>([])
 /** 当前选择的模型 */
 const selectedModel = ref('QWen-Plus')
+/** 用户是否手动滚动了页面 */
+const userScrolled = ref(false)
+/** 自动滚动是否启用 */
+const autoScrollEnabled = ref(true)
 
 
 /**
@@ -239,16 +251,51 @@ const toggleThinking = (messageIndex: number, thinkingIndex?: number) => {
 const scrollToBottom = async () => {
   await nextTick()
   const el = messagesEl.value
-  if (el) el.scrollTop = el.scrollHeight
+  if (el) {
+    // 使用平滑滚动，确保滚动到底部
+    el.scrollTo({
+      top: el.scrollHeight,
+      behavior: 'smooth'
+    })
+  }
 }
+
+
+/**
+ * 检查是否在底部附近
+ */
+const isNearBottom = () => {
+  const el = messagesEl.value
+  if (!el) return false
+
+  const threshold = 50 // 距离底部50px内认为是在底部，更敏感
+  return el.scrollTop + el.clientHeight >= el.scrollHeight - threshold
+}
+
+/**
+ * 处理滚动事件
+ */
+const handleScroll = () => {
+  const el = messagesEl.value
+  if (!el) return
+
+  // 检查用户是否手动滚动
+  if (isNearBottom()) {
+    userScrolled.value = false
+    autoScrollEnabled.value = true
+  } else {
+    userScrolled.value = true
+    autoScrollEnabled.value = false
+  }
+}
+
 
 /**
  * 处理文件上传成功
  * @param file 上传成功的文件信息
  */
-const handleFileUploadSuccess = (file: FileUploadResponse['file']) => {
-  uploadedFiles.value.push(file)
-  console.log('文件上传成功:', file)
+const handleFileUploadSuccess = (_file: FileUploadResponse['file']) => {
+  // 文件上传成功处理
 }
 
 /**
@@ -362,7 +409,6 @@ watch(currentConversation, (newConv) => {
       const nextMessage = newConv.messages[newConv.messages.length]
       if (!nextMessage || nextMessage.role !== 'assistant') {
         // 自动发送消息获取AI回复
-        console.log('检测到未回复的用户消息，自动发送给AI')
         setTimeout(() => {
           sendMessageToAI(lastMessage.content)
         }, 100)
@@ -370,6 +416,26 @@ watch(currentConversation, (newConv) => {
     }
   }
 }, {immediate: true})
+
+// 监听消息变化，自动滚动到底部
+watch(currentMessages, async () => {
+  if (autoScrollEnabled.value) {
+    await nextTick()
+    const el = messagesEl.value
+    if (el) {
+      el.scrollTop = el.scrollHeight
+    }
+  }
+}, {deep: true})
+
+// 监听发送状态变化，在开始发送时重置滚动状态
+watch(sending, (newSending) => {
+  if (newSending) {
+    // 开始发送消息时，重置滚动状态，确保能自动滚动
+    userScrolled.value = false
+    autoScrollEnabled.value = true
+  }
+})
 
 /**
  * 发送消息给AI（内部函数）
@@ -398,8 +464,7 @@ const sendMessageToAI = async (messageText: string) => {
       })),
       files: currentSessionFiles.value // 添加文件信息
     }, {
-      onStart: (conversationId) => {
-        console.log('开始流式对话:', conversationId)
+      onStart: (_conversationId) => {
       },
       onContent: (content) => {
         // 逐步更新AI消息内容
@@ -408,17 +473,14 @@ const sendMessageToAI = async (messageText: string) => {
           const lastMessage = conversation.messages[conversation.messages.length - 1]
           if (lastMessage.role === 'assistant') {
             lastMessage.content += content
-            // 实时滚动到底部
-            scrollToBottom()
+            // 滚动由watch监听器处理
           }
         }
       },
-      onToolCall: (tool) => {
-        console.log('调用工具:', tool)
+      onToolCall: (_tool) => {
         // 可以在这里显示工具调用状态
       },
-      onComplete: (toolCalls) => {
-        console.log('对话完成，工具调用:', toolCalls)
+      onComplete: (_toolCalls) => {
         // 对话完成，移除打字机效果
         const conversation = conversationsStore.getConversation(currentConversation.value!.id)
         if (conversation && conversation.messages.length > 0) {
@@ -515,6 +577,10 @@ const sendMessage = async () => {
     content: text
   })
 
+  // 重置滚动状态，确保新消息能正常滚动
+  userScrolled.value = false
+  autoScrollEnabled.value = true
+
   // 滚动到底部显示用户消息
   await scrollToBottom()
 
@@ -550,12 +616,18 @@ const sendMessage = async () => {
   overflow: hidden;
 }
 
+/* 布局内容区域 */
+.ant-layout-content {
+  position: relative;
+}
+
 /* 聊天内容区域：占据主要空间 */
 .chat-content {
   flex: 1;
   overflow-y: auto;
   height: 100%;
   width: 100%;
+  position: relative;
 }
 
 /* 消息容器 */
@@ -567,20 +639,6 @@ const sendMessage = async () => {
   margin: 10px auto 10px;
 }
 
-/* 消息列表：可滚动区域，撑满除头尾外的剩余高度 */
-.chat-messages {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  background-color: #ffffff;
-  max-width: 800px;
-  margin: 0 auto;
-  width: 100%;
-}
 
 /* 单条消息容器：最大宽度、圆角、内边距与布局 */
 .message {
@@ -678,31 +736,6 @@ const sendMessage = async () => {
   border-color: #4f46e5;
 }
 
-
-/* 输入操作按钮组 */
-.input-actions {
-  display: absolute;
-  bottom: 12px;
-  right: 12px;
-  gap: 8px;
-  align-items: center;
-}
-
-.upload-btn {
-  color: #666;
-  border: 1px solid #d9d9d9;
-  border-radius: 6px;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.upload-btn:hover {
-  color: #1890ff;
-  border-color: #1890ff;
-}
 
 /* 消息输入框样式 */
 .message-input {
@@ -918,5 +951,27 @@ const sendMessage = async () => {
   align-items: center;
   border-radius: 8px;
   overflow: hidden;
+}
+
+/* 回到底部按钮 */
+.scroll-to-bottom-btn {
+  position: absolute;
+  bottom: 40px;
+  right: 80px;
+  z-index: 1000;
+  opacity: 0.6;
+  transition: all 0.3s ease;
+  pointer-events: auto;
+}
+
+.scroll-to-bottom-btn:hover {
+  opacity: 1;
+  transform: translateY(-2px);
+}
+
+.scroll-to-bottom-btn .ant-btn {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  width: 40px;
+  height: 40px;
 }
 </style>
