@@ -1,0 +1,47 @@
+"""
+基础Controller类
+提供通用的依赖注入和工具方法
+"""
+from fastapi import APIRouter
+from agent import MCPAgent
+from constants.EnvConfig import BASE_URL, MODEL
+import asyncio
+
+# 全局变量
+agent = MCPAgent()
+_init_lock = asyncio.Lock()
+_initialized = False
+
+
+class BaseController:
+    """基础Controller类"""
+    
+    def __init__(self, prefix: str = "", tags: list = None):
+        self.router = APIRouter(prefix=prefix, tags=tags or [])
+        self.agent = agent
+        self._init_lock = _init_lock
+        self._initialized = _initialized
+    
+    async def ensure_initialized(self):
+        """确保agent已初始化"""
+        global _initialized
+        async with self._init_lock:
+            if not _initialized:
+                await self.agent.init_tools()
+                _initialized = True
+    
+    def get_health_info(self):
+        """获取健康检查信息"""
+        mcp_py = "unknown"
+        try:
+            import sys
+            mcp_py = sys.executable
+        except Exception:
+            pass
+        
+        return {
+            "model": MODEL,
+            "lm_server": BASE_URL,
+            "tools_count": len(self.agent.tools),
+            "python": mcp_py,
+        }
