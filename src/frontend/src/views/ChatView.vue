@@ -61,14 +61,6 @@
         <a-layout-footer>
           <!-- 输入区域 -->
           <div class="input-area">
-            <!-- 文件上传区域 -->
-            <div v-if="showFileUpload" class="file-upload-section">
-              <a-button type="text" size="small" @click="showFileUpload = false" class="close-upload-btn">
-                <CloseOutlined />
-              </a-button>
-              <FileUpload @upload-success="handleFileUploadSuccess" @upload-error="handleFileUploadError"
-                          @use-file="handleUseFile" />
-            </div>
             <!-- 输入容器 -->
             <div class="input-container">
               <!-- 顶部工具栏 -->
@@ -83,8 +75,8 @@
                   </div>
                   <!-- 功能图标 -->
                   <div class="toolbar-icons">
-                    <a-button type="text" class="toolbar-icon" @click="showFileUpload = !showFileUpload"
-                              :title="showFileUpload ? '隐藏文件上传' : '上传文件'">
+                    <a-button type="text" class="toolbar-icon" @click="handleUploadClick"
+                              title="上传文件">
                       <PaperClipOutlined />
                     </a-button>
                     <a-button type="text" class="toolbar-icon" title="文档管理">
@@ -129,6 +121,21 @@
         </a-layout-footer>
       </a-layout>
     </div>
+
+    <!-- 文件上传模态框 -->
+    <a-modal
+      v-model:open="showFileUpload"
+      title="上传文件"
+      width="600px"
+      :footer="null"
+      @cancel="showFileUpload = false"
+    >
+      <FileUpload
+        @upload-success="handleFileUploadSuccess"
+        @upload-error="handleFileUploadError"
+        @use-file="handleUseFile"
+      />
+    </a-modal>
   </div>
 </template>
 
@@ -147,7 +154,6 @@ import { type FileUploadResponse } from '@/apis/files'
 import {
   AppstoreOutlined,
   AudioOutlined,
-  CloseOutlined,
   DeleteOutlined,
   ExpandOutlined,
   FileTextOutlined,
@@ -251,6 +257,13 @@ const handleFileUploadSuccess = (file: FileUploadResponse['file']) => {
  */
 const handleFileUploadError = (error: string) => {
   console.error('文件上传失败:', error)
+}
+
+/**
+ * 处理上传按钮点击
+ */
+const handleUploadClick = () => {
+  showFileUpload.value = true
 }
 
 /**
@@ -665,42 +678,6 @@ const sendMessage = async () => {
   border-color: #4f46e5;
 }
 
-/* 文件上传区域 */
-.file-upload-section {
-  background: #fafafa;
-  border: 1px solid #f0f0f0;
-  border-radius: 8px;
-  padding: 16px;
-  position: relative;
-  max-height: 300px;
-  overflow-y: auto;
-  margin-bottom: 12px;
-}
-
-.close-upload-btn {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 10;
-  background: rgba(255, 255, 255, 0.9);
-  border: none;
-  border-radius: 50%;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  transition: all 0.3s ease;
-  color: #666;
-}
-
-.close-upload-btn:hover {
-  background: rgba(255, 77, 79, 0.1);
-  color: #ff4d4f;
-  transform: scale(1.1);
-  box-shadow: 0 4px 12px rgba(255, 77, 79, 0.2);
-}
 
 /* 输入操作按钮组 */
 .input-actions {

@@ -32,6 +32,9 @@
         <a-button type="default" class="skill-btn">
           <span class="skill-icon">📊 PPT</span>
         </a-button>
+        <a-button type="default" class="skill-btn" @click="handleUploadClick">
+          <span class="skill-icon">📁</span> 上传文件
+        </a-button>
         <a-button type="default" class="skill-btn">
           <span class="skill-icon">➕</span> 更多
         </a-button>
@@ -84,6 +87,14 @@ const startConversation = async () => {
   } finally {
     creating.value = false
   }
+}
+
+/**
+ * 处理上传按钮点击
+ */
+const handleUploadClick = () => {
+  // 触发全局上传事件
+  window.dispatchEvent(new CustomEvent('open-file-upload'))
 }
 </script>
 

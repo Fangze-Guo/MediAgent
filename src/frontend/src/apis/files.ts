@@ -2,7 +2,7 @@
  * 文件上传相关API接口
  * 提供文件上传、管理和工具调用功能
  */
-import { post, postJson } from '@/utils/request'
+import { post, postJson, get } from '@/utils/request'
 
 /**
  * 文件上传响应接口
@@ -238,4 +238,186 @@ export function getFileTypeIcon(fileType: string): string {
   } else {
     return 'file'
   }
+}
+
+/**
+ * 删除文件请求接口
+ */
+export interface DeleteFileRequest {
+  /** 文件ID */
+  fileId: string
+}
+
+/**
+ * 删除文件响应接口
+ */
+export interface DeleteFileResponse {
+  /** 删除是否成功 */
+  success: boolean
+  /** 错误信息（如果删除失败） */
+  error?: string
+}
+
+/**
+ * 批量删除文件请求接口
+ */
+export interface BatchDeleteFilesRequest {
+  /** 文件ID列表 */
+  fileIds: string[]
+}
+
+/**
+ * 批量删除文件响应接口
+ */
+export interface BatchDeleteFilesResponse {
+  /** 删除是否成功 */
+  success: boolean
+  /** 成功删除的文件数量 */
+  deletedCount: number
+  /** 错误信息（如果删除失败） */
+  error?: string
+}
+
+/**
+ * 下载文件请求接口
+ */
+export interface DownloadFileRequest {
+  /** 文件ID */
+  fileId: string
+}
+
+/**
+ * 下载文件响应接口
+ */
+export interface DownloadFileResponse {
+  /** 下载是否成功 */
+  success: boolean
+  /** 文件下载URL */
+  downloadUrl?: string
+  /** 错误信息（如果下载失败） */
+  error?: string
+}
+
+/**
+ * 删除单个文件
+ * @param fileId 文件ID
+ * @returns Promise<DeleteFileResponse> 返回删除结果
+ * @throws {Error} 当请求失败时抛出错误
+ * 
+ * @example
+ * ```typescript
+ * const result = await deleteFile('file-id-123')
+ * if (result.success) {
+ *   console.log('文件删除成功')
+ * }
+ * ```
+ */
+export async function deleteFile(fileId: string): Promise<DeleteFileResponse> {
+  try {
+    const response = await post<DeleteFileResponse>('/files/delete', { fileId })
+    return response.data
+  } catch (error) {
+    console.error('删除文件失败:', error)
+    throw new Error('删除文件失败，请稍后再试')
+  }
+}
+
+/**
+ * 批量删除文件
+ * @param fileIds 文件ID列表
+ * @returns Promise<BatchDeleteFilesResponse> 返回批量删除结果
+ * @throws {Error} 当请求失败时抛出错误
+ * 
+ * @example
+ * ```typescript
+ * const result = await batchDeleteFiles(['file-id-1', 'file-id-2'])
+ * console.log(`成功删除 ${result.deletedCount} 个文件`)
+ * ```
+ */
+export async function batchDeleteFiles(fileIds: string[]): Promise<BatchDeleteFilesResponse> {
+  try {
+    const response = await post<BatchDeleteFilesResponse>('/files/batch-delete', { fileIds })
+    return response.data
+  } catch (error) {
+    console.error('批量删除文件失败:', error)
+    throw new Error('批量删除文件失败，请稍后再试')
+  }
+}
+
+/**
+ * 下载文件
+ * @param fileId 文件ID
+ * @returns Promise<DownloadFileResponse> 返回下载结果
+ * @throws {Error} 当请求失败时抛出错误
+ * 
+ * @example
+ * ```typescript
+ * const result = await downloadFile('file-id-123')
+ * if (result.success && result.downloadUrl) {
+ *   window.open(result.downloadUrl, '_blank')
+ * }
+ * ```
+ */
+export async function downloadFile(fileId: string): Promise<DownloadFileResponse> {
+  try {
+    const response = await post<DownloadFileResponse>('/files/download', { fileId })
+    return response.data
+  } catch (error) {
+    console.error('下载文件失败:', error)
+    throw new Error('下载文件失败，请稍后再试')
+  }
+}
+
+/**
+ * 本地文件信息接口
+ */
+export interface LocalFileInfo {
+  id: string
+  name: string
+  size: number
+  type: string
+  path: string
+  modifiedTime: string
+  isDirectory: boolean
+}
+
+/**
+ * 本地文件列表响应接口
+ */
+export interface LocalFileListResponse {
+  files: LocalFileInfo[]
+  currentPath: string
+  parentPath: string | null
+}
+
+/**
+ * 获取本地文件列表
+ * @param path 要浏览的路径，默认为当前目录
+ * @returns Promise<LocalFileListResponse> 返回本地文件列表
+ * @throws {Error} 当请求失败时抛出错误
+ * 
+ * @example
+ * ```typescript
+ * const files = await getLocalFiles('.')
+ * console.log('当前目录文件:', files.files)
+ * ```
+ */
+export async function getLocalFiles(path: string = '.'): Promise<LocalFileListResponse> {
+  try {
+    const response = await get<LocalFileListResponse>(`/local-files?path=${encodeURIComponent(path)}`)
+    return response.data
+  } catch (error) {
+    console.error('获取本地文件列表失败:', error)
+    throw new Error('获取本地文件列表失败，请稍后再试')
+  }
+}
+
+/**
+ * 获取本地文件下载URL
+ * @param filePath 文件路径
+ * @returns 本地文件下载URL
+ */
+export function getLocalFileDownloadUrl(filePath: string): string {
+  const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
+  return `${baseURL}/local-files/serve?path=${encodeURIComponent(filePath)}`
 }

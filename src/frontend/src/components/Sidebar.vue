@@ -46,7 +46,7 @@ import { useConversationsStore } from '@/store/conversations'
 import { useRoute, useRouter } from 'vue-router'
 import { computed, h, ref } from 'vue'
 import { MenuProps, message, Modal } from 'ant-design-vue'
-import { CommentOutlined, FolderOutlined } from '@ant-design/icons-vue'
+import { CommentOutlined, FolderOutlined, UploadOutlined } from '@ant-design/icons-vue'
 
 // 路由相关
 const router = useRouter()
@@ -72,6 +72,12 @@ const items = ref([
   },
   {
     key: '2',
+    icon: h(UploadOutlined),
+    label: '上传文件',
+    title: '上传文件',
+  },
+  {
+    key: '3',
     icon: h(FolderOutlined),
     label: '文件管理',
     title: '文件管理',
@@ -86,6 +92,9 @@ const handleMenuClick: MenuProps['onClick'] = ({key}) => {
     // 跳转到主页
     router.push('/')
   } else if (key === '2') {
+    // 触发文件上传弹窗
+    window.dispatchEvent(new CustomEvent('open-file-upload'))
+  } else if (key === '3') {
     // 跳转到文件管理页面
     router.push('/files')
   }
@@ -148,7 +157,7 @@ const handleDeleteConversation = (id: string) => {
 </script>
 
 <style scoped>
-/* 侧边栏根容器：固定宽度、白底、右侧分割线与阴影 */
+/* 侧边栏根容器：固定宽度、白底、右侧分割线 */
 .sidebar {
   width: 300px;
   height: 100%;
@@ -156,7 +165,6 @@ const handleDeleteConversation = (id: string) => {
   border-right: 1px solid #e0e0e0;
   display: flex;
   flex-direction: column;
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
   flex-shrink: 0;
 }
 
