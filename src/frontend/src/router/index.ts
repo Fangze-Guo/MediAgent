@@ -10,34 +10,40 @@ import type { RouteRecordRaw } from 'vue-router'
  * 定义所有页面的路由规则
  */
 const routes: RouteRecordRaw[] = [
-  {
-    path: '/',
-    name: 'Home',
-    component: () => import('@/views/HomeView.vue'),
-    meta: { title: 'MediAgent - 首页' }
-  },
-  {
-    path: '/chat/:id',
-    name: 'Chat',
-    component: () => import('@/views/ChatView.vue'),
-    meta: { title: 'MediAgent - 聊天' }
-  },
-  {
-    path: '/settings',
-    name: 'Settings',
-    component: () => import('@/views/SettingsView.vue'),
-    meta: {
-      title: 'MediAgent - 设置'
+    {
+        path: '/',
+        name: 'Home',
+        component: () => import('@/views/HomeView.vue'),
+        meta: {title: 'MediAgent - 首页'}
+    },
+    {
+        path: '/chat/:id',
+        name: 'Chat',
+        component: () => import('@/views/ChatView.vue'),
+        meta: {title: 'MediAgent - 聊天'}
+    },
+    {
+        path: '/files',
+        name: 'files',
+        component: () => import('@/views/FileManageView.vue'),
+        meta: {title: 'MediAgent - 文件'}
+    },
+    {
+        path: '/settings',
+        name: 'Settings',
+        component: () => import('@/views/SettingsView.vue'),
+        meta: {
+            title: 'MediAgent - 设置'
+        }
+    },
+    {
+        path: '/:pathMatch(.*)*',
+        name: 'NotFound',
+        component: () => import('@/views/NotFoundView.vue'),
+        meta: {
+            title: 'MediAgent - 页面未找到'
+        }
     }
-  },
-  {
-    path: '/:pathMatch(.*)*',
-    name: 'NotFound',
-    component: () => import('@/views/NotFoundView.vue'),
-    meta: {
-      title: 'MediAgent - 页面未找到'
-    }
-  }
 ]
 
 /**
@@ -45,8 +51,8 @@ const routes: RouteRecordRaw[] = [
  * 使用HTML5 History模式
  */
 const router = createRouter({
-  history: createWebHistory(),
-  routes
+    history: createWebHistory(),
+    routes
 })
 
 /**
@@ -57,11 +63,11 @@ const router = createRouter({
  * @param next 路由跳转函数
  */
 router.beforeEach((to, _from, next) => {
-  // 如果路由meta中有title，则设置为页面标题
-  if (to.meta.title) {
-    document.title = to.meta.title as string
-  }
-  next()
+    // 如果路由meta中有title，则设置为页面标题
+    if (to.meta.title) {
+        document.title = to.meta.title as string
+    }
+    next()
 })
 
 export default router
