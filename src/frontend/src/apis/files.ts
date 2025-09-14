@@ -151,7 +151,7 @@ export async function uploadFile(
  */
 export async function getFileList(): Promise<FileListResponse> {
   try {
-    const response = await post<FileListResponse>('/files')
+    const response = await get<FileListResponse>('/files')
     return response.data
   } catch (error) {
     console.error('获取文件列表失败:', error)

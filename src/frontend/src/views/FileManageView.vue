@@ -349,7 +349,12 @@ const handleSearch = () => {
 
 // 刷新文件列表
 const handleRefresh = () => {
-  fetchFileList()
+  if (activeTab.value === 'uploaded') {
+    fetchFileList()
+  } else if (activeTab.value === 'local') {
+    // 刷新本地文件浏览器到根目录
+    window.dispatchEvent(new CustomEvent('refresh-local-files-to-root'))
+  }
 }
 
 // 监听文件列表刷新事件
@@ -374,15 +379,22 @@ onUnmounted(() => {
 .file-manage {
   background-color: #f0f2f5;
   border-radius: 8px;
-  margin: 24px;
-  padding: 24px;
+  margin: 12px;
+  padding: 16px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  height: calc(100vh - 100px);
+  display: flex;
+  flex-direction: column;
 }
 
 .content {
   background: white;
   padding: 0;
   border-radius: 8px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* 工具栏通用样式 */
@@ -391,8 +403,9 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 24px;
+  padding: 12px 20px;
   border-bottom: 1px solid #f0f0f0;
+  flex-shrink: 0;
 }
 
 .top-toolbar {
@@ -434,12 +447,18 @@ onUnmounted(() => {
 
 /* 文件列表容器 */
 .file-list-container {
-  padding: 0 24px 24px;
+  padding: 0 20px 16px;
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .file-table {
   border: 1px solid #f0f0f0;
   border-radius: 4px;
+  flex: 1;
+  overflow: hidden;
 }
 
 /* 文件名单元格 */
@@ -457,7 +476,7 @@ onUnmounted(() => {
 .file-name {
   font-weight: 500;
   color: #333;
-  max-width: 200px;
+  max-width: 300px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -479,7 +498,9 @@ onUnmounted(() => {
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 300px;
+  min-height: 400px;
+  max-height: 60vh;
+  overflow: hidden;
 }
 
 .file-info {
@@ -502,9 +523,10 @@ onUnmounted(() => {
 
 /* 响应式设计 */
 @media (max-width: 768px) {
-  .file-browser {
-    margin: 12px;
-    padding: 16px;
+  .file-manage {
+    margin: 8px;
+    padding: 12px;
+    height: calc(100vh - 80px);
   }
 
   .top-toolbar,
@@ -512,6 +534,7 @@ onUnmounted(() => {
     flex-direction: column;
     gap: 12px;
     align-items: flex-start;
+    padding: 12px 16px;
   }
 
   .right-actions {
@@ -520,7 +543,11 @@ onUnmounted(() => {
   }
 
   .file-list-container {
-    padding: 0 12px 16px;
+    padding: 0 16px 12px;
+  }
+
+  .file-name {
+    max-width: 200px;
   }
 }
 </style>

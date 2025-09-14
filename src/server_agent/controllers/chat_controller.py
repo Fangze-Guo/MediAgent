@@ -1,6 +1,7 @@
 """
 聊天相关API控制器
 """
+from typing import List, Dict, Any
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -12,14 +13,14 @@ from .base import BaseController
 class ChatReq(BaseModel):
     conversation_id: str
     message: str
-    history: list[dict] = []
-    files: list = []  # 这里应该是FileInfo类型，但为了避免循环导入暂时用list
+    history: List[Dict[str, Any]] = []
+    files: List[Any] = []  # 这里应该是FileInfo类型，但为了避免循环导入暂时用List[Any]
 
 
 class ChatResp(BaseModel):
     conversation_id: str
     answer: str
-    tool_calls: list = []
+    tool_calls: List[Any] = []
 
 
 class ChatController(BaseController):

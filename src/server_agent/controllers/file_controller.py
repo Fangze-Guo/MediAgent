@@ -4,6 +4,8 @@
 import pathlib
 import shutil
 from datetime import datetime
+from typing import List
+
 from fastapi import HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -27,7 +29,7 @@ class FileUploadResp(BaseModel):
 
 
 class FileListResp(BaseModel):
-    files: list[FileInfo]
+    files: List[FileInfo]
 
 
 class DeleteFileReq(BaseModel):
@@ -40,7 +42,7 @@ class DeleteFileResp(BaseModel):
 
 
 class BatchDeleteFilesReq(BaseModel):
-    fileIds: list[str]
+    fileIds: List[str]
 
 
 class BatchDeleteFilesResp(BaseModel):
@@ -61,21 +63,21 @@ class DownloadFileResp(BaseModel):
 
 class FileController(BaseController):
     """文件控制器"""
-    
+
     def __init__(self):
         super().__init__(prefix="/files", tags=["文件管理"])
-        
+
         # 文件上传配置
         self.UPLOAD_DIR = pathlib.Path("uploads")
         self.UPLOAD_DIR.mkdir(exist_ok=True)
         self.MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
         self.ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.csv'}
-        
+
         self._register_routes()
-    
+
     def _register_routes(self):
         """注册路由"""
-        
+
         @self.router.post("/upload", response_model=FileUploadResp)
         async def upload_file(file: UploadFile = File(...)):
             """上传文件接口"""
@@ -135,7 +137,7 @@ class FileController(BaseController):
                     file=None,
                     error=f"文件上传失败: {str(e)}"
                 )
-        
+
         @self.router.get("", response_model=FileListResp)
         async def list_files():
             """获取已上传文件列表"""
@@ -164,7 +166,7 @@ class FileController(BaseController):
             except Exception as e:
                 print(f"获取文件列表失败: {e}")
                 raise HTTPException(status_code=500, detail=f"获取文件列表失败: {str(e)}")
-        
+
         @self.router.post("/delete", response_model=DeleteFileResp)
         async def delete_file(req: DeleteFileReq):
             """删除单个文件"""
@@ -175,26 +177,26 @@ class FileController(BaseController):
                         success=False,
                         error=f"文件不存在: {req.fileId}"
                     )
-                
+
                 # 删除文件
                 file_path.unlink()
-                
+
                 return DeleteFileResp(success=True)
-                
+
             except Exception as e:
                 print(f"删除文件失败: {e}")
                 return DeleteFileResp(
                     success=False,
                     error=f"删除文件失败: {str(e)}"
                 )
-        
+
         @self.router.post("/batch-delete", response_model=BatchDeleteFilesResp)
         async def batch_delete_files(req: BatchDeleteFilesReq):
             """批量删除文件"""
             try:
                 deleted_count = 0
                 errors = []
-                
+
                 for file_id in req.fileIds:
                     try:
                         file_path = self.find_file_by_id(file_id)
@@ -205,19 +207,19 @@ class FileController(BaseController):
                             errors.append(f"文件不存在: {file_id}")
                     except Exception as e:
                         errors.append(f"删除文件 {file_id} 失败: {str(e)}")
-                
+
                 if errors:
                     return BatchDeleteFilesResp(
                         success=False,
                         deletedCount=deleted_count,
                         error=f"部分文件删除失败: {'; '.join(errors)}"
                     )
-                
+
                 return BatchDeleteFilesResp(
                     success=True,
                     deletedCount=deleted_count
                 )
-                
+
             except Exception as e:
                 print(f"批量删除文件失败: {e}")
                 return BatchDeleteFilesResp(
@@ -225,7 +227,7 @@ class FileController(BaseController):
                     deletedCount=0,
                     error=f"批量删除文件失败: {str(e)}"
                 )
-        
+
         @self.router.post("/download", response_model=DownloadFileResp)
         async def download_file(req: DownloadFileReq):
             """获取文件下载URL"""
@@ -236,22 +238,22 @@ class FileController(BaseController):
                         success=False,
                         error=f"文件不存在: {req.fileId}"
                     )
-                
+
                 # 生成下载URL
                 download_url = f"/files/serve/{req.fileId}"
-                
+
                 return DownloadFileResp(
                     success=True,
                     downloadUrl=download_url
                 )
-                
+
             except Exception as e:
                 print(f"获取下载URL失败: {e}")
                 return DownloadFileResp(
                     success=False,
                     error=f"获取下载URL失败: {str(e)}"
                 )
-        
+
         @self.router.get("/serve/{file_id}")
         async def serve_file(file_id: str):
             """提供文件下载服务"""
@@ -259,21 +261,21 @@ class FileController(BaseController):
                 file_path = self.find_file_by_id(file_id)
                 if not file_path or not file_path.exists():
                     raise HTTPException(status_code=404, detail="文件不存在")
-                
+
                 # 获取文件内容类型
                 content_type = self.get_content_type(file_path.suffix)
-                
+
                 # 返回文件内容
                 return FileResponse(
                     path=str(file_path),
                     media_type=content_type,
                     filename=file_path.name
                 )
-                
+
             except Exception as e:
                 print(f"文件下载失败: {e}")
                 raise HTTPException(status_code=500, detail=f"文件下载失败: {str(e)}")
-    
+
     def get_content_type(self, ext: str) -> str:
         """根据文件扩展名获取内容类型"""
         content_types = {
@@ -285,7 +287,7 @@ class FileController(BaseController):
             '.csv': 'text/csv'
         }
         return content_types.get(ext.lower(), 'application/octet-stream')
-    
+
     def find_file_by_id(self, file_id: str) -> pathlib.Path:
         """根据文件ID查找文件路径"""
         for file_path in self.UPLOAD_DIR.iterdir():

@@ -4,7 +4,10 @@
     <div class="path-navigation">
       <a-breadcrumb>
         <a-breadcrumb-item>
-          <a @click="navigateToPath('.')">根目录</a>
+          <a @click="navigateToPath('.')">
+            <HomeOutlined style="margin-right: 4px;" />
+            根目录
+          </a>
         </a-breadcrumb-item>
         <a-breadcrumb-item v-for="(part, index) in pathParts" :key="index">
           <a @click="navigateToPath(getPathUpTo(index))">{{ part }}</a>
@@ -15,7 +18,7 @@
     <!-- 工具栏 -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <a-button @click="goUp" :disabled="!currentPath || currentPath === '.'">
+        <a-button @click="goUp" :disabled="!canGoUp">
           <template #icon>
             <ArrowUpOutlined />
           </template>
@@ -27,26 +30,50 @@
           </template>
           刷新
         </a-button>
+        <a-button type="primary" @click="handleUploadClick">
+          <template #icon>
+            <UploadOutlined />
+          </template>
+          上传到当前目录
+        </a-button>
       </div>
       <div class="toolbar-right">
         <span class="file-count">共 {{ fileList.length }} 个项目</span>
+        <a-button
+          v-if="selectedFiles.length > 0"
+          danger
+          @click="handleBatchDelete"
+        >
+          <template #icon>
+            <DeleteOutlined />
+          </template>
+          批量删除 ({{ selectedFiles.length }})
+        </a-button>
       </div>
     </div>
 
     <!-- 文件列表 -->
-    <div class="file-list">
+    <div 
+      class="file-list"
+      @drop="handleDrop"
+      @dragover="handleDragOver"
+      @dragenter="handleDragEnter"
+      @dragleave="handleDragLeave"
+      :class="{ 'drag-over': isDragOver }"
+    >
       <a-table
         :data-source="dataSource"
         :columns="columns"
         :pagination="false"
         :loading="loading"
         :scroll="{ y: 400 }"
+        :row-selection="{ selectedRowKeys: selectedFiles, onChange: onSelectChange }"
         size="middle"
         class="file-table"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.dataIndex === 'name'">
-            <div class="file-name-cell">
+            <div class="file-name-cell" :class="{ 'clickable': record.isDirectory }" @click="handleItemClick(record)">
               <component 
                 :is="record.isDirectory ? FolderOutlined : getFileIcon(record.type)"
                 class="file-icon"
@@ -118,8 +145,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { message } from 'ant-design-vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { message, Modal } from 'ant-design-vue'
 import {
   ArrowUpOutlined,
   ReloadOutlined,
@@ -129,16 +156,22 @@ import {
   FolderOutlined,
   PictureOutlined,
   FileExcelOutlined,
-  FileTextOutlined
+  FileTextOutlined,
+  UploadOutlined,
+  DeleteOutlined,
+  HomeOutlined
 } from '@ant-design/icons-vue'
 import { getLocalFiles, getLocalFileDownloadUrl, formatFileSize, type LocalFileInfo } from '@/apis/files'
 
 // 响应式数据
 const fileList = ref<LocalFileInfo[]>([])
 const currentPath = ref('.')
+const parentPath = ref<string | null>(null)
 const loading = ref(false)
 const previewVisible = ref(false)
 const previewFile = ref<LocalFileInfo | null>(null)
+const selectedFiles = ref<string[]>([])
+const isDragOver = ref(false)
 
 // 表格列定义
 const columns = [
@@ -190,6 +223,10 @@ const pathParts = computed(() => {
   return currentPath.value.split('/').filter(part => part)
 })
 
+const canGoUp = computed(() => {
+  return parentPath.value !== null && parentPath.value !== undefined
+})
+
 // 获取文件图标
 const getFileIcon = (fileType: string) => {
   if (fileType.startsWith('image/')) {
@@ -230,6 +267,8 @@ const fetchFiles = async (path: string = '.') => {
     const response = await getLocalFiles(path)
     fileList.value = response.files
     currentPath.value = response.currentPath
+    parentPath.value = response.parentPath
+    console.log('文件列表响应:', { currentPath: response.currentPath, parentPath: response.parentPath })
   } catch (error) {
     message.error('获取文件列表失败')
     console.error('获取文件列表失败:', error)
@@ -251,17 +290,27 @@ const getPathUpTo = (index: number) => {
 
 // 返回上级目录
 const goUp = () => {
-  if (currentPath.value && currentPath.value !== '.') {
-    const parts = currentPath.value.split('/')
-    parts.pop()
-    const newPath = parts.length > 0 ? parts.join('/') : '.'
-    fetchFiles(newPath)
-  }
+  if (!canGoUp.value || !parentPath.value) return
+  
+  console.log('返回上级目录:', currentPath.value, '->', parentPath.value)
+  fetchFiles(parentPath.value)
 }
 
 // 刷新当前目录
 const refresh = () => {
   fetchFiles(currentPath.value)
+}
+
+// 处理文件/目录点击
+const handleItemClick = (item: LocalFileInfo) => {
+  if (item.isDirectory) {
+    // 进入目录
+    const newPath = currentPath.value === '.' ? item.name : `${currentPath.value}/${item.name}`
+    fetchFiles(newPath)
+  } else {
+    // 预览文件
+    previewFileHandler(item)
+  }
 }
 
 // 下载文件
@@ -282,9 +331,171 @@ const previewFileHandler = (file: LocalFileInfo) => {
   previewVisible.value = true
 }
 
+// 处理上传按钮点击
+const handleUploadClick = () => {
+  // 创建文件输入元素
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.multiple = true
+  input.onchange = async (event) => {
+    const files = (event.target as HTMLInputElement).files
+    if (files && files.length > 0) {
+      await uploadFilesToCurrentDirectory(Array.from(files))
+    }
+  }
+  input.click()
+}
+
+// 上传文件到当前目录
+const uploadFilesToCurrentDirectory = async (files: File[]) => {
+  try {
+    const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
+    const uploadUrl = `${baseURL}/local-files/upload`
+    
+    for (const file of files) {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('target_dir', currentPath.value)
+      
+      const response = await fetch(uploadUrl, {
+        method: 'POST',
+        body: formData
+      })
+      
+      if (!response.ok) {
+        throw new Error(`上传失败: ${response.statusText}`)
+      }
+      
+      const result = await response.json()
+      if (!result.success) {
+        throw new Error(result.message || '上传失败')
+      }
+    }
+    
+    message.success(`成功上传 ${files.length} 个文件到当前目录`)
+    // 刷新当前目录
+    refresh()
+  } catch (error) {
+    console.error('上传文件失败:', error)
+    message.error(`上传失败: ${error instanceof Error ? error.message : '未知错误'}`)
+  }
+}
+
+// 处理选择变化
+const onSelectChange = (keys: string[]) => {
+  selectedFiles.value = keys
+}
+
+// 批量删除文件
+const handleBatchDelete = () => {
+  if (selectedFiles.value.length === 0) {
+    message.warning('请选择要删除的文件')
+    return
+  }
+
+  const selectedFileNames = selectedFiles.value.map(id => {
+    const file = fileList.value.find(f => f.id === id)
+    return file?.name || '未知文件'
+  }).join('、')
+
+  Modal.confirm({
+    title: '确认批量删除',
+    content: `确定要删除选中的 ${selectedFiles.value.length} 个文件吗？\n\n文件列表：${selectedFileNames}`,
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: async () => {
+      await deleteSelectedFiles()
+    },
+  })
+}
+
+// 删除选中的文件
+const deleteSelectedFiles = async () => {
+  try {
+    const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
+    const deleteUrl = `${baseURL}/local-files/delete`
+    
+    for (const fileId of selectedFiles.value) {
+      const file = fileList.value.find(f => f.id === fileId)
+      if (file) {
+        const response = await fetch(deleteUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            file_path: file.path
+          })
+        })
+        
+        if (!response.ok) {
+          throw new Error(`删除文件 ${file.name} 失败`)
+        }
+      }
+    }
+    
+    message.success(`成功删除 ${selectedFiles.value.length} 个文件`)
+    selectedFiles.value = []
+    // 刷新当前目录
+    refresh()
+  } catch (error) {
+    console.error('批量删除文件失败:', error)
+    message.error(`删除失败: ${error instanceof Error ? error.message : '未知错误'}`)
+  }
+}
+
+// 监听刷新事件
+const handleRefreshEvent = () => {
+  refresh()
+}
+
+// 监听刷新到根目录事件
+const handleRefreshToRootEvent = () => {
+  fetchFiles('.')
+}
+
+// 拖拽处理
+const handleDragOver = (e: DragEvent) => {
+  e.preventDefault()
+  e.stopPropagation()
+}
+
+const handleDragEnter = (e: DragEvent) => {
+  e.preventDefault()
+  e.stopPropagation()
+  isDragOver.value = true
+}
+
+const handleDragLeave = (e: DragEvent) => {
+  e.preventDefault()
+  e.stopPropagation()
+  isDragOver.value = false
+}
+
+const handleDrop = async (e: DragEvent) => {
+  e.preventDefault()
+  e.stopPropagation()
+  isDragOver.value = false
+  
+  const files = Array.from(e.dataTransfer?.files || [])
+  if (files.length > 0) {
+    await uploadFilesToCurrentDirectory(files)
+  }
+}
+
 // 组件挂载时获取文件列表
 onMounted(() => {
   fetchFiles()
+  // 监听刷新事件
+  window.addEventListener('refresh-local-files', handleRefreshEvent)
+  window.addEventListener('refresh-local-files-to-root', handleRefreshToRootEvent)
+})
+
+// 组件卸载时移除事件监听
+onUnmounted(() => {
+  window.removeEventListener('refresh-local-files', handleRefreshEvent)
+  window.removeEventListener('refresh-local-files-to-root', handleRefreshToRootEvent)
 })
 </script>
 
@@ -330,6 +541,13 @@ onMounted(() => {
   background: white;
   border-radius: 6px;
   overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.file-list.drag-over {
+  background: #f0f9ff;
+  border: 2px dashed #1890ff;
+  box-shadow: 0 0 10px rgba(24, 144, 255, 0.3);
 }
 
 .file-table {
@@ -340,6 +558,18 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.file-name-cell.clickable {
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.file-name-cell.clickable:hover {
+  background-color: #f5f5f5;
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin: -4px -8px;
 }
 
 .file-icon {
