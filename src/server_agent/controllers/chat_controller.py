@@ -65,14 +65,27 @@ class ChatController(BaseController):
 
                 # 如果有文件，添加文件信息到系统消息
                 if req.files:
+                    print(f"处理 {len(req.files)} 个文件")
                     system_content += f"\n\n可用文件："
-                    for file in req.files:
-                        if hasattr(file, 'type') and file.type.startswith('image/'):
-                            system_content += f"\n- {file.originalName} → {file.path}"
-                        elif hasattr(file, 'type') and 'csv' in file.type:
-                            system_content += f"\n- {file.originalName} → {file.path}"
+                    for i, file in enumerate(req.files):
+                        print(f"文件 {i}: {type(file)} - {file}")
+                        # 处理字典格式的文件对象
+                        if isinstance(file, dict):
+                            file_name = file.get('originalName', file.get('name', '未知文件'))
+                            file_type = file.get('type', '')
+                            file_path = file.get('path', '')
                         else:
-                            system_content += f"\n- {file.originalName} → {file.path}"
+                            # 处理对象格式的文件
+                            file_name = getattr(file, 'originalName', getattr(file, 'name', '未知文件'))
+                            file_type = getattr(file, 'type', '')
+                            file_path = getattr(file, 'path', '')
+                        
+                        if file_type.startswith('image/'):
+                            system_content += f"\n- {file_name} → {file_path}"
+                        elif 'csv' in file_type:
+                            system_content += f"\n- {file_name} → {file_path}"
+                        else:
+                            system_content += f"\n- {file_name} → {file_path}"
 
                     system_content += f"\n\n注意：调用工具时使用完整路径，不要使用原始文件名。"
 

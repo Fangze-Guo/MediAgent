@@ -128,7 +128,7 @@ export async function uploadFile(
       const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
       
       // 发送请求
-      xhr.open('POST', `${baseURL}/upload`)
+      xhr.open('POST', `${baseURL}/files/upload`)
       xhr.timeout = 60000 // 60秒超时
       xhr.send(formData)
     })
@@ -404,7 +404,7 @@ export interface LocalFileListResponse {
  */
 export async function getLocalFiles(path: string = '.'): Promise<LocalFileListResponse> {
   try {
-    const response = await get<LocalFileListResponse>(`/local-files?path=${encodeURIComponent(path)}`)
+    const response = await get<LocalFileListResponse>(`/files/local?path=${encodeURIComponent(path)}`)
     return response.data
   } catch (error) {
     console.error('获取本地文件列表失败:', error)
@@ -419,5 +419,59 @@ export async function getLocalFiles(path: string = '.'): Promise<LocalFileListRe
  */
 export function getLocalFileDownloadUrl(filePath: string): string {
   const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
-  return `${baseURL}/local-files/serve?path=${encodeURIComponent(filePath)}`
+  return `${baseURL}/files/local/serve?path=${encodeURIComponent(filePath)}`
+}
+
+/**
+ * 输出文件信息接口
+ */
+export interface OutputFileInfo {
+  id: string
+  name: string
+  size: number
+  type: string
+  path: string
+  modifiedTime: string
+  isDirectory: boolean
+}
+
+/**
+ * 输出文件列表响应接口
+ */
+export interface OutputFileListResponse {
+  files: OutputFileInfo[]
+  currentPath: string
+  parentPath: string | null
+}
+
+/**
+ * 获取输出文件列表
+ * @param path 要浏览的路径，默认为当前目录
+ * @returns Promise<OutputFileListResponse> 返回输出文件列表
+ * @throws {Error} 当请求失败时抛出错误
+ * 
+ * @example
+ * ```typescript
+ * const files = await getOutputFiles('.')
+ * console.log('当前输出目录文件:', files.files)
+ * ```
+ */
+export async function getOutputFiles(path: string = '.'): Promise<OutputFileListResponse> {
+  try {
+    const response = await get<OutputFileListResponse>(`/files/output?path=${encodeURIComponent(path)}`)
+    return response.data
+  } catch (error) {
+    console.error('获取输出文件列表失败:', error)
+    throw new Error('获取输出文件列表失败，请稍后再试')
+  }
+}
+
+/**
+ * 获取输出文件下载URL
+ * @param filePath 文件路径
+ * @returns 输出文件下载URL
+ */
+export function getOutputFileDownloadUrl(filePath: string): string {
+  const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
+  return `${baseURL}/files/output/serve?path=${encodeURIComponent(filePath)}`
 }

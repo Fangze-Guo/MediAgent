@@ -240,7 +240,6 @@ const uploadSingleFile = async (file: File) => {
     if (response.success) {
       uploadedFiles.value.push(response.file)
       emit('uploadSuccess', response.file)
-      message.success(`文件 ${file.name} 上传成功`)
     } else {
       throw new Error(response.error || '上传失败')
     }

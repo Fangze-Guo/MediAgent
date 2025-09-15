@@ -7,7 +7,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from .chat_controller import ChatController
 from .tool_controller import ToolController
 from .file_controller import FileController
-from .local_file_controller import LocalFileController
 from .system_controller import SystemController
 
 
@@ -32,14 +31,12 @@ def create_app() -> FastAPI:
     chat_controller = ChatController()
     tool_controller = ToolController()
     file_controller = FileController()
-    local_file_controller = LocalFileController()
     system_controller = SystemController()
 
     # 注册路由
     app.include_router(chat_controller.router)
     app.include_router(tool_controller.router)
     app.include_router(file_controller.router)
-    app.include_router(local_file_controller.router)
     app.include_router(system_controller.router)
 
     return app
@@ -51,7 +48,6 @@ def get_all_controllers():
         'chat': ChatController(),
         'tool': ToolController(),
         'file': FileController(),
-        'local_file': LocalFileController(),
         'system': SystemController(),
     }
 
@@ -63,6 +59,5 @@ __all__ = [
     'ChatController',
     'ToolController', 
     'FileController',
-    'LocalFileController',
     'SystemController',
 ]

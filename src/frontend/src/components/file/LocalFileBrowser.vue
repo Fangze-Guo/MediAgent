@@ -161,7 +161,7 @@ import {
   DeleteOutlined,
   HomeOutlined
 } from '@ant-design/icons-vue'
-import { getLocalFiles, getLocalFileDownloadUrl, formatFileSize, type LocalFileInfo } from '@/apis/files'
+import { getLocalFiles, getLocalFileDownloadUrl, formatFileSize, type LocalFileInfo } from '@/apis/files.ts'
 
 // 响应式数据
 const fileList = ref<LocalFileInfo[]>([])
@@ -333,6 +333,11 @@ const previewFileHandler = (file: LocalFileInfo) => {
 
 // 处理上传按钮点击
 const handleUploadClick = () => {
+  openFileUploadDialog()
+}
+
+// 打开文件上传对话框
+const openFileUploadDialog = () => {
   // 创建文件输入元素
   const input = document.createElement('input')
   input.type = 'file'
@@ -350,23 +355,35 @@ const handleUploadClick = () => {
 const uploadFilesToCurrentDirectory = async (files: File[]) => {
   try {
     const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
-    const uploadUrl = `${baseURL}/local-files/upload`
+    const uploadUrl = `${baseURL}/files/local/upload`
+    
+    console.log('上传URL:', uploadUrl)
+    console.log('目标目录:', currentPath.value)
     
     for (const file of files) {
       const formData = new FormData()
       formData.append('file', file)
       formData.append('target_dir', currentPath.value)
       
+      console.log('上传文件:', file.name, '到目录:', currentPath.value)
+      
       const response = await fetch(uploadUrl, {
         method: 'POST',
         body: formData
       })
       
+      console.log('响应状态:', response.status)
+      console.log('响应头:', response.headers)
+      
       if (!response.ok) {
-        throw new Error(`上传失败: ${response.statusText}`)
+        const errorText = await response.text()
+        console.error('响应错误:', errorText)
+        throw new Error(`上传失败: ${response.status} ${response.statusText}`)
       }
       
       const result = await response.json()
+      console.log('上传结果:', result)
+      
       if (!result.success) {
         throw new Error(result.message || '上传失败')
       }
@@ -414,24 +431,34 @@ const handleBatchDelete = () => {
 const deleteSelectedFiles = async () => {
   try {
     const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
-    const deleteUrl = `${baseURL}/local-files/delete`
+    const deleteUrl = `${baseURL}/files/local/delete`
+    
+    console.log('删除URL:', deleteUrl)
+    console.log('要删除的文件:', selectedFiles.value)
     
     for (const fileId of selectedFiles.value) {
       const file = fileList.value.find(f => f.id === fileId)
       if (file) {
+        console.log('删除文件:', file.name, '路径:', file.path)
+        
+        const formData = new FormData()
+        formData.append('file_path', file.path)
+        
         const response = await fetch(deleteUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            file_path: file.path
-          })
+          body: formData
         })
         
+        console.log('删除响应状态:', response.status)
+        
         if (!response.ok) {
-          throw new Error(`删除文件 ${file.name} 失败`)
+          const errorText = await response.text()
+          console.error('删除文件错误:', errorText)
+          throw new Error(`删除文件 ${file.name} 失败: ${response.status} ${response.statusText}`)
         }
+        
+        const result = await response.json()
+        console.log('删除结果:', result)
       }
     }
     
@@ -453,6 +480,11 @@ const handleRefreshEvent = () => {
 // 监听刷新到根目录事件
 const handleRefreshToRootEvent = () => {
   fetchFiles('.')
+}
+
+// 监听本地文件上传事件
+const handleLocalFileUploadEvent = () => {
+  openFileUploadDialog()
 }
 
 // 拖拽处理
@@ -490,12 +522,14 @@ onMounted(() => {
   // 监听刷新事件
   window.addEventListener('refresh-local-files', handleRefreshEvent)
   window.addEventListener('refresh-local-files-to-root', handleRefreshToRootEvent)
+  window.addEventListener('open-local-file-upload', handleLocalFileUploadEvent)
 })
 
 // 组件卸载时移除事件监听
 onUnmounted(() => {
   window.removeEventListener('refresh-local-files', handleRefreshEvent)
   window.removeEventListener('refresh-local-files-to-root', handleRefreshToRootEvent)
+  window.removeEventListener('open-local-file-upload', handleLocalFileUploadEvent)
 })
 </script>
 
