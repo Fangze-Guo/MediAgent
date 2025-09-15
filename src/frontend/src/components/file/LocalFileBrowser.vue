@@ -66,7 +66,6 @@
         :columns="columns"
         :pagination="false"
         :loading="loading"
-        :scroll="{ y: 400 }"
         :row-selection="{ selectedRowKeys: selectedFiles, onChange: onSelectChange }"
         size="middle"
         class="file-table"
@@ -574,7 +573,6 @@ onUnmounted(() => {
 .file-list {
   background: white;
   border-radius: 6px;
-  overflow: hidden;
   transition: all 0.3s ease;
 }
 

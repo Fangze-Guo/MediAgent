@@ -211,8 +211,7 @@ const parseMessageContent = (content: string) => {
   const thinkMatches = content.match(/<think>(.*?)<\/think>/gs)
   if (thinkMatches && thinkMatches.length > 0) {
     const thinkingList = thinkMatches.map(match => {
-      const thinkContent = match.replace(/<\/?think>/g, '').trim()
-      return thinkContent
+      return match.replace(/<\/?think>/g, '').trim()
     })
 
     // 移除所有<think>标签，获取回复内容
@@ -292,7 +291,7 @@ const handleScroll = () => {
 
 /**
  * 处理文件上传成功
- * @param file 上传成功的文件信息
+ * @param _file
  */
 const handleFileUploadSuccess = (_file: FileUploadResponse['file']) => {
   // 文件上传成功处理
@@ -322,7 +321,7 @@ const handleUseFile = (file: FileUploadResponse['file']) => {
   currentSessionFiles.value.push(file)
 
   // 根据文件类型生成不同的提示信息
-  let message = ''
+  let message: string
   if (file.type.startsWith('image/')) {
     message = `我已经上传了图片文件 "${file.originalName}"，"将图片调整为800x600像素"，输出路径为./output/${file.originalName}。`
   } else if (file.type.includes('csv')) {
@@ -610,7 +609,7 @@ const sendMessage = async () => {
 /* 聊天主卡片：全屏布局，内容区占据主要空间 */
 .chat-layout {
   width: 100%;
-  height: 100vh;
+  height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;

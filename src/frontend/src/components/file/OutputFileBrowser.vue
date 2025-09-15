@@ -40,9 +40,9 @@
       <div class="toolbar-right">
         <span class="file-count">共 {{ fileList.length }} 个项目</span>
         <a-button
-          v-if="selectedFiles.length > 0"
-          danger
-          @click="handleBatchDelete"
+            v-if="selectedFiles.length > 0"
+            danger
+            @click="handleBatchDelete"
         >
           <template #icon>
             <DeleteOutlined />
@@ -53,31 +53,30 @@
     </div>
 
     <!-- 文件列表 -->
-    <div 
-      class="file-list"
-      @drop="handleDrop"
-      @dragover="handleDragOver"
-      @dragenter="handleDragEnter"
-      @dragleave="handleDragLeave"
-      :class="{ 'drag-over': isDragOver }"
+    <div
+        class="file-list"
+        @drop="handleDrop"
+        @dragover="handleDragOver"
+        @dragenter="handleDragEnter"
+        @dragleave="handleDragLeave"
+        :class="{ 'drag-over': isDragOver }"
     >
       <a-table
-        :data-source="dataSource"
-        :columns="columns"
-        :pagination="false"
-        :loading="loading"
-        :scroll="{ y: 400 }"
-        :row-selection="{ selectedRowKeys: selectedFiles, onChange: onSelectChange }"
-        size="middle"
-        class="file-table"
+          :data-source="dataSource"
+          :columns="columns"
+          :pagination="false"
+          :loading="loading"
+          :row-selection="{ selectedRowKeys: selectedFiles, onChange: onSelectChange }"
+          size="middle"
+          class="file-table"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.dataIndex === 'name'">
             <div class="file-name-cell" :class="{ 'clickable': record.isDirectory }" @click="handleItemClick(record)">
-              <component 
-                :is="record.isDirectory ? FolderOutlined : getFileIcon(record.type)"
-                class="file-icon"
-                :class="{ 'directory-icon': record.isDirectory }"
+              <component
+                  :is="record.isDirectory ? FolderOutlined : getFileIcon(record.type)"
+                  class="file-icon"
+                  :class="{ 'directory-icon': record.isDirectory }"
               />
               <span class="file-name" :title="record.name">{{ record.name }}</span>
             </div>
@@ -93,21 +92,21 @@
           </template>
           <template v-else-if="column.dataIndex === 'actions'">
             <div class="actions">
-              <a-button 
-                v-if="!record.isDirectory"
-                type="text" 
-                size="small" 
-                title="下载"
-                @click="downloadFile(record)"
+              <a-button
+                  v-if="!record.isDirectory"
+                  type="text"
+                  size="small"
+                  title="下载"
+                  @click="downloadFile(record)"
               >
                 <DownloadOutlined />
               </a-button>
-              <a-button 
-                v-if="!record.isDirectory"
-                type="text" 
-                size="small" 
-                title="预览"
-                @click="previewFileHandler(record)"
+              <a-button
+                  v-if="!record.isDirectory"
+                  type="text"
+                  size="small"
+                  title="预览"
+                  @click="previewFileHandler(record)"
               >
                 <EyeOutlined />
               </a-button>
@@ -119,17 +118,17 @@
 
     <!-- 文件预览模态框 -->
     <a-modal
-      v-model:open="previewVisible"
-      title="文件预览"
-      width="800px"
-      :footer="null"
+        v-model:open="previewVisible"
+        title="文件预览"
+        width="800px"
+        :footer="null"
     >
       <div v-if="previewFile" class="file-preview">
         <div v-if="isImageFile(previewFile)" class="image-preview">
-          <img 
-            :src="getOutputFileDownloadUrl(previewFile.path)" 
-            :alt="previewFile.name"
-            style="max-width: 100%; max-height: 500px; object-fit: contain;"
+          <img
+              :src="getOutputFileDownloadUrl(previewFile.path)"
+              :alt="previewFile.name"
+              style="max-width: 100%; max-height: 500px; object-fit: contain;"
           />
         </div>
         <div v-else class="file-info">
@@ -145,23 +144,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import {
   ArrowUpOutlined,
-  ReloadOutlined,
+  DeleteOutlined,
   DownloadOutlined,
   EyeOutlined,
-  FileOutlined,
-  FolderOutlined,
-  PictureOutlined,
   FileExcelOutlined,
+  FileOutlined,
   FileTextOutlined,
-  UploadOutlined,
-  DeleteOutlined,
-  HomeOutlined
+  FolderOutlined,
+  HomeOutlined,
+  PictureOutlined,
+  ReloadOutlined,
+  UploadOutlined
 } from '@ant-design/icons-vue'
-import { getOutputFiles, formatFileSize, type OutputFileInfo } from '@/apis/files'
+import { formatFileSize, getOutputFiles, type OutputFileInfo } from '@/apis/files'
 
 // 响应式数据
 const fileList = ref<OutputFileInfo[]>([])
@@ -268,7 +267,7 @@ const fetchFiles = async (path: string = '.') => {
     fileList.value = response.files
     currentPath.value = response.currentPath
     parentPath.value = response.parentPath
-    console.log('输出文件列表响应:', { currentPath: response.currentPath, parentPath: response.parentPath })
+    console.log('输出文件列表响应:', {currentPath: response.currentPath, parentPath: response.parentPath})
   } catch (error) {
     message.error('获取输出文件列表失败')
     console.error('获取输出文件列表失败:', error)
@@ -297,7 +296,7 @@ const getPathUpTo = (index: number) => {
 // 返回上级目录
 const goUp = () => {
   if (!canGoUp.value || !parentPath.value) return
-  
+
   console.log('返回上级目录:', currentPath.value, '->', parentPath.value)
   fetchFiles(parentPath.value)
 }
@@ -362,38 +361,38 @@ const uploadFilesToCurrentDirectory = async (files: File[]) => {
   try {
     const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
     const uploadUrl = `${baseURL}/files/output/upload`
-    
+
     console.log('上传URL:', uploadUrl)
     console.log('目标目录:', currentPath.value)
-    
+
     for (const file of files) {
       const formData = new FormData()
       formData.append('file', file)
       formData.append('target_dir', currentPath.value)
-      
+
       console.log('上传文件:', file.name, '到目录:', currentPath.value)
-      
+
       const response = await fetch(uploadUrl, {
         method: 'POST',
         body: formData
       })
-      
+
       console.log('响应状态:', response.status)
-      
+
       if (!response.ok) {
         const errorText = await response.text()
         console.error('响应错误:', errorText)
         throw new Error(`上传失败: ${response.status} ${response.statusText}`)
       }
-      
+
       const result = await response.json()
       console.log('上传结果:', result)
-      
+
       if (!result.success) {
         throw new Error(result.message || '上传失败')
       }
     }
-    
+
     message.success(`成功上传 ${files.length} 个文件到当前目录`)
     // 刷新当前目录
     refresh()
@@ -437,36 +436,36 @@ const deleteSelectedFiles = async () => {
   try {
     const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
     const deleteUrl = `${baseURL}/files/output/delete`
-    
+
     console.log('删除URL:', deleteUrl)
     console.log('要删除的文件:', selectedFiles.value)
-    
+
     for (const fileId of selectedFiles.value) {
       const file = fileList.value.find(f => f.id === fileId)
       if (file) {
         console.log('删除文件:', file.name, '路径:', file.path)
-        
+
         const formData = new FormData()
         formData.append('file_path', file.path)
-        
+
         const response = await fetch(deleteUrl, {
           method: 'POST',
           body: formData
         })
-        
+
         console.log('删除响应状态:', response.status)
-        
+
         if (!response.ok) {
           const errorText = await response.text()
           console.error('删除文件错误:', errorText)
           throw new Error(`删除文件 ${file.name} 失败: ${response.status} ${response.statusText}`)
         }
-        
+
         const result = await response.json()
         console.log('删除结果:', result)
       }
     }
-    
+
     message.success(`成功删除 ${selectedFiles.value.length} 个文件`)
     selectedFiles.value = []
     // 刷新当前目录
@@ -514,7 +513,7 @@ const handleDrop = async (e: DragEvent) => {
   e.preventDefault()
   e.stopPropagation()
   isDragOver.value = false
-  
+
   const files = Array.from(e.dataTransfer?.files || [])
   if (files.length > 0) {
     await uploadFilesToCurrentDirectory(files)
@@ -579,7 +578,6 @@ onUnmounted(() => {
 .file-list {
   background: white;
   border-radius: 6px;
-  overflow: hidden;
   transition: all 0.3s ease;
 }
 

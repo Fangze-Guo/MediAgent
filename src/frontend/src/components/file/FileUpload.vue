@@ -1,12 +1,12 @@
 <template>
   <div class="file-upload">
     <!-- 上传区域 -->
-    <div 
+    <div
       class="upload-area"
-      :class="{ 
-        'uploading': uploading, 
+      :class="{
+        'uploading': uploading,
         'drag-over': dragOver,
-        'error': uploadError 
+        'error': uploadError
       }"
       @click="triggerFileInput"
       @dragover.prevent="handleDragOver"
@@ -21,7 +21,7 @@
         @change="handleFileSelect"
         style="display: none"
       />
-      
+
       <div v-if="!uploading" class="upload-content">
         <UploadOutlined class="upload-icon" />
         <div class="upload-text">
@@ -29,12 +29,12 @@
           <p class="upload-hint">支持图片文件 (JPG, PNG, GIF, WebP) 和 CSV 文件</p>
         </div>
       </div>
-      
+
       <div v-else class="uploading-content">
         <a-spin size="large" />
         <p class="uploading-text">正在上传...</p>
-        <a-progress 
-          :percent="uploadProgress" 
+        <a-progress
+          :percent="uploadProgress"
           :show-info="false"
           stroke-color="#1890ff"
         />

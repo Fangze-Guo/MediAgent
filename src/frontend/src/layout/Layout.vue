@@ -34,7 +34,7 @@ const toggle = () => (collapsed.value = !collapsed.value)
 <style>
 .root-layout {
   width: 100%;
-  height: 100%;
+  height: 100vh;
   display: flex;
 }
 
@@ -47,7 +47,7 @@ const toggle = () => (collapsed.value = !collapsed.value)
   display: flex;
   flex-direction: column;
   width: 100%;
-  height: 100%;
+  height: 100vh;
   min-width: 0;
 }
 
@@ -59,7 +59,7 @@ const toggle = () => (collapsed.value = !collapsed.value)
 .app-content {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow: auto;
   background: #f5f5f5;
 }
 </style>
