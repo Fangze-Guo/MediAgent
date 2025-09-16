@@ -1,4 +1,4 @@
-# src/server_new/mediagent/controllers/__init__.py
+# src/server_new/mediagent/controller/__init__.py
 from __future__ import annotations
 from contextlib import asynccontextmanager
 from pathlib import Path

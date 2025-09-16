@@ -1,4 +1,4 @@
-# src/server_new/mediagent/controllers/user_controller.py
+# src/server_new/mediagent/controller/user_controller.py
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, status

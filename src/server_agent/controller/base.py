@@ -32,18 +32,3 @@ class BaseController:
                 await self.agent.init_tools()
                 _initialized = True
 
-    def get_health_info(self):
-        """获取健康检查信息"""
-        mcp_py = "unknown"
-        try:
-            import sys
-            mcp_py = sys.executable
-        except Exception:
-            pass
-
-        return {
-            "model": MODEL,
-            "lm_server": BASE_URL,
-            "tools_count": len(self.agent.tools),
-            "python": mcp_py,
-        }

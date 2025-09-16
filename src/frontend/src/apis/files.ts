@@ -170,8 +170,8 @@ export async function getFileList(): Promise<FileListResponse> {
  * const result = await callTool({
  *   name: 'resize_image',
  *   args: {
- *     input_path: '/uploads/image.jpg',
- *     output_path: '/uploads/resized_image.jpg',
+ *     input_path: '/data/image.jpg',
+ *     output_path: '/data/resized_image.jpg',
  *     width: 800,
  *     height: 600
  *   }
