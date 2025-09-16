@@ -113,11 +113,21 @@
               </div>
               <!-- 输入框 -->
               <div class="input-field">
-                <textarea v-model="inputMessage" class="message-input" placeholder="" @keydown="handleKeyDown"
-                          rows="1"></textarea>
+                <textarea 
+                  v-model="inputMessage" 
+                  class="message-input" 
+                  placeholder="输入消息..." 
+                  @keydown="handleKeyDown"
+                  @input="adjustTextareaHeight"
+                  rows="1"
+                  ref="textareaRef"
+                ></textarea>
               </div>
               <!-- 底部工具栏 -->
               <div class="input-bottom">
+                <div class="input-hint">
+                  <span class="hint-text">按 Enter 发送，Ctrl+Enter 换行</span>
+                </div>
                 <div class="send-group">
                   <a-button type="primary" class="send-btn" :loading="sending" @click="sendMessage"
                             :disabled="!inputMessage.trim()">
@@ -189,6 +199,8 @@ const sending = ref(false)
 const activeId = ref<string>('')
 /** 消息容器的DOM引用，用于滚动到底部 */
 const messagesEl = ref<HTMLElement | null>(null)
+/** 输入框的DOM引用，用于自动调整高度 */
+const textareaRef = ref<HTMLTextAreaElement | null>(null)
 /** 是否显示文件上传区域 */
 const showFileUpload = ref(false)
 /** 当前会话关联的文件信息 */
@@ -521,6 +533,23 @@ const sendMessageToAI = async (messageText: string) => {
 }
 
 /**
+ * 自动调整textarea高度
+ * 根据内容自动调整输入框高度，提供更好的用户体验
+ */
+const adjustTextareaHeight = () => {
+  const textarea = textareaRef.value
+  if (!textarea) return
+  
+  // 重置高度以获取正确的scrollHeight
+  textarea.style.height = 'auto'
+  
+  // 设置新高度，但不超过最大高度
+  const maxHeight = 150 // 对应CSS中的max-height
+  const newHeight = Math.min(textarea.scrollHeight, maxHeight)
+  textarea.style.height = newHeight + 'px'
+}
+
+/**
  * 处理键盘事件
  * @param event 键盘事件
  */
@@ -537,10 +566,12 @@ const handleKeyDown = (event: KeyboardEvent) => {
       // 在光标位置插入换行符
       inputMessage.value = value.substring(0, start) + '\n' + value.substring(end)
 
-      // 设置光标位置到换行符后
+      // 设置光标位置到换行符后，并调整高度
       nextTick(() => {
         textarea.selectionStart = textarea.selectionEnd = start + 1
         textarea.focus()
+        // 调整高度以显示换行效果
+        adjustTextareaHeight()
       })
 
       event.preventDefault()
@@ -562,8 +593,9 @@ const sendMessage = async () => {
   // 验证输入和状态
   if (!text || sending.value) return
 
-  // 清空输入框
+  // 清空输入框并重置高度
   inputMessage.value = ''
+  adjustTextareaHeight()
 
   // 确保有当前会话，没有则创建
   if (!currentConversation.value) {
@@ -711,19 +743,19 @@ const sendMessage = async () => {
 .ant-layout-footer {
   padding: 0;
   background: #ffffff;
-  min-height: 300px;
+  min-height: auto; /* 移除固定高度，让内容自适应 */
   border: 1px solid #e5e7eb;
 }
 
 /* 输入区域：固定在底部 */
 .input-area {
-  height: 100%;
+  height: auto; /* 改为自适应高度 */
   width: 100%;
 }
 
 /* 输入容器 */
 .input-container {
-  height: 100%;
+  height: auto; /* 改为自适应高度 */
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -743,10 +775,12 @@ const sendMessage = async () => {
   outline: none;
   resize: none;
   font-size: 16px;
-  height: 100%;
+  min-height: 60px; /* 增加最小高度 */
+  max-height: 150px; /* 增加最大高度 */
   width: 100%;
   color: #374151;
-  padding: 10px;
+  padding: 12px 16px; /* 增加内边距 */
+  line-height: 1.6; /* 增加行高，让换行更明显 */
 }
 
 .message-input::placeholder {
@@ -863,10 +897,11 @@ const sendMessage = async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px;
+  padding: 12px 16px; /* 增加内边距 */
   background: #f9fafb;
   border-bottom: 1px solid #e5e7eb;
-  height: 20%;
+  height: auto; /* 改为自适应高度 */
+  min-height: 60px; /* 增加最小高度 */
 }
 
 .toolbar-left {
@@ -931,17 +966,36 @@ const sendMessage = async () => {
 
 /* 输入框区域 */
 .input-field {
-  height: 40%;
+  height: auto; /* 改为自适应高度 */
   width: 100%;
+  min-height: 80px; /* 增加最小高度 */
 }
 
 /* 底部工具栏 */
 .input-bottom {
   display: flex;
   align-items: center;
-  justify-content: right;
-  padding: 5px;
-  height: 20%;
+  justify-content: space-between; /* 改为两端对齐 */
+  padding: 12px 16px; /* 增加内边距 */
+  height: auto; /* 改为自适应高度 */
+  min-height: 60px; /* 增加最小高度 */
+}
+
+/* 输入提示 */
+.input-hint {
+  display: flex;
+  align-items: center;
+}
+
+.hint-text {
+  font-size: 12px;
+  color: #9ca3af;
+  user-select: none;
+  transition: color 0.2s ease;
+}
+
+.input-container:focus-within .hint-text {
+  color: #6b7280;
 }
 
 /* 发送按钮组 */
