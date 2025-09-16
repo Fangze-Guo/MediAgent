@@ -1,68 +1,298 @@
-# MediAgent Frontend (简洁版)
+# Frontend 前端应用
 
-一个使用 Vue 3 + TypeScript + Vue Router + Vite 构建的纯静态前端演示：
-- 左侧固定 Sidebar（纯静态）
-- 右侧由路由控制显示聊天区（ChatView）与其他页面
-- 使用组合式 API（<script setup>）与 TypeScript
-- 仅包含少量假数据与静态内容，代码简洁易读
+## 📁 项目结构
 
-## 🚀 技术栈
-- **Vue 3**（Composition API）
-- **TypeScript**
-- **Vue Router 4**
-- **Vite**
-
-## 📁 当前项目结构
 ```
-src/
-├── components/
-│   └── Sidebar.vue          # 左侧固定侧边栏（静态）
-├── views/
-│   ├── ChatView.vue         # 聊天界面（静态假数据）
-│   ├── SettingsView.vue     # 设置页（静态）
-│   └── NotFoundView.vue     # 404 页面（静态）
-├── router/
-│   └── index.ts             # 简单路由配置
-├── App.vue                  # 根组件（Sidebar + <router-view />）
-├── main.ts                  # 入口文件，注册路由
-└── style.css                # 全局样式（保证全屏布局）
+src/frontend/
+├── public/              # 静态资源
+├── src/
+│   ├── apis/           # API 接口
+│   ├── assets/         # 静态资源
+│   ├── components/     # Vue 组件
+│   ├── layout/         # 布局组件
+│   ├── router/         # 路由配置
+│   ├── store/          # 状态管理
+│   ├── utils/          # 工具函数
+│   └── views/          # 页面视图
+├── package.json         # 项目配置
+├── vite.config.ts      # Vite 配置
+└── tsconfig.json       # TypeScript 配置
 ```
 
-## ✨ 页面与路由
-- `/`         → 聊天页面 ChatView（右侧内容区占满；渐变背景）
-- `/settings` → 设置页面 SettingsView（静态示例）
-- 404         → NotFoundView
+## 🏗️ 技术栈
 
-## 🧩 布局说明
-- `App.vue` 仅负责布局：`Sidebar` 固定在左侧，右侧为 `<router-view />`
-- 全屏布局通过 `style.css` 与 `App.vue` 样式共同保证（`html/body/#app` 全高全宽）
-- 所有页面为静态展示，未引入全局状态、store、composables、types 等复杂结构
+### 核心框架
+- **Vue 3**: 渐进式 JavaScript 框架
+- **TypeScript**: 类型安全的 JavaScript
+- **Vite**: 快速的前端构建工具
 
-## 🛠️ 开发与构建
-安装依赖：
+### UI 组件
+- **Vue Router**: 官方路由管理器
+- **Pinia**: 状态管理库
+- **Axios**: HTTP 客户端
+
+### 开发工具
+- **ESLint**: 代码质量检查
+- **Prettier**: 代码格式化
+- **TypeScript**: 类型检查
+
+## 🚀 快速开始
+
+### 安装依赖
 ```bash
+cd src/frontend
 npm install
 ```
 
-启动开发服务器：
+### 启动开发服务器
 ```bash
 npm run dev
 ```
 
-构建生产版本：
+### 构建生产版本
 ```bash
 npm run build
 ```
 
-预览生产版本：
-```bash
-npm run preview
+## 📋 主要功能
+
+### 用户管理
+- 用户注册和登录
+- 用户信息管理
+- Token 认证
+
+### 聊天对话
+- 实时聊天界面
+- 流式消息显示
+- 历史记录管理
+
+### 文件管理
+- 文件上传和下载
+- 文件列表浏览
+- 文件删除操作
+
+### 工具调用
+- 工具列表展示
+- 工具调用界面
+- 工具结果展示
+
+## 🔧 开发指南
+
+### 组件开发
+```vue
+<template>
+  <div class="component">
+    <h1>{{ title }}</h1>
+    <button @click="handleClick">点击</button>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref } from 'vue'
+
+interface Props {
+  title: string
+}
+
+const props = defineProps<Props>()
+const emit = defineEmits<{
+  click: [value: string]
+}>()
+
+const handleClick = () => {
+  emit('click', 'Hello')
+}
+</script>
+
+<style scoped>
+.component {
+  padding: 20px;
+}
+</style>
 ```
 
-## ✅ 约定与风格
-- 全部组件使用 `<script setup lang="ts">`
-- 不使用多余的 props/emit/状态，保持“可读、可理解”的静态示例
-- 侧边栏宽度固定，内容区自适应填满右侧
+### API 调用
+```typescript
+// apis/chat.ts
+import { request } from '@/utils/request'
 
-## 📄 许可证
-MIT License
+export interface ChatRequest {
+  conversation_id: string
+  message: string
+  history: Array<{ role: string; content: string }>
+}
+
+export interface ChatResponse {
+  conversation_id: string
+  answer: string
+  tool_calls: any[]
+}
+
+export const chatApi = {
+  async chat(data: ChatRequest): Promise<ChatResponse> {
+    return request.post('/chat', data)
+  },
+  
+  async chatStream(data: ChatRequest): Promise<ReadableStream> {
+    return request.post('/chat/stream', data, {
+      responseType: 'stream'
+    })
+  }
+}
+```
+
+### 状态管理
+```typescript
+// store/conversations.ts
+import { defineStore } from 'pinia'
+import { ref } from 'vue'
+
+export const useConversationsStore = defineStore('conversations', () => {
+  const conversations = ref<Conversation[]>([])
+  const currentConversation = ref<Conversation | null>(null)
+  
+  const addMessage = (conversationId: string, message: Message) => {
+    const conversation = conversations.value.find(c => c.id === conversationId)
+    if (conversation) {
+      conversation.messages.push(message)
+    }
+  }
+  
+  const createConversation = (title: string) => {
+    const conversation: Conversation = {
+      id: generateId(),
+      title,
+      messages: [],
+      createdAt: new Date()
+    }
+    conversations.value.push(conversation)
+    return conversation
+  }
+  
+  return {
+    conversations,
+    currentConversation,
+    addMessage,
+    createConversation
+  }
+})
+```
+
+### 路由配置
+```typescript
+// router/index.ts
+import { createRouter, createWebHistory } from 'vue-router'
+import HomeView from '@/views/HomeView.vue'
+import ChatView from '@/views/ChatView.vue'
+import FileManageView from '@/views/FileManageView.vue'
+import SettingsView from '@/views/SettingsView.vue'
+
+const routes = [
+  {
+    path: '/',
+    name: 'home',
+    component: HomeView
+  },
+  {
+    path: '/chat',
+    name: 'chat',
+    component: ChatView
+  },
+  {
+    path: '/files',
+    name: 'files',
+    component: FileManageView
+  },
+  {
+    path: '/settings',
+    name: 'settings',
+    component: SettingsView
+  }
+]
+
+export const router = createRouter({
+  history: createWebHistory(),
+  routes
+})
+```
+
+## 📊 项目结构说明
+
+### 组件层次
+```
+App.vue
+├── Layout.vue
+│   ├── Sidebar.vue
+│   └── MainContent
+│       ├── HomeView.vue
+│       ├── ChatView.vue
+│       ├── FileManageView.vue
+│       └── SettingsView.vue
+```
+
+### 数据流
+```
+View Component
+    ↓
+Store (Pinia)
+    ↓
+API Service
+    ↓
+Backend API
+```
+
+### 文件组织
+- **`apis/`**: API 接口封装
+- **`components/`**: 可复用组件
+- **`views/`**: 页面级组件
+- **`store/`**: 状态管理
+- **`utils/`**: 工具函数
+- **`router/`**: 路由配置
+
+## 🚀 部署指南
+
+### 构建生产版本
+```bash
+npm run build
+```
+
+### 部署到服务器
+```bash
+# 将 dist 目录上传到服务器
+scp -r dist/* user@server:/var/www/html/
+```
+
+### Nginx 配置
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+    root /var/www/html;
+    index index.html;
+    
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+    
+    location /api {
+        proxy_pass http://localhost:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+## 🔧 开发工具
+
+### VS Code 推荐插件
+- Vue Language Features (Volar)
+- TypeScript Vue Plugin (Volar)
+- ESLint
+- Prettier
+- Auto Rename Tag
+
+### 调试工具
+- Vue DevTools
+- Chrome DevTools
+- Network 面板
+- Console 面板
