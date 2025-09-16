@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![MediAgent Logo](https://via.placeholder.com/200x80/4CAF50/FFFFFF?text=MediAgent)
+<img src="./src/frontend/public/MediAgent.png" alt="MediAgent Logo" width="200">
 
 **一个现代化的智能医疗助手系统**
 
@@ -25,7 +25,7 @@ MediAgent/
 ├── src/
 │   ├── frontend/          # Vue 3 前端应用
 │   ├── server_agent/      # FastAPI 后端服务
-│   └── server_new/        # 数据库服务
+│   └── server_new/        # 其他架构
 ├── docs/                  # 项目文档
 └── requirements.txt       # Python 依赖
 ```
