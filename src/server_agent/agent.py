@@ -28,24 +28,44 @@ class MCPAgent:
         # 动态维护工具列表和工具到服务器的映射，但是目前没有做重名工具的处理，后续有需要可能需要添加命名空间的功能
 
     async def init_tools(self):
-        self.mcp_clients = await load_all_clients()
-        self.tools.clear()
-        self._tool_map.clear()
-        # 汇总所有 MCP 服务器的工具
-        for mc in self.mcp_clients:
-            tl = await mc.list_tools()
-            for t in tl:
-                name = t["name"]
-                # 如需防止不同服务器重名工具冲突，这里可引入命名空间（如 f"{mc.server_name}.{name}"）
-                self.tools.append({
-                    "type": "function",
-                    "function": {
-                        "name": name,
-                        "description": t["description"],
-                        "parameters": t["input_schema"]  # 直接使用
-                    }
-                })  # 把 MCP 的工具描述（t["name"] / t["description"] / t["input_schema"]）转换为 OpenAI 工具列表（self.tools）——这样模型才能用 tool_calls 方式“请求调用”这些工具
-                self._tool_map[name] = mc
+        try:
+            self.mcp_clients = await load_all_clients()
+            self.tools.clear()
+            self._tool_map.clear()
+            
+            if not self.mcp_clients:
+                print("警告: 没有可用的MCP客户端，将使用纯LLM模式")
+                return
+            
+            # 汇总所有 MCP 服务器的工具
+            for mc in self.mcp_clients:
+                try:
+                    tl = await mc.list_tools()
+                    for t in tl:
+                        name = t["name"]
+                        # 如需防止不同服务器重名工具冲突，这里可引入命名空间（如 f"{mc.server_name}.{name}"）
+                        self.tools.append({
+                            "type": "function",
+                            "function": {
+                                "name": name,
+                                "description": t["description"],
+                                "parameters": t["input_schema"]  # 直接使用
+                            }
+                        })  # 把 MCP 的工具描述（t["name"] / t["description"] / t["input_schema"]）转换为 OpenAI 工具列表（self.tools）——这样模型才能用 tool_calls 方式"请求调用"这些工具
+                        self._tool_map[name] = mc
+                    print(f"从MCP客户端加载了 {len(tl)} 个工具")
+                except Exception as e:
+                    print(f"MCP客户端工具加载失败: {e}")
+                    continue
+            
+            print(f"总共加载了 {len(self.tools)} 个工具")
+            
+        except Exception as e:
+            print(f"MCP工具初始化失败: {e}")
+            print("将使用纯LLM模式（无工具）")
+            self.mcp_clients = []
+            self.tools = []
+            self._tool_map = {}
 
     async def _call_tool(self, name: str, arguments_json: str | dict[str, Any]) -> str:
         # —— 解析参数 & 路由到对应的 MCP 客户端 ——

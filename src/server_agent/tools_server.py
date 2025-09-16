@@ -4,7 +4,17 @@ import pathlib
 from logging.handlers import TimedRotatingFileHandler
 
 # 导入工具注册函数
-from tools import register_all_tools
+try:
+    from .tools import register_all_tools
+except ImportError:
+    try:
+        from src.server_agent.tools import register_all_tools
+    except ImportError:
+        # 添加当前目录到Python路径
+        import sys
+        current_dir = pathlib.Path(__file__).parent
+        sys.path.insert(0, str(current_dir))
+        from tools import register_all_tools
 
 # ========== 日志配置 ==========
 LOG_DIR = pathlib.Path(__file__).parent / "logs"

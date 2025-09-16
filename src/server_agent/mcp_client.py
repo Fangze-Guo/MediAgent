@@ -21,7 +21,23 @@ class MCPClient:
 
     async def __aenter__(self):
         parts = shlex.split(self.launch_cmd, posix=(os.name != "nt"))
-        params = StdioServerParameters(command=parts[0], args=parts[1:], env=None)
+        
+        # 设置工作目录为项目根目录
+        import pathlib
+        project_root = pathlib.Path(__file__).parent.parent.parent
+        
+        # 修改命令，使用绝对路径
+        if len(parts) > 1 and parts[1] and not pathlib.Path(parts[1]).is_absolute():
+            parts[1] = str(project_root / parts[1])
+        
+        print(f"启动MCP服务器: {' '.join(parts)}")
+        print(f"工作目录: {project_root}")
+        
+        params = StdioServerParameters(
+            command=parts[0], 
+            args=parts[1:], 
+            env=None
+        )
         stdio_transport = await self.exit_stack.enter_async_context(stdio_client(params))
         stdio, write = stdio_transport
         self.session = await self.exit_stack.enter_async_context(ClientSession(stdio, write))
@@ -52,10 +68,38 @@ class MCPClient:
         }
 
 async def load_all_clients() -> List[MCPClient]:
-    servers = MCP_SERVERS.split(";")
+    # 获取项目根目录
+    import pathlib
+    project_root = pathlib.Path(__file__).parent.parent.parent
+    tools_server_path = project_root / "src" / "server_agent" / "tools_server.py"
+    
+    # 如果没有配置MCP_SERVERS或配置无效，使用默认配置
+    if not MCP_SERVERS or not MCP_SERVERS.strip():
+        servers = [f"python {tools_server_path}"]
+    else:
+        servers = MCP_SERVERS.split(";")
+        # 检查并修复路径
+        fixed_servers = []
+        for s in servers:
+            s = s.strip()
+            if s and "tools_server.py" in s:
+                # 如果路径中包含tools_server.py，使用绝对路径
+                fixed_servers.append(f"python {tools_server_path}")
+            elif s:
+                fixed_servers.append(s)
+        servers = fixed_servers
+    
+    print(f"MCP服务器配置: {servers}")
+    
     clients = []
     for s in servers:
-        c = MCPClient(s.strip())
-        await c.__aenter__()
-        clients.append(c)
+        try:
+            c = MCPClient(s.strip())
+            await c.__aenter__()
+            clients.append(c)
+            print(f"成功加载MCP客户端: {s}")
+        except Exception as e:
+            print(f"Failed to load MCP client '{s}': {e}")
+            # 继续加载其他客户端，不因为一个失败而停止
+            continue
     return clients

@@ -120,24 +120,45 @@ def setup_exception_handlers(app: FastAPI):
 
 def handle_service_exception(func):
     """服务层异常处理装饰器"""
-
-    async def wrapper(*args, **kwargs):
-        try:
-            return await func(*args, **kwargs)
-        except MediAgentException:
-            # 重新抛出 MediAgent 异常
-            raise
-        except Exception as e:
-            # 将其他异常包装为 ServiceError
-            logger.error(f"Service error in {func.__name__}: {str(e)}")
-            logger.debug(f"Traceback: {traceback.format_exc()}")
-            from .custom_exceptions import ServiceError
-            raise ServiceError(
-                detail=f"Service error in {func.__name__}: {str(e)}",
-                service_name=func.__name__
-            )
-
-    return wrapper
+    import inspect
+    
+    # 检查是否是异步生成器函数
+    if inspect.isasyncgenfunction(func):
+        async def async_gen_wrapper(*args, **kwargs):
+            try:
+                async for item in func(*args, **kwargs):
+                    yield item
+            except MediAgentException:
+                # 重新抛出 MediAgent 异常
+                raise
+            except Exception as e:
+                # 将其他异常包装为 ServiceError
+                logger.error(f"Service error in {func.__name__}: {str(e)}")
+                logger.debug(f"Traceback: {traceback.format_exc()}")
+                from .custom_exceptions import ServiceError
+                raise ServiceError(
+                    detail=f"Service error in {func.__name__}: {str(e)}",
+                    service_name=func.__name__
+                )
+        return async_gen_wrapper
+    else:
+        # 普通异步函数
+        async def wrapper(*args, **kwargs):
+            try:
+                return await func(*args, **kwargs)
+            except MediAgentException:
+                # 重新抛出 MediAgent 异常
+                raise
+            except Exception as e:
+                # 将其他异常包装为 ServiceError
+                logger.error(f"Service error in {func.__name__}: {str(e)}")
+                logger.debug(f"Traceback: {traceback.format_exc()}")
+                from .custom_exceptions import ServiceError
+                raise ServiceError(
+                    detail=f"Service error in {func.__name__}: {str(e)}",
+                    service_name=func.__name__
+                )
+        return wrapper
 
 
 def handle_mapper_exception(func):
