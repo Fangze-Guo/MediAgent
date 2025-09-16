@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import os
 
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -17,14 +18,10 @@ except Exception:
     DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
 class Settings(BaseSettings):
-    env: str = "dev"
-    data_dir: Path = Path(DATA_DIR)
+    MODEL_URL=os.getenv("MODEL_URL")
+    MODEL_API_KEY=os.getenv("MODEL_API_KEY")
+    MODEL=os.getenv("MODEL")
 
-    # v2: SettingsConfigDict
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-    )
 
 class Services:
     def __init__(self, settings: Settings):
