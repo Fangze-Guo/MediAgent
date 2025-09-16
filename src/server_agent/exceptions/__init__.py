@@ -13,7 +13,7 @@ from .custom_exceptions import (
     ExternalServiceError,
     BusinessLogicError
 )
-from .exception_handler import setup_exception_handlers
+from .exception_handler import setup_exception_handlers, handle_service_exception, handle_mapper_exception
 from .error_codes import ErrorCode
 
 __all__ = [
@@ -28,5 +28,7 @@ __all__ = [
     'ExternalServiceError',
     'BusinessLogicError',
     'setup_exception_handlers',
+    'handle_service_exception',
+    'handle_mapper_exception',
     'ErrorCode'
 ]

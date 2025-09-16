@@ -12,8 +12,8 @@ from typing import Optional, Dict, Any, Tuple, List
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from .base_mapper import BaseMapper
-from .paths import in_data
+from src.server_agent.mapper.base_mapper import BaseMapper
+from src.server_agent.mapper.paths import in_data
 
 logger = logging.getLogger(__name__)
 

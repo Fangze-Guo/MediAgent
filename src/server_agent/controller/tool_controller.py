@@ -4,7 +4,7 @@
 from pydantic import BaseModel
 
 from .base import BaseController
-from ..service import ToolService
+from src.server_agent.service import ToolService
 
 
 class ToolReq(BaseModel):

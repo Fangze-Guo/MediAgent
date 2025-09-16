@@ -9,7 +9,7 @@ from .tool_controller import ToolController
 from .file_controller import FileController
 from .system_controller import SystemController
 from .user_controller import UserController
-from ..exceptions import setup_exception_handlers
+from src.server_agent.exceptions import setup_exception_handlers
 
 
 def create_app() -> FastAPI:

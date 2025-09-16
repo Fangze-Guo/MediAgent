@@ -5,7 +5,7 @@
 import logging
 from typing import Dict, Any, List
 
-from ..exceptions import NotFoundError, ServiceError, handle_service_exception
+from src.server_agent.exceptions import NotFoundError, ServiceError, handle_service_exception
 
 logger = logging.getLogger(__name__)
 

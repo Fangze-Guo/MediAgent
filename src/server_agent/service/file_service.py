@@ -9,7 +9,7 @@ from typing import List, Optional, Dict, Any, Tuple
 import logging
 
 from fastapi import UploadFile
-from ..exceptions import ValidationError, NotFoundError, ServiceError, handle_service_exception
+from src.server_agent.exceptions import ValidationError, NotFoundError, ServiceError, handle_service_exception
 
 logger = logging.getLogger(__name__)
 

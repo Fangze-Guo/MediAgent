@@ -5,8 +5,8 @@ from typing import Any
 import httpx  # 用于更精细地捕获底层 HTTP 异常
 from openai import AsyncOpenAI
 
-from mcp_client import load_all_clients
-from constants.EnvConfig import BASE_URL, API_KEY, MODEL
+from src.server_agent.mcp_client import load_all_clients
+from src.server_agent.constants.EnvConfig import BASE_URL, API_KEY, MODEL
 
 # === 可按需调整的超时/重试策略（集中配置更清晰） ===
 LLM_REQUEST_TIMEOUT_SEC = 60  # 单次 LLM 请求的总超时（上层保护）

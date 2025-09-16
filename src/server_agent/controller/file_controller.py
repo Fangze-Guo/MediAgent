@@ -7,8 +7,8 @@ from fastapi import UploadFile, File, Form
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from src.server_agent.service import FileService
 from .base import BaseController
-from ..service import FileService
 
 
 # ==================== 数据模型 ====================
@@ -160,8 +160,8 @@ class FileController(BaseController):
 
         @self.router.post("/local/upload")
         async def upload_to_local_directory(
-            file: UploadFile = File(...),
-            target_dir: str = Form(".")
+                file: UploadFile = File(...),
+                target_dir: str = Form(".")
         ):
             """上传文件到指定本地目录"""
             return await self.file_service.upload_to_local_directory(file, target_dir)
@@ -191,8 +191,8 @@ class FileController(BaseController):
 
         @self.router.post("/output/upload")
         async def upload_to_output_directory(
-            file: UploadFile = File(...),
-            target_dir: str = Form(".")
+                file: UploadFile = File(...),
+                target_dir: str = Form(".")
         ):
             """上传文件到指定输出目录"""
             return await self.file_service.upload_to_output_directory(file, target_dir)

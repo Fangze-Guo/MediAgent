@@ -5,11 +5,11 @@ from __future__ import annotations
 
 from typing import TypedDict, Optional, Dict, Any
 
-from ..mapper.user_mapper import user_mapper
-from ..exceptions import (
-    ValidationError, ConflictError, NotFoundError, 
+from src.server_agent.exceptions import (
+    ValidationError, ConflictError, NotFoundError,
     AuthenticationError, DatabaseError, handle_service_exception
 )
+from src.server_agent.mapper.user_mapper import user_mapper
 
 
 # ==================== 数据模型 ====================

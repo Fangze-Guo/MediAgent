@@ -4,15 +4,16 @@
 from __future__ import annotations
 
 from typing import Optional, Dict, Any
+
 from fastapi import Depends, Header
 from pydantic import BaseModel, Field
 
 from .base import BaseController
-from ..service.user_service import register_user, login_user, get_user_by_token, update_user_info
-from ..exceptions import (
-    ValidationError, AuthenticationError, ConflictError, 
-    NotFoundError, ServiceError, ErrorCode
+from src.server_agent.exceptions import (
+    ValidationError, AuthenticationError, ConflictError,
+    NotFoundError, ServiceError
 )
+from src.server_agent.service.user_service import register_user, login_user, get_user_by_token, update_user_info
 
 
 # ==================== 数据模型 ====================
@@ -123,8 +124,8 @@ class UserController(BaseController):
 
         @self.router.put("/info", response_model=UpdateUserOut)
         async def update_user_info_endpoint(
-            payload: UpdateUserIn,
-            current_user: Dict[str, Any] = Depends(self._get_current_user)
+                payload: UpdateUserIn,
+                current_user: Dict[str, Any] = Depends(self._get_current_user)
         ):
             """更新用户信息接口"""
             # 检查是否提供了至少一个要更新的字段
@@ -132,20 +133,20 @@ class UserController(BaseController):
                 raise ValidationError(
                     detail="At least one field (user_name or password) must be provided"
                 )
-            
+
             # 调用服务层更新用户信息
             success = await update_user_info(
                 current_user["uid"],
                 payload.user_name,
                 payload.password
             )
-            
+
             if not success:
                 raise ServiceError(
                     detail="Failed to update user info",
                     service_name="update_user_info"
                 )
-            
+
             return {"message": "user info updated successfully"}
 
     # ==================== 工具方法 ====================
@@ -157,7 +158,7 @@ class UserController(BaseController):
                 detail="Invalid authorization header",
                 context={"header": "Authorization"}
             )
-        
+
         token = authorization[7:]  # 移除 "Bearer " 前缀
         user = await get_user_by_token(token)
         if not user:

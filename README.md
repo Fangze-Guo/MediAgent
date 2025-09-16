@@ -50,12 +50,16 @@ MediAgent/
 git clone <repository-url>
 cd MediAgent
 
-# 2. 启动后端服务
+# 2. 安装依赖
 pip install -r requirements.txt
-cd src/server_agent && python main.py
 
-# 3. 启动前端应用 (新终端)
-cd src/frontend && npm install && npm run dev
+# 3. 启动后端服务
+python main.py
+
+# 4. 启动前端应用 (新终端)
+cd src/frontend
+npm install
+npm run dev
 ```
 
 ### 🌐 访问应用

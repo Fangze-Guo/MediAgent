@@ -5,9 +5,10 @@
 import asyncio
 from typing import List
 
-from agent import MCPAgent
-from constants.EnvConfig import BASE_URL, MODEL
 from fastapi import APIRouter
+
+from src.server_agent.agent import MCPAgent
+from src.server_agent.constants.EnvConfig import BASE_URL, MODEL
 
 # 全局变量
 agent = MCPAgent()
@@ -31,4 +32,3 @@ class BaseController:
             if not _initialized:
                 await self.agent.init_tools()
                 _initialized = True
-

@@ -7,7 +7,7 @@ import logging
 from typing import Dict, Any
 from PIL import Image
 
-from ..exceptions import ServiceError, handle_service_exception
+from src.server_agent.exceptions import ServiceError, handle_service_exception
 
 logger = logging.getLogger(__name__)
 
