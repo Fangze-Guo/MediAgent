@@ -33,6 +33,31 @@
         </a-list>
       </div>
     </div>
+
+    <!-- 用户信息区域 - 移到底部 -->
+    <div class="user-section">
+      <div class="user-info">
+        <div class="user-avatar">
+          {{ currentUser?.user_name?.charAt(0).toUpperCase() || 'U' }}
+        </div>
+        <div class="user-details">
+          <div class="user-name">{{ currentUser?.user_name || '用户' }}</div>
+          <div class="user-uid">UID: {{ currentUser?.uid || '--' }}</div>
+        </div>
+      </div>
+      <a-button 
+        type="text" 
+        danger 
+        size="small" 
+        @click="handleLogout"
+        class="logout-btn"
+      >
+        <template #icon>
+          <LogoutOutlined />
+        </template>
+        退出登录
+      </a-button>
+    </div>
   </div>
 </template>
 
@@ -43,10 +68,11 @@
  * 提供会话切换功能
  */
 import { useConversationsStore } from '@/store/conversations'
+import { useAuthStore } from '@/store/auth'
 import { useRoute, useRouter } from 'vue-router'
 import { computed, h, ref } from 'vue'
 import { MenuProps, message, Modal } from 'ant-design-vue'
-import { CommentOutlined, FolderOutlined, UploadOutlined } from '@ant-design/icons-vue'
+import { CommentOutlined, FolderOutlined, UploadOutlined, LogoutOutlined } from '@ant-design/icons-vue'
 
 // 路由相关
 const router = useRouter()
@@ -54,12 +80,15 @@ const route = useRoute()
 
 // 状态管理
 const conversationsStore = useConversationsStore()
+const authStore = useAuthStore()
 
 // 计算属性
 /** 当前活跃的会话ID，从路由参数获取 */
 const currentId = computed(() => String(route.params.id || ''))
 /** 会话列表，从store获取 */
 const conversations = computed(() => conversationsStore.conversations)
+/** 当前用户信息 */
+const currentUser = computed(() => authStore.currentUser)
 
 const selectedKeys = ref(['1']);
 const openKeys = ref(['sub1']);
@@ -154,6 +183,22 @@ const handleDeleteConversation = (id: string) => {
     }
   })
 }
+
+// 处理用户登出
+const handleLogout = () => {
+  Modal.confirm({
+    title: '确认退出',
+    content: '确定要退出登录吗？',
+    okText: '退出',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: () => {
+      authStore.logout()
+      router.push('/login')
+      message.success('已退出登录')
+    }
+  })
+}
 </script>
 
 <style scoped>
@@ -166,6 +211,7 @@ const handleDeleteConversation = (id: string) => {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  position: relative;
 }
 
 /* 菜单项样式调整 */
@@ -201,6 +247,7 @@ const handleDeleteConversation = (id: string) => {
 .sidebar-content {
   flex: 1;
   padding: 20px;
+  padding-bottom: 120px; /* 为底部用户信息区域留出空间 */
   overflow-y: auto;
 }
 
@@ -283,6 +330,78 @@ const handleDeleteConversation = (id: string) => {
 /* 删除按钮悬停效果 */
 .delete-btn:hover {
   background-color: #fff1f0;
+}
+
+/* 用户信息区域 - 固定在底部 */
+.user-section {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 16px 20px;
+  background: white;
+  border-top: 1px solid #f0f0f0;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.user-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #1890ff 0%, #40a9ff 100%);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 18px;
+  margin-right: 12px;
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.3);
+  transition: all 0.3s ease;
+}
+
+.user-avatar:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.4);
+}
+
+.user-details {
+  flex: 1;
+}
+
+.user-name {
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+.user-uid {
+  font-size: 12px;
+  color: #999;
+  background: #f5f5f5;
+  padding: 2px 6px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.logout-btn {
+  width: 100%;
+  margin-top: 8px;
+  height: 32px;
+  border-radius: 6px;
+  transition: all 0.3s ease;
+}
+
+.logout-btn:hover {
+  background: #fff2f0;
+  border-color: #ff4d4f;
 }
 
 /* 滚动条：窄条、圆角、轻度着色 */

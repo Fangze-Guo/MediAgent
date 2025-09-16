@@ -9,6 +9,7 @@ import router from './router'
 import './style.css'
 import Antd from 'ant-design-vue'
 import 'ant-design-vue/dist/reset.css'
+import { useAuthStore } from '@/store/auth'
 
 /**
  * 创建Vue应用实例
@@ -35,3 +36,10 @@ app.use(Antd)
  * 将Vue应用挂载到id为'app'的DOM元素上
  */
 app.mount('#app')
+
+/**
+ * 初始化认证状态
+ * 在应用启动时检查本地存储的token并验证用户状态
+ */
+const authStore = useAuthStore()
+authStore.checkAuth()

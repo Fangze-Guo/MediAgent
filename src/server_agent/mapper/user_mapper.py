@@ -10,7 +10,6 @@ import logging
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple, List
 from dataclasses import dataclass
-from datetime import datetime, timezone
 
 from src.server_agent.mapper.base_mapper import BaseMapper
 from src.server_agent.mapper.paths import in_data
@@ -23,11 +22,8 @@ class User:
     """用户数据模型"""
     uid: int
     user_name: str
-    password_hash: str
+    password: str
     token: Optional[str] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-    last_login: Optional[datetime] = None
 
 
 class UserMapper(BaseMapper):
@@ -68,7 +64,7 @@ class UserMapper(BaseMapper):
             User 对象或 None
         """
         query = """
-            SELECT uid, user_name, password, token, created_at, updated_at, last_login 
+            SELECT uid, user_name, password, token
             FROM users 
             WHERE user_name = ? COLLATE NOCASE 
             LIMIT 1
@@ -77,13 +73,10 @@ class UserMapper(BaseMapper):
         
         if result:
             return User(
-                uid=result[0],
-                user_name=result[1],
-                password_hash=result[2],
-                token=result[3],
-                created_at=datetime.fromisoformat(result[4]) if result[4] else None,
-                updated_at=datetime.fromisoformat(result[5]) if result[5] else None,
-                last_login=datetime.fromisoformat(result[6]) if result[6] else None
+                uid=result['uid'],
+                user_name=result['user_name'],
+                password=result['password'],
+                token=result['token']
             )
         return None
     
@@ -98,7 +91,7 @@ class UserMapper(BaseMapper):
             User 对象或 None
         """
         query = """
-            SELECT uid, user_name, password, token, created_at, updated_at, last_login 
+            SELECT uid, user_name, password, token
             FROM users 
             WHERE token = ? 
             LIMIT 1
@@ -107,13 +100,10 @@ class UserMapper(BaseMapper):
         
         if result:
             return User(
-                uid=result[0],
-                user_name=result[1],
-                password_hash=result[2],
-                token=result[3],
-                created_at=datetime.fromisoformat(result[4]) if result[4] else None,
-                updated_at=datetime.fromisoformat(result[5]) if result[5] else None,
-                last_login=datetime.fromisoformat(result[6]) if result[6] else None
+                uid=result['uid'],
+                user_name=result['user_name'],
+                password=result['password'],
+                token=result['token']
             )
         return None
     
@@ -128,7 +118,7 @@ class UserMapper(BaseMapper):
             User 对象或 None
         """
         query = """
-            SELECT uid, user_name, password, token, created_at, updated_at, last_login 
+            SELECT uid, user_name, password, token
             FROM users 
             WHERE uid = ? 
             LIMIT 1
@@ -137,13 +127,10 @@ class UserMapper(BaseMapper):
         
         if result:
             return User(
-                uid=result[0],
-                user_name=result[1],
-                password_hash=result[2],
-                token=result[3],
-                created_at=datetime.fromisoformat(result[4]) if result[4] else None,
-                updated_at=datetime.fromisoformat(result[5]) if result[5] else None,
-                last_login=datetime.fromisoformat(result[6]) if result[6] else None
+                uid=result['uid'],
+                user_name=result['user_name'],
+                password=result['password'],
+                token=result['token']
             )
         return None
     
@@ -198,15 +185,14 @@ class UserMapper(BaseMapper):
         """
         uid = await self.generate_unique_uid()
         password_hash = self._hash_password(password)
-        now = datetime.now(timezone.utc).isoformat()
         
         operations = [
             {
                 'query': """
-                    INSERT INTO users (uid, user_name, password, token, created_at, updated_at) 
-                    VALUES (?, ?, ?, NULL, ?, ?)
+                    INSERT INTO users (uid, user_name, password, token) 
+                    VALUES (?, ?, ?, NULL)
                 """,
-                'params': (uid, user_name, password_hash, now, now)
+                'params': (uid, user_name, password_hash)
             }
         ]
         
@@ -215,10 +201,8 @@ class UserMapper(BaseMapper):
         return User(
             uid=uid,
             user_name=user_name,
-            password_hash=password_hash,
-            token=None,
-            created_at=datetime.fromisoformat(now),
-            updated_at=datetime.fromisoformat(now)
+            password=password_hash,
+            token=None
         )
     
     async def update_user_token(self, uid: int, token: str) -> bool:
@@ -232,12 +216,10 @@ class UserMapper(BaseMapper):
         Returns:
             更新是否成功
         """
-        now = datetime.now(timezone.utc).isoformat()
-        
         operations = [
             {
-                'query': "UPDATE users SET token = ?, updated_at = ? WHERE uid = ?",
-                'params': (token, now, uid)
+                'query': "UPDATE users SET token = ? WHERE uid = ?",
+                'params': (token, uid)
             }
         ]
         
@@ -264,7 +246,6 @@ class UserMapper(BaseMapper):
             return False
         
         operations = []
-        now = datetime.now(timezone.utc).isoformat()
         
         if user_name:
             # 检查新用户名是否已存在
@@ -275,15 +256,15 @@ class UserMapper(BaseMapper):
                     return False  # 用户名已存在
             
             operations.append({
-                'query': "UPDATE users SET user_name = ?, updated_at = ? WHERE uid = ?",
-                'params': (user_name, now, uid)
+                'query': "UPDATE users SET user_name = ? WHERE uid = ?",
+                'params': (user_name, uid)
             })
         
         if password:
             password_hash = self._hash_password(password)
             operations.append({
-                'query': "UPDATE users SET password = ?, updated_at = ? WHERE uid = ?",
-                'params': (password_hash, now, uid)
+                'query': "UPDATE users SET password = ? WHERE uid = ?",
+                'params': (password_hash, uid)
             })
         
         if not operations:
@@ -296,73 +277,9 @@ class UserMapper(BaseMapper):
             logger.error(f"Failed to update user info: {e}")
             return False
     
-    async def update_last_login(self, uid: int) -> bool:
-        """更新最后登录时间"""
-        now = datetime.now(timezone.utc).isoformat()
-        
-        operations = [
-            {
-                'query': "UPDATE users SET last_login = ?, updated_at = ? WHERE uid = ?",
-                'params': (now, now, uid)
-            }
-        ]
-        
-        try:
-            await self.execute_transaction(operations)
-            return True
-        except Exception as e:
-            logger.error(f"Failed to update last login: {e}")
-            return False
-    
-    async def delete_user(self, uid: int) -> bool:
-        """删除用户"""
-        operations = [
-            {
-                'query': "DELETE FROM users WHERE uid = ?",
-                'params': (uid,)
-            }
-        ]
-        
-        try:
-            await self.execute_transaction(operations)
-            return True
-        except Exception as e:
-            logger.error(f"Failed to delete user: {e}")
-            return False
-    
-    async def get_user_count(self) -> int:
-        """获取用户总数"""
-        query = "SELECT COUNT(*) FROM users"
-        result = await self.execute_query(query, fetch_one=True)
-        return result[0] if result else 0
-    
-    async def get_users_paginated(self, offset: int = 0, limit: int = 100) -> List[User]:
-        """分页获取用户列表"""
-        query = """
-            SELECT uid, user_name, password, token, created_at, updated_at, last_login 
-            FROM users 
-            ORDER BY created_at DESC 
-            LIMIT ? OFFSET ?
-        """
-        results = await self.execute_query(query, (limit, offset), fetch_all=True)
-        
-        users = []
-        for result in results:
-            users.append(User(
-                uid=result[0],
-                user_name=result[1],
-                password_hash=result[2],
-                token=result[3],
-                created_at=datetime.fromisoformat(result[4]) if result[4] else None,
-                updated_at=datetime.fromisoformat(result[5]) if result[5] else None,
-                last_login=datetime.fromisoformat(result[6]) if result[6] else None
-            ))
-        
-        return users
-    
     async def verify_password(self, user: User, password: str) -> bool:
         """验证密码"""
-        return user.password_hash == self._hash_password(password)
+        return user.password == self._hash_password(password)
 
 
 # 全局实例

@@ -68,14 +68,11 @@ const createAxiosInstance = (): AxiosInstance => {
   // 请求拦截器
   instance.interceptors.request.use(
     (config: InternalAxiosRequestConfig) => {
-      // 可以在这里添加认证token等
-      // const token = localStorage.getItem('token')
-      // if (token) {
-      //   config.headers = {
-      //     ...config.headers,
-      //     Authorization: `Bearer ${token}`
-      //   }
-      // }
+      // 添加认证token
+      const token = localStorage.getItem('mediagent_token')
+      if (token) {
+        config.headers.set('Authorization', `Bearer ${token}`)
+      }
       
       console.log('发送请求:', config.method?.toUpperCase(), config.url)
       return config

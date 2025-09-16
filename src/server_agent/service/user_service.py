@@ -66,19 +66,16 @@ async def register_user(user_name: str, password: str) -> RegisterResult:
             context={"username": user_name}
         )
 
-    # 2) 生成唯一 10 位 UID
-    uid = await user_mapper.generate_unique_uid()
-
-    # 3) 创建用户
-    success = await user_mapper.create_user(uid, user_name, password)
-    if not success:
+    # 2) 创建用户（内部会自动生成 UID）
+    user = await user_mapper.create_user(user_name, password)
+    if not user:
         raise DatabaseError(
             detail="failed to create user",
             operation="create_user",
-            context={"uid": uid, "username": user_name}
+            context={"username": user_name}
         )
 
-    return {"ok": True, "code": "REGISTERED", "message": "registered successfully", "uid": uid}
+    return {"ok": True, "code": "REGISTERED", "message": "registered successfully", "uid": user.uid}
 
 
 @handle_service_exception
@@ -108,8 +105,8 @@ async def login_user(user_name: str, password: str) -> LoginResult:
             detail="username not found"
         )
 
-    uid, stored_password = user_row
-    if password != stored_password:  # 明文比对；仅用于 demo
+    # 验证密码
+    if not await user_mapper.verify_password(user_row, password):
         raise AuthenticationError(
             detail="incorrect password",
             context={"username": user_name}
@@ -117,12 +114,12 @@ async def login_user(user_name: str, password: str) -> LoginResult:
 
     # 生成唯一 token，更新到该用户
     token = await user_mapper.generate_unique_token(10)
-    success = await user_mapper.update_user_token(uid, token)
+    success = await user_mapper.update_user_token(user_row.uid, token)
     if not success:
         raise DatabaseError(
             detail="failed to update token",
             operation="update_user_token",
-            context={"uid": uid}
+            context={"uid": user_row.uid}
         )
 
     return {"ok": True, "code": "LOGGED_IN", "message": "login successful", "token": token}
@@ -145,9 +142,9 @@ async def get_user_by_token(token: str) -> Optional[Dict[str, Any]]:
     user_row = await user_mapper.find_user_by_token(token)
     if user_row:
         return {
-            "uid": user_row[0],
-            "user_name": user_row[1],
-            "token": user_row[2]
+            "uid": user_row.uid,
+            "user_name": user_row.user_name,
+            "token": user_row.token
         }
     return None
 

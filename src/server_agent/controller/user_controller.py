@@ -153,13 +153,18 @@ class UserController(BaseController):
 
     async def _get_current_user(self, authorization: str = Header(None)) -> Dict[str, Any]:
         """根据token获取用户信息的依赖函数"""
-        if not authorization or not authorization.startswith("Bearer "):
+        if not authorization:
             raise AuthenticationError(
-                detail="Invalid authorization header",
+                detail="Missing authorization header",
                 context={"header": "Authorization"}
             )
 
-        token = authorization[7:]  # 移除 "Bearer " 前缀
+        # 支持多种格式：Bearer token 或直接 token
+        if authorization.startswith("Bearer "):
+            token = authorization[7:]  # 移除 "Bearer " 前缀
+        else:
+            token = authorization  # 直接使用 token
+
         user = await get_user_by_token(token)
         if not user:
             raise AuthenticationError(

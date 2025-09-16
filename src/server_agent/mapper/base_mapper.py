@@ -99,7 +99,7 @@ class BaseMapper(ABC):
 
     @handle_mapper_exception
     async def execute_query(self, query: str, params: tuple = (), fetch_one: bool = False, fetch_all: bool = False) -> \
-    Union[None, tuple, List[tuple]]:
+    Union[None, aiosqlite.Row, List[aiosqlite.Row]]:
         """
         执行查询语句
         
@@ -110,9 +110,11 @@ class BaseMapper(ABC):
             fetch_all: 是否获取所有行
             
         Returns:
-            查询结果
+            查询结果（支持对象属性访问）
         """
         async with self.get_connection() as db:
+            # 设置 row_factory 为 Row 对象，支持属性访问
+            db.row_factory = aiosqlite.Row
             async with db.execute(query, params) as cursor:
                 if fetch_one:
                     return await cursor.fetchone()
