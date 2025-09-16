@@ -17,11 +17,8 @@ class ConversationManager:
     - __init__(database_path, conversation_root)
     - create_conversation(owner_uid)
     - add_message_to_main(conversation_uid, content)
-    - get_messages(conversation_uid, target)  ← 新增
-
-    说明：
-    - 使用 aiosqlite 避免阻塞事件循环
-    - 针对同一 conversation_uid 的文件写入使用 asyncio.Lock 串行化，防止并发破坏 JSON
+    - get_messages(conversation_uid, target)
+    - add_message_to_stream(conversation_uid, target, content)  ← 新增（不存在即创建）
     """
 
     def __init__(self, database_path: str, conversation_root: str):
@@ -111,9 +108,6 @@ class ConversationManager:
     async def add_message_to_main(self, conversation_uid: str, content: str) -> Dict[str, Any]:
         """
         向主对话流（main_chat.json）追加一条消息。
-        入参：
-          - conversation_uid: 对话UID
-          - content: 要插入的内容（字符串）
         返回：
           - {"ok": True, "message": "添加消息成功"} 或错误信息
         """
@@ -151,24 +145,17 @@ class ConversationManager:
     async def get_messages(self, conversation_uid: str, target: str) -> Dict[str, Any]:
         """
         获取目标消息流（target.json）的 messages 内容。
-        入参：
-          - conversation_uid: 对话UID
-          - target: 目标消息流名（不含 .json），例如 "main_chat" / "agentA" / "agentB"
         返回：
           - 对话不存在：{"ok": False, "message": "该对话UID不存在"}
           - 目标文件不存在：{"ok": False, "message": "该对话不存在该目标消息流"}
           - 成功：{"ok": True, "message": "查询成功", "messages": [...]}
         """
-        # 1) 确认对话存在
         if not await self._conversation_uid_exists(conversation_uid):
             return {"ok": False, "message": "该对话UID不存在"}
 
-        # 2) 目标文件路径
         conv_dir = self.conversation_root / conversation_uid
         target_file = conv_dir / f"{target}.json"
 
-        # 读操作理论上不一定要加锁，但为避免和写入竞争导致 JSON 半写入
-        # 这里也复用会话锁，确保一致性
         lock = self._get_lock(conversation_uid)
         async with lock:
             if not target_file.exists():
@@ -179,12 +166,64 @@ class ConversationManager:
                 data = json.loads(raw)
                 messages = data.get("messages")
                 if not isinstance(messages, list):
-                    # 结构异常按失败处理（按你的规范，只有两类明确错误与成功；这里保守按“目标不存在”处理也可；
-                    # 我这里返回“目标不存在该消息流”以避免暴露结构细节）
                     return {"ok": False, "message": "该对话不存在该目标消息流"}
 
                 return {"ok": True, "message": "查询成功", "messages": messages}
 
             except Exception:
-                # 读取或解析异常，按“目标不存在该消息流”处理（也可返回“未知错误”，看你偏好）
+                return {"ok": False, "message": "该对话不存在该目标消息流"}
+
+    async def add_message_to_stream(self, conversation_uid: str, target: str, content: str) -> Dict[str, Any]:
+        """
+        向目标消息流（<target>.json）追加一条消息；若该流不存在则新建。
+        逻辑：
+          1) 校验对话UID是否存在，不存在 → "该对话ID不存在"
+          2) 寻找 <conversation_root>/<uid>/<target>.json
+             - 不存在：创建文件，写入
+               {
+                 "conversation_uid": <uid>,
+                 "message_flow_owner": <target>,
+                 "messages": []
+               }
+          3) 将消息追加到 messages 尾部
+          4) 成功 → "添加消息成功"；异常 → "未知错误"
+        """
+        # 1) 对话存在性
+        if not await self._conversation_uid_exists(conversation_uid):
+            return {"ok": False, "message": "该对话ID不存在"}
+
+        conv_dir = self.conversation_root / conversation_uid
+        target_file = conv_dir / f"{target}.json"
+
+        lock = self._get_lock(conversation_uid)
+        async with lock:
+            try:
+                if not target_file.exists():
+                    # 首次启用该消息流：创建并写入初始结构
+                    init_payload = {
+                        "conversation_uid": conversation_uid,
+                        "message_flow_owner": target,
+                        "messages": []
+                    }
+                    init_text = json.dumps(init_payload, ensure_ascii=False, indent=2)
+                    await asyncio.to_thread(target_file.write_text, init_text, "utf-8")
+
+                # 读现有内容
+                raw = await asyncio.to_thread(target_file.read_text, "utf-8")
+                data = json.loads(raw)
+
+                messages = data.get("messages")
+                if not isinstance(messages, list):
+                    return {"ok": False, "message": "未知错误"}
+
+                # 追加消息（最小字段需求）
+                messages.append({"content": content})
+                data["messages"] = messages
+
+                new_text = json.dumps(data, ensure_ascii=False, indent=2)
+                await asyncio.to_thread(target_file.write_text, new_text, "utf-8")
+
+                return {"ok": True, "message": "添加消息成功"}
+
+            except Exception:
                 return {"ok": False, "message": "未知错误"}
