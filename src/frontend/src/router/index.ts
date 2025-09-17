@@ -57,6 +57,15 @@ const routes: RouteRecordRaw[] = [
         }
     },
     {
+        path: '/medical-assistant',
+        name: 'MedicalAssistant',
+        component: () => import('@/views/MedicalAssistantView.vue'),
+        meta: {
+            title: 'MediAgent - 医学图像处理助手',
+            requiresAuth: true
+        }
+    },
+    {
         path: '/:pathMatch(.*)*',
         name: 'NotFound',
         component: () => import('@/views/NotFoundView.vue'),
@@ -98,6 +107,18 @@ router.beforeEach(async (to, _from, next) => {
             // 未登录，跳转到登录页
             next('/login')
             return
+        }
+        // 如果有token但没有用户信息，尝试获取用户信息
+        if (authStore.token && !authStore.user) {
+            try {
+                await authStore.fetchUserInfo()
+            } catch (error) {
+                console.error('Failed to fetch user info:', error)
+                // 如果获取用户信息失败，清除token并跳转到登录页
+                authStore.logout()
+                next('/login')
+                return
+            }
         }
     } else if (to.name === 'Login' && authStore.isLoggedIn) {
         // 已登录用户访问登录页，跳转到首页

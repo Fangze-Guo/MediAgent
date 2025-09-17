@@ -21,8 +21,8 @@ class FileService:
         # 文件上传配置
         self.UPLOAD_DIR = pathlib.Path("data")
         self.UPLOAD_DIR.mkdir(exist_ok=True)
-        self.MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
-        self.ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.csv'}
+        self.MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB（DICOM文件可能较大）
+        self.ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.csv', '.dcm', '.DCM', '.nii', '.nii.gz'}
         
         # 本地文件浏览配置
         self.LOCAL_FILES_DIR = pathlib.Path(".").resolve()
@@ -101,28 +101,36 @@ class FileService:
     @handle_service_exception
     async def get_files_list(self) -> Dict[str, Any]:
         """
-        获取文件列表
+        获取data目录中的所有文件列表（包括已上传和已存在的文件）
         
         Returns:
             文件列表
         """
         try:
             files = []
-            for file_path in self.UPLOAD_DIR.iterdir():
+            
+            # 递归遍历data目录
+            for file_path in self.UPLOAD_DIR.rglob("*"):
                 if file_path.is_file():
-                    file_id = file_path.stem
-                    file_ext = file_path.suffix
+                    # 计算相对路径
+                    relative_path = str(file_path.relative_to(self.UPLOAD_DIR)).replace('\\', '/')
+                    
+                    # 生成唯一ID
+                    file_id = f"data_{abs(hash(str(file_path)))}"
                     
                     stat = file_path.stat()
                     file_info = {
                         "id": file_id,
-                        "originalName": f"{file_id}{file_ext}",
+                        "originalName": file_path.name,
                         "size": stat.st_size,
-                        "type": self._get_content_type(file_ext),
-                        "path": str(file_path.resolve()),
+                        "type": self._get_content_type(file_path.suffix),
+                        "path": relative_path,
                         "uploadTime": datetime.fromtimestamp(stat.st_mtime).isoformat()
                     }
                     files.append(file_info)
+            
+            # 按修改时间排序（最新的在前）
+            files.sort(key=lambda x: x["uploadTime"], reverse=True)
             
             return {"files": files}
             
@@ -649,15 +657,27 @@ class FileService:
             '.csv': 'text/csv',
             '.txt': 'text/plain',
             '.json': 'application/json',
-            '.pdf': 'application/pdf'
+            '.pdf': 'application/pdf',
+            '.dcm': 'application/dicom',
+            '.DCM': 'application/dicom',
+            '.nii': 'application/nifti',
+            '.nii.gz': 'application/nifti'
         }
         return content_types.get(ext.lower(), 'application/octet-stream')
     
     def _find_file_by_id(self, file_id: str) -> Optional[pathlib.Path]:
         """根据文件ID查找文件路径"""
-        for file_path in self.UPLOAD_DIR.iterdir():
-            if file_path.is_file() and file_path.stem == file_id:
-                return file_path
+        # 如果是新的ID格式（data_开头），通过hash查找
+        if file_id.startswith("data_"):
+            for file_path in self.UPLOAD_DIR.rglob("*"):
+                if file_path.is_file():
+                    if f"data_{abs(hash(str(file_path)))}" == file_id:
+                        return file_path
+        else:
+            # 兼容旧的ID格式（文件名stem）
+            for file_path in self.UPLOAD_DIR.iterdir():
+                if file_path.is_file() and file_path.stem == file_id:
+                    return file_path
         return None
     
     def _get_safe_path(self, root_dir: pathlib.Path, path: str) -> pathlib.Path:

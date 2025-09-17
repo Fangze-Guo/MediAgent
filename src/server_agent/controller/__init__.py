@@ -9,6 +9,7 @@ from .tool_controller import ToolController
 from .file_controller import FileController
 from .system_controller import SystemController
 from .user_controller import UserController
+from .progress_controller import router as progress_router
 from src.server_agent.exceptions import setup_exception_handlers
 
 
@@ -42,6 +43,7 @@ def create_app() -> FastAPI:
     app.include_router(file_controller.router)
     app.include_router(system_controller.router)
     app.include_router(user_controller.router)
+    app.include_router(progress_router)
 
     # 设置异常处理器
     setup_exception_handlers(app)

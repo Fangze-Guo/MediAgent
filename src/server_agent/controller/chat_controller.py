@@ -15,6 +15,7 @@ class ChatReq(BaseModel):
     message: str
     history: List[Dict[str, Any]] = []
     files: List[Any] = []  # 这里应该是FileInfo类型，但为了避免循环导入暂时用List[Any]
+    assistant_type: str = "general"  # 助手类型：medical, data, document, general
 
 
 class ChatResp(BaseModel):
@@ -42,7 +43,8 @@ class ChatController(BaseController):
                 conversation_id=req.conversation_id,
                 message=req.message,
                 history=req.history,
-                files=req.files
+                files=req.files,
+                assistant_type=req.assistant_type
             )
             return ChatResp(**result)
 
@@ -56,7 +58,8 @@ class ChatController(BaseController):
                         conversation_id=req.conversation_id,
                         message=req.message,
                         history=req.history,
-                        files=req.files
+                        files=req.files,
+                        assistant_type=req.assistant_type
                 ):
                     yield chunk
 

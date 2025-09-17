@@ -18,14 +18,20 @@ export interface UserInfo {
 }
 
 export const useAuthStore = defineStore('auth', {
-  state: () => ({
-    user: null as UserInfo | null,
-    token: localStorage.getItem('mediagent_token') || null,
-    isAuthenticated: false
-  }),
+  state: () => {
+    // 从localStorage恢复用户信息
+    const savedUser = localStorage.getItem('mediagent_user')
+    const user = savedUser ? JSON.parse(savedUser) : null
+    
+    return {
+      user: user as UserInfo | null,
+      token: localStorage.getItem('mediagent_token') || null,
+      isAuthenticated: false
+    }
+  },
 
   getters: {
-    isLoggedIn: (state) => !!state.token && !!state.user,
+    isLoggedIn: (state) => !!state.token, // 只要有token就认为已登录，user会在需要时加载
     currentUser: (state) => state.user
   },
 
@@ -89,6 +95,8 @@ export const useAuthStore = defineStore('auth', {
             uid: response.uid,
             user_name: response.user_name
           }
+          // 将用户信息保存到localStorage
+          localStorage.setItem('mediagent_user', JSON.stringify(this.user))
           return this.user
         }
       } catch (error: any) {
@@ -127,6 +135,8 @@ export const useAuthStore = defineStore('auth', {
       this.token = null
       this.isAuthenticated = false
       localStorage.removeItem('mediagent_token')
+      // 清除所有相关的本地存储
+      localStorage.removeItem('mediagent_user')
     },
 
     // 检查认证状态
@@ -134,6 +144,27 @@ export const useAuthStore = defineStore('auth', {
       if (this.token) {
         await this.fetchUserInfo()
         this.isAuthenticated = !!this.user
+      }
+    },
+
+    // 初始化认证状态
+    async initAuth() {
+      if (this.token) {
+        // 如果已经有用户信息，直接设置认证状态
+        if (this.user) {
+          this.isAuthenticated = true
+          return
+        }
+        
+        // 如果没有用户信息，尝试获取
+        try {
+          await this.fetchUserInfo()
+          this.isAuthenticated = !!this.user
+        } catch (error) {
+          console.error('Init auth error:', error)
+          // 如果初始化失败，清除token
+          this.logout()
+        }
       }
     }
   }

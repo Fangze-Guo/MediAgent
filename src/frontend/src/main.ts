@@ -42,4 +42,4 @@ app.mount('#app')
  * 在应用启动时检查本地存储的token并验证用户状态
  */
 const authStore = useAuthStore()
-authStore.checkAuth()
+authStore.initAuth()

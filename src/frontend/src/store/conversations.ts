@@ -17,6 +17,23 @@ export type ChatMessage = {
   content: string 
   /** 消息是否完成 */
   typingComplete?: boolean
+  /** 助手类型：用于标识不同的AI助手 */
+  assistantType?: 'general' | 'medical' | 'data' | 'document'
+}
+
+/**
+ * 工具信息类型定义
+ * 表示医学助手中使用的工具信息
+ */
+export type ToolInfo = {
+  /** 工具ID */
+  toolId: string
+  /** 工具名称 */
+  toolName: string
+  /** 工具图标组件 */
+  toolIcon: any
+  /** 工具渐变背景 */
+  toolGradient: string
 }
 
 /**
@@ -29,7 +46,11 @@ export type Conversation = {
   /** 会话标题，通常取第一条用户消息的前20个字符 */
   title: string
   /** 会话中的所有消息列表 */
-  messages: ChatMessage[] 
+  messages: ChatMessage[]
+  /** 当前会话使用的助手类型 */
+  assistantType?: 'general' | 'medical' | 'data' | 'document'
+  /** 工具信息（仅医学助手会话使用） */
+  toolInfo?: ToolInfo
 }
 
 /**
@@ -91,24 +112,46 @@ export const useConversationsStore = defineStore('conversations', () => {
 
   /**
    * 创建新会话
-   * @param initialUserText 可选的初始用户消息，用于生成会话标题
+   * @param conversationId 可选的会话ID，如果不提供则自动生成
+   * @param assistantType 可选的助手类型
+   * @param toolInfo 可选的工具信息（仅医学助手会话使用）
    * @returns Conversation 返回新创建的会话对象
    */
-  function createConversation(initialUserText?: string): Conversation {
-    // 生成唯一ID：web-前缀 + 时间戳
-    const id = 'web-' + Date.now()
+  function createConversation(
+    conversationId?: string, 
+    assistantType?: 'general' | 'medical' | 'data' | 'document',
+    toolInfo?: ToolInfo
+  ): Conversation {
+    // 生成唯一ID：如果提供了ID则使用，否则使用web-前缀 + 时间戳
+    const id = conversationId || 'web-' + Date.now()
     
-    // 生成会话标题：取用户消息的前20个字符，超出则加省略号
-    const title = initialUserText 
-      ? (initialUserText.length > 20 ? initialUserText.slice(0, 20) + '…' : initialUserText) 
-      : ''
+    // 根据ID前缀或assistantType确定助手类型
+    let finalAssistantType = assistantType
+    if (!finalAssistantType) {
+      if (id.startsWith('medical-')) {
+        finalAssistantType = 'medical'
+      } else {
+        finalAssistantType = 'general'
+      }
+    }
+    
+    // 生成会话标题
+    let title = '新对话'
+    if (id.startsWith('medical-')) {
+      if (toolInfo) {
+        title = toolInfo.toolName
+      } else {
+        title = '医学助手对话'
+      }
+    }
     
     // 创建会话对象
-    const conv: Conversation = { id, title, messages: [] }
-    
-    // 如果有初始消息，添加到会话中
-    if (initialUserText) {
-      conv.messages.push({ role: 'user', content: initialUserText })
+    const conv: Conversation = { 
+      id, 
+      title, 
+      messages: [],
+      assistantType: finalAssistantType,
+      toolInfo: toolInfo
     }
     
     // 将会话添加到列表开头（最新的在前面）
@@ -185,6 +228,19 @@ export const useConversationsStore = defineStore('conversations', () => {
     saveConversations(conversations.value)
   }
 
+  /**
+   * 更新会话的助手类型
+   * @param id 会话ID
+   * @param assistantType 助手类型
+   */
+  function updateConversationAssistantType(id: string, assistantType: string) {
+    const conversation = conversations.value.find(c => c.id === id)
+    if (conversation) {
+      conversation.assistantType = assistantType as 'general' | 'medical' | 'data' | 'document'
+      saveConversations(conversations.value)
+    }
+  }
+
   // 返回store的公共接口
   return {
     /** 会话列表（只读） */
@@ -198,6 +254,8 @@ export const useConversationsStore = defineStore('conversations', () => {
     /** 删除会话 */
     deleteConversation,
     /** 清空所有会话 */
-    clearAllConversations
+    clearAllConversations,
+    /** 更新会话助手类型 */
+    updateConversationAssistantType
   }
 })

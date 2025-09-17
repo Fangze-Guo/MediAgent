@@ -23,8 +23,18 @@
               @click="openConversation(c.id)"
           >
             <div class="chat-item-link">
-              <div class="chat-title">{{ c.title || c.id }}</div>
-              <div class="chat-preview">{{ c.messages[c.messages.length - 1]?.content || '...' }}</div>
+              <!-- 会话头像 -->
+              <div 
+                class="conversation-avatar" 
+                :class="getConversationAvatarClass(c)"
+                :style="getConversationAvatarStyle(c)"
+              >
+                <component :is="getConversationIcon(c)" />
+              </div>
+              <div class="conversation-content">
+                <div class="chat-title">{{ c.title || c.id }}</div>
+                <div class="chat-preview">{{ c.messages[c.messages.length - 1]?.content || '...' }}</div>
+              </div>
             </div>
             <div class="delete-btn" @click.stop="handleDeleteConversation(c.id)">
               删除
@@ -72,7 +82,7 @@ import { useAuthStore } from '@/store/auth'
 import { useRoute, useRouter } from 'vue-router'
 import { computed, h, ref } from 'vue'
 import { MenuProps, message, Modal } from 'ant-design-vue'
-import { CommentOutlined, FolderOutlined, UploadOutlined, LogoutOutlined } from '@ant-design/icons-vue'
+import { CommentOutlined, FolderOutlined, UploadOutlined, LogoutOutlined, MedicineBoxOutlined, RobotOutlined, BarChartOutlined, FileTextOutlined } from '@ant-design/icons-vue'
 
 // 路由相关
 const router = useRouter()
@@ -111,6 +121,12 @@ const items = ref([
     label: '文件管理',
     title: '文件管理',
   },
+  {
+    key: '4',
+    icon: h(MedicineBoxOutlined),
+    label: '医学图像助手',
+    title: '医学图像助手',
+  },
 ]);
 
 /**
@@ -126,6 +142,9 @@ const handleMenuClick: MenuProps['onClick'] = ({key}) => {
   } else if (key === '3') {
     // 跳转到文件管理页面
     router.push('/files')
+  } else if (key === '4') {
+    // 跳转到医学图像助手页面
+    router.push('/medical-assistant')
   }
 };
 
@@ -198,6 +217,80 @@ const handleLogout = () => {
       message.success('已退出登录')
     }
   })
+}
+
+/**
+ * 助手相关方法
+ */
+
+/**
+ * 获取会话图标
+ */
+const getConversationIcon = (conversation: any) => {
+  // 如果有工具信息，使用工具的图标
+  if (conversation.toolInfo?.toolIcon) {
+    return conversation.toolInfo.toolIcon
+  }
+  
+  // 根据会话ID前缀判断助手类型
+  if (conversation.id?.startsWith('medical-')) {
+    return MedicineBoxOutlined
+  }
+  if (conversation.assistantType) {
+    switch (conversation.assistantType) {
+      case 'medical':
+        return MedicineBoxOutlined
+      case 'data':
+        return BarChartOutlined
+      case 'document':
+        return FileTextOutlined
+      default:
+        return RobotOutlined
+    }
+  }
+  return RobotOutlined
+}
+
+
+/**
+ * 获取会话头像样式类
+ */
+const getConversationAvatarClass = (conversation: any) => {
+  // 如果有工具信息，使用工具特定的样式
+  if (conversation.toolInfo?.toolId) {
+    return `tool-avatar tool-${conversation.toolInfo.toolId}`
+  }
+  
+  // 根据会话ID前缀判断助手类型
+  if (conversation.id?.startsWith('medical-')) {
+    return 'medical-avatar'
+  }
+  if (conversation.assistantType) {
+    switch (conversation.assistantType) {
+      case 'medical':
+        return 'medical-avatar'
+      case 'data':
+        return 'data-avatar'
+      case 'document':
+        return 'document-avatar'
+      default:
+        return 'general-avatar'
+    }
+  }
+  return 'general-avatar'
+}
+
+/**
+ * 获取会话头像样式
+ */
+const getConversationAvatarStyle = (conversation: any) => {
+  // 如果有工具信息，使用工具的渐变背景
+  if (conversation.toolInfo?.toolGradient) {
+    return {
+      background: conversation.toolInfo.toolGradient
+    }
+  }
+  return {}
 }
 </script>
 
@@ -306,6 +399,14 @@ const handleLogout = () => {
   font-size: 14px;
 }
 
+/* 对话链接容器：水平布局 */
+.chat-item-link {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
 /* 对话预览：灰色小号文字，超出省略 */
 .chat-preview {
   color: #666;
@@ -330,6 +431,50 @@ const handleLogout = () => {
 /* 删除按钮悬停效果 */
 .delete-btn:hover {
   background-color: #fff1f0;
+}
+
+/* 会话头像样式 */
+.conversation-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 14px;
+  margin-right: 12px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+
+/* 工具头像基础样式 */
+.tool-avatar {
+  /* 基础样式，渐变背景通过内联样式设置 */
+  position: relative;
+}
+
+/* 不同助手类型的头像样式 - 与医学助手页面保持一致 */
+.medical-avatar {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.data-avatar {
+  background: linear-gradient(135deg, #fa8c16, #ffa940);
+}
+
+.document-avatar {
+  background: linear-gradient(135deg, #722ed1, #9254de);
+}
+
+.general-avatar {
+  background: linear-gradient(135deg, #1890ff, #40a9ff);
+}
+
+.conversation-content {
+  flex: 1;
+  min-width: 0;
 }
 
 /* 用户信息区域 - 固定在底部 */

@@ -46,6 +46,8 @@ export interface ChatReqDto {
   history: ChatMessageDto[]
   /** 当前会话关联的文件信息 */
   files?: FileInfo[]
+  /** 助手类型：用于指定AI助手的专业领域 */
+  assistant_type?: 'general' | 'medical' | 'data' | 'document'
 }
 
 /**

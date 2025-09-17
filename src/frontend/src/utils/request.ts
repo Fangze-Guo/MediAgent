@@ -109,6 +109,12 @@ const createAxiosInstance = (): AxiosInstance => {
             break
           case 401:
             apiError.message = '未授权，请重新登录'
+            // 清除过期的token
+            localStorage.removeItem('mediagent_token')
+            // 如果当前不在登录页，跳转到登录页
+            if (window.location.pathname !== '/login') {
+              window.location.href = '/login'
+            }
             break
           case 403:
             apiError.message = '拒绝访问'

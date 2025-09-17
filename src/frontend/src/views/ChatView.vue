@@ -10,8 +10,13 @@
               <div v-for="(m, idx) in currentMessages" :key="idx"
                    :class="['message', m.role === 'user' ? 'user' : 'ai']">
                 <!-- 用户和AI的头像 -->
-                <div v-if="m.role !== 'user'" class="avatar ai-avatar">
-                  <RobotOutlined />
+                <div 
+                  v-if="m.role !== 'user'" 
+                  class="avatar ai-avatar" 
+                  :class="getAssistantAvatarClass(m.assistantType)"
+                  :style="getAssistantAvatarStyle()"
+                >
+                  <component :is="getAssistantIcon(m.assistantType, m)" />
                 </div>
                 <div class="message-content">
                   <!-- 解析并展示思考过程和回复内容 -->
@@ -173,10 +178,12 @@ import { type FileUploadResponse } from '@/apis/files'
 import {
   AppstoreOutlined,
   AudioOutlined,
+  BarChartOutlined,
   DeleteOutlined,
   DownOutlined,
   ExpandOutlined,
   FileTextOutlined,
+  MedicineBoxOutlined,
   PaperClipOutlined,
   RobotOutlined,
   SettingOutlined,
@@ -448,6 +455,7 @@ watch(sending, (newSending) => {
   }
 })
 
+
 /**
  * 发送消息给AI（内部函数）
  * @param messageText 要发送的消息内容
@@ -461,6 +469,7 @@ const sendMessageToAI = async (messageText: string) => {
   const aiMessage = {
     role: 'assistant' as const,
     content: '',
+    assistantType: (currentConversation.value?.id?.startsWith('medical-') ? 'medical' : 'general') as 'medical' | 'general'
   }
   conversationsStore.appendMessage(currentConversation.value.id, aiMessage)
 
@@ -473,7 +482,8 @@ const sendMessageToAI = async (messageText: string) => {
         role: m.role,
         content: m.content
       })),
-      files: currentSessionFiles.value // 添加文件信息
+      files: currentSessionFiles.value, // 添加文件信息
+      assistant_type: currentConversation.value?.id?.startsWith('medical-') ? 'medical' : 'general'
     }, {
       onStart: (_conversationId) => {
       },
@@ -618,6 +628,66 @@ const sendMessage = async () => {
   // 发送消息给AI
   await sendMessageToAI(text)
 }
+
+/**
+ * 助手相关方法
+ */
+
+/**
+ * 获取助手图标
+ */
+const getAssistantIcon = (assistantType?: string, message?: any) => {
+  // 如果有消息且消息来自医学助手会话，尝试使用工具图标
+  if (message && currentConversation.value?.toolInfo?.toolIcon) {
+    return currentConversation.value.toolInfo.toolIcon
+  }
+  
+  switch (assistantType) {
+    case 'medical':
+      return MedicineBoxOutlined
+    case 'data':
+      return BarChartOutlined
+    case 'document':
+      return FileTextOutlined
+    default:
+      return RobotOutlined
+  }
+}
+
+/**
+ * 获取助手头像样式类
+ */
+const getAssistantAvatarClass = (assistantType?: string) => {
+  // 如果有工具信息，使用工具特定的样式
+  if (currentConversation.value?.toolInfo?.toolId) {
+    return `tool-avatar tool-${currentConversation.value.toolInfo.toolId}`
+  }
+  
+  switch (assistantType) {
+    case 'medical':
+      return 'medical-avatar'
+    case 'data':
+      return 'data-avatar'
+    case 'document':
+      return 'document-avatar'
+    default:
+      return 'general-avatar'
+  }
+}
+
+/**
+ * 获取助手头像样式
+ */
+const getAssistantAvatarStyle = () => {
+  // 如果有工具信息，使用工具的渐变背景
+  if (currentConversation.value?.toolInfo?.toolGradient) {
+    return {
+      background: currentConversation.value.toolInfo.toolGradient
+    }
+  }
+  return {}
+}
+
 </script>
 
 <style scoped>
@@ -1027,4 +1097,47 @@ const sendMessage = async () => {
   width: 40px;
   height: 40px;
 }
+
+/* 助手头像样式 */
+.ai-avatar {
+  position: relative;
+}
+
+.assistant-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: #ff4d4f;
+  color: white;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* 工具头像基础样式 */
+.tool-avatar {
+  /* 基础样式，渐变背景通过内联样式设置 */
+  position: relative;
+}
+
+/* 不同助手类型的头像样式 */
+.medical-avatar {
+  background: linear-gradient(135deg, #52c41a, #73d13d);
+}
+
+.data-avatar {
+  background: linear-gradient(135deg, #fa8c16, #ffa940);
+}
+
+.document-avatar {
+  background: linear-gradient(135deg, #722ed1, #9254de);
+}
+
+.general-avatar {
+  background: linear-gradient(135deg, #1890ff, #40a9ff);
+}
+
 </style>
