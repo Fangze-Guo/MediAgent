@@ -25,3 +25,4 @@ build/
 
 ### VS Code ###
 .vscode/
+/src/server_new/test_scripts/
