@@ -286,6 +286,23 @@ data: {"type": "complete", "tool_calls": []}
 
 ## 📁 文件管理 API
 
+### 统一响应格式
+
+所有文件管理API都使用统一的 `BaseResponse<T>` 格式：
+
+```json
+{
+  "code": 200,
+  "data": <响应数据>,
+  "message": "ok"
+}
+```
+
+**响应字段说明**：
+- `code` (number): 状态码，200表示成功
+- `data` (any): 响应数据
+- `message` (string): 响应消息
+
 ### 上传文件
 
 **端点**: `POST /files/upload`
@@ -299,20 +316,22 @@ data: {"type": "complete", "tool_calls": []}
 
 **文件限制**:
 - 最大大小: 10MB
-- 支持格式: .jpg, .jpeg, .png, .gif, .webp, .csv
+- 支持格式: .jpg, .jpeg, .png, .gif, .webp, .csv, .dcm
 
 **响应**:
 ```json
 {
-  "success": true,
-  "file": {
-    "id": "file_001",
-    "originalName": "image.jpg",
+  "code": 200,
+  "data": {
+    "id": "upload_123456789",
+    "name": "image.jpg",
     "size": 1024000,
     "type": "image/jpeg",
-    "path": "/data/image.jpg",
-    "uploadTime": "2024-01-01T00:00:00Z"
-  }
+    "path": "data/image.jpg",
+    "modifiedTime": "2024-01-01T00:00:00Z",
+    "isDirectory": false
+  },
+  "message": "ok"
 }
 ```
 
@@ -336,16 +355,32 @@ curl -X POST "http://localhost:8000/files/upload" \
 **响应**:
 ```json
 {
-  "files": [
-    {
-      "id": "file_001",
-      "originalName": "image.jpg",
-      "size": 1024000,
-      "type": "image/jpeg",
-      "path": "/data/image.jpg",
-      "uploadTime": "2024-01-01T00:00:00Z"
-    }
-  ]
+  "code": 200,
+  "data": {
+    "files": [
+      {
+        "id": "upload_123456789",
+        "name": "image.jpg",
+        "size": 1024000,
+        "type": "image/jpeg",
+        "path": "data/image.jpg",
+        "modifiedTime": "2024-01-01T00:00:00Z",
+        "isDirectory": false
+      },
+      {
+        "id": "upload_987654321",
+        "name": "folder",
+        "size": 0,
+        "type": "directory",
+        "path": "data/folder",
+        "modifiedTime": "2024-01-01T00:00:00Z",
+        "isDirectory": true
+      }
+    ],
+    "currentPath": "data",
+    "parentPath": "."
+  },
+  "message": "ok"
 }
 ```
 
@@ -358,7 +393,7 @@ curl -X GET "http://localhost:8000/files"
 
 **端点**: `POST /files/delete`
 
-**描述**: 删除指定文件
+**描述**: 删除指定文件或空目录
 
 **请求体**:
 ```json
@@ -370,20 +405,23 @@ curl -X GET "http://localhost:8000/files"
 **响应**:
 ```json
 {
-  "success": true
+  "code": 200,
+  "data": null,
+  "message": "ok"
 }
 ```
 
 **状态码**:
 - `200`: 删除成功
 - `404`: 文件不存在
+- `400`: 目录不为空，无法删除
 - `500`: 服务器错误
 
 **示例**:
 ```bash
 curl -X POST "http://localhost:8000/files/delete" \
   -H "Content-Type: application/json" \
-  -d '{"fileId": "file_001"}'
+  -d '{"fileId": "upload_123456789"}'
 ```
 
 ### 批量删除文件
@@ -395,15 +433,21 @@ curl -X POST "http://localhost:8000/files/delete" \
 **请求体**:
 ```json
 {
-  "fileIds": ["file_001", "file_002"]
+  "fileIds": ["upload_123456789", "upload_987654321"]
 }
 ```
 
 **响应**:
 ```json
 {
-  "success": true,
-  "deletedCount": 2
+  "code": 200,
+  "data": {
+    "successCount": 2,
+    "failureCount": 0,
+    "successDetails": ["upload_123456789", "upload_987654321"],
+    "failureDetails": []
+  },
+  "message": "ok"
 }
 ```
 
@@ -411,7 +455,175 @@ curl -X POST "http://localhost:8000/files/delete" \
 ```bash
 curl -X POST "http://localhost:8000/files/batch-delete" \
   -H "Content-Type: application/json" \
-  -d '{"fileIds": ["file_001", "file_002"]}'
+  -d '{"fileIds": ["upload_123456789", "upload_987654321"]}'
+```
+
+### 创建文件夹
+
+**端点**: `POST /files/create-folder`
+
+**描述**: 在当前目录创建新文件夹
+
+**请求体**:
+```json
+{
+  "folderName": "string"
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "data": {
+    "id": "upload_111222333",
+    "name": "new_folder",
+    "size": 0,
+    "type": "directory",
+    "path": "data/new_folder",
+    "modifiedTime": "2024-01-01T00:00:00Z",
+    "isDirectory": true
+  },
+  "message": "ok"
+}
+```
+
+**状态码**:
+- `200`: 创建成功
+- `400`: 文件夹名称无效或已存在
+- `500`: 服务器错误
+
+**示例**:
+```bash
+curl -X POST "http://localhost:8000/files/create-folder" \
+  -H "Content-Type: application/json" \
+  -d '{"folderName": "new_folder"}'
+```
+
+### 获取本地文件列表
+
+**端点**: `GET /files/local`
+
+**描述**: 获取本地文件系统文件列表
+
+**响应**:
+```json
+{
+  "code": 200,
+  "data": {
+    "files": [
+      {
+        "id": "local_123456789",
+        "name": "data.csv",
+        "size": 2048000,
+        "type": "text/csv",
+        "path": "data/data.csv",
+        "modifiedTime": "2024-01-01T00:00:00Z",
+        "isDirectory": false
+      }
+    ],
+    "currentPath": "data",
+    "parentPath": "."
+  },
+  "message": "ok"
+}
+```
+
+**示例**:
+```bash
+curl -X GET "http://localhost:8000/files/local"
+```
+
+### 删除本地文件
+
+**端点**: `POST /files/local/delete`
+
+**描述**: 删除本地文件系统中的文件
+
+**请求体**:
+```json
+{
+  "fileId": "string"
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "data": null,
+  "message": "ok"
+}
+```
+
+**示例**:
+```bash
+curl -X POST "http://localhost:8000/files/local/delete" \
+  -H "Content-Type: application/json" \
+  -d '{"fileId": "local_123456789"}'
+```
+
+### 获取输出文件列表
+
+**端点**: `GET /files/output`
+
+**描述**: 获取输出目录文件列表
+
+**响应**:
+```json
+{
+  "code": 200,
+  "data": {
+    "files": [
+      {
+        "id": "output_123456789",
+        "name": "result.nii",
+        "size": 5120000,
+        "type": "application/octet-stream",
+        "path": "output/result.nii",
+        "modifiedTime": "2024-01-01T00:00:00Z",
+        "isDirectory": false
+      }
+    ],
+    "currentPath": "output",
+    "parentPath": "."
+  },
+  "message": "ok"
+}
+```
+
+**示例**:
+```bash
+curl -X GET "http://localhost:8000/files/output"
+```
+
+### 删除输出文件
+
+**端点**: `POST /files/output/delete`
+
+**描述**: 删除输出目录中的文件
+
+**请求体**:
+```json
+{
+  "fileId": "string"
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "data": null,
+  "message": "ok"
+}
+```
+
+**示例**:
+```bash
+curl -X POST "http://localhost:8000/files/output/delete" \
+  -H "Content-Type: application/json" \
+  -d '{"fileId": "output_123456789"}'
 ```
 
 ### 获取下载URL
@@ -430,8 +642,11 @@ curl -X POST "http://localhost:8000/files/batch-delete" \
 **响应**:
 ```json
 {
-  "success": true,
-  "downloadUrl": "/files/serve/file_001"
+  "code": 200,
+  "data": {
+    "downloadUrl": "/files/serve/upload_123456789"
+  },
+  "message": "ok"
 }
 ```
 
@@ -439,7 +654,7 @@ curl -X POST "http://localhost:8000/files/batch-delete" \
 ```bash
 curl -X POST "http://localhost:8000/files/download" \
   -H "Content-Type: application/json" \
-  -d '{"fileId": "file_001"}'
+  -d '{"fileId": "upload_123456789"}'
 ```
 
 ### 下载文件
@@ -455,9 +670,30 @@ curl -X POST "http://localhost:8000/files/download" \
 
 **示例**:
 ```bash
-curl -X GET "http://localhost:8000/files/serve/file_001" \
+curl -X GET "http://localhost:8000/files/serve/upload_123456789" \
   -O image.jpg
 ```
+
+### 文件类型说明
+
+**FileInfo 对象结构**:
+```json
+{
+  "id": "string",           // 文件唯一标识符
+  "name": "string",         // 文件名
+  "size": "number",         // 文件大小（字节）
+  "type": "string",         // MIME类型
+  "path": "string",         // 文件路径
+  "modifiedTime": "string", // 修改时间（ISO格式）
+  "isDirectory": "boolean"  // 是否为目录
+}
+```
+
+**目录操作说明**:
+- 可以删除空目录
+- 非空目录删除会返回错误
+- 支持创建新目录
+- 目录导航支持相对路径
 
 ## 🛠️ 工具管理 API
 
@@ -633,17 +869,20 @@ curl -X GET "http://localhost:8000/system/selftest"
 
 ### 错误响应格式
 
-所有错误都遵循统一的响应格式：
+所有错误都遵循统一的 `BaseResponse<T>` 格式：
 
 ```json
 {
-  "error": {
-    "code": "ERROR_CODE",
-    "message": "错误描述",
-    "context": {}
-  }
+  "code": 400,
+  "data": null,
+  "message": "错误描述"
 }
 ```
+
+**错误响应字段说明**：
+- `code` (number): HTTP状态码，非200表示错误
+- `data` (null): 错误时数据为null
+- `message` (string): 错误描述信息
 
 ### 常见错误码
 
@@ -662,40 +901,36 @@ curl -X GET "http://localhost:8000/system/selftest"
 **参数验证错误**:
 ```json
 {
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "用户名和密码不能为空",
-    "context": {
-      "user_name": null,
-      "password": null
-    }
-  }
+  "code": 400,
+  "data": null,
+  "message": "用户名和密码不能为空"
 }
 ```
 
 **认证失败**:
 ```json
 {
-  "error": {
-    "code": "AUTHENTICATION_ERROR",
-    "message": "用户名或密码错误",
-    "context": {
-      "user_name": "testuser"
-    }
-  }
+  "code": 401,
+  "data": null,
+  "message": "用户名或密码错误"
 }
 ```
 
 **资源不存在**:
 ```json
 {
-  "error": {
-    "code": "NOT_FOUND",
-    "message": "文件不存在",
-    "context": {
-      "file_id": "file_001"
-    }
-  }
+  "code": 404,
+  "data": null,
+  "message": "文件不存在"
+}
+```
+
+**目录不为空**:
+```json
+{
+  "code": 400,
+  "data": null,
+  "message": "目录不为空，无法删除"
 }
 ```
 
@@ -750,6 +985,21 @@ curl -X GET "http://localhost:8000/user/info" \
 curl -X POST "http://localhost:8000/files/upload" \
   -F "file=@/path/to/image.jpg"
 
+# 响应示例:
+# {
+#   "code": 200,
+#   "data": {
+#     "id": "upload_123456789",
+#     "name": "image.jpg",
+#     "size": 1024000,
+#     "type": "image/jpeg",
+#     "path": "data/image.jpg",
+#     "modifiedTime": "2024-01-01T00:00:00Z",
+#     "isDirectory": false
+#   },
+#   "message": "ok"
+# }
+
 # 2. 使用文件进行聊天
 curl -X POST "http://localhost:8000/chat" \
   -H "Content-Type: application/json" \
@@ -757,8 +1007,41 @@ curl -X POST "http://localhost:8000/chat" \
     "conversation_id": "conv_001",
     "message": "请分析这个图片",
     "history": [],
-    "files": [{"id": "file_001", "path": "/data/image.jpg"}]
+    "files": [{"id": "upload_123456789", "path": "data/image.jpg"}]
   }'
+```
+
+### 文件管理操作流程
+
+```bash
+# 1. 获取文件列表
+curl -X GET "http://localhost:8000/files"
+
+# 响应示例:
+# {
+#   "code": 200,
+#   "data": {
+#     "files": [...],
+#     "currentPath": "data",
+#     "parentPath": "."
+#   },
+#   "message": "ok"
+# }
+
+# 2. 创建文件夹
+curl -X POST "http://localhost:8000/files/create-folder" \
+  -H "Content-Type: application/json" \
+  -d '{"folderName": "new_folder"}'
+
+# 3. 删除文件
+curl -X POST "http://localhost:8000/files/delete" \
+  -H "Content-Type: application/json" \
+  -d '{"fileId": "upload_123456789"}'
+
+# 4. 批量删除文件
+curl -X POST "http://localhost:8000/files/batch-delete" \
+  -H "Content-Type: application/json" \
+  -d '{"fileIds": ["upload_123456789", "upload_987654321"]}'
 ```
 
 ### 工具调用流程
