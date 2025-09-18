@@ -10,7 +10,7 @@ from typing import List, Optional, Dict, Any
 
 from fastapi import UploadFile
 
-from src.server_agent.exceptions import ValidationError, NotFoundError, ServiceError
+from src.server_agent.exceptions import ValidationError, NotFoundError, ServiceError, handle_service_exception
 from src.server_agent.model import FileInfo, FileListVO
 
 logger = logging.getLogger(__name__)
@@ -31,6 +31,7 @@ class FileService:
 
     # ==================== 上传文件 ====================
 
+    @handle_service_exception
     async def uploadFileToData(self, file: UploadFile, target_dir: str = ".") -> FileInfo:
         """
         上传文件
@@ -45,6 +46,7 @@ class FileService:
         fileInfo: FileInfo = await self.uploadFile(self.UPLOAD_FILES_DIR, file, target_dir)
         return fileInfo
 
+    @handle_service_exception
     async def uploadFileToLocal(self, file: UploadFile, target_dir: str = ".") -> FileInfo:
         """
         上传文件到本地目录
@@ -59,6 +61,7 @@ class FileService:
         fileInfo: FileInfo = await self.uploadFile(self.LOCAL_FILES_DIR, file, target_dir)
         return fileInfo
 
+    @handle_service_exception
     async def uploadFileToOutput(self, file: UploadFile, target_dir: str = ".") -> FileInfo:
         """
         上传文件到输出目录
@@ -85,72 +88,63 @@ class FileService:
         Returns:
             文件信息
         """
-        try:
-            # 检查文件大小
-            if file.size > self.MAX_FILE_SIZE:
-                raise ValidationError(
-                    detail=f"文件大小超过限制 ({self.MAX_FILE_SIZE // (1024 * 1024)}MB)",
-                    context={"file_size": file.size, "max_size": self.MAX_FILE_SIZE}
-                )
-
-            # 检查文件扩展名
-            file_ext = pathlib.Path(file.filename).suffix.lower()
-            if file_ext not in self.ALLOWED_EXTENSIONS:
-                raise ValidationError(
-                    detail=f"不支持的文件类型: {file_ext}",
-                    context={"file_extension": file_ext, "allowed_extensions": list(self.ALLOWED_EXTENSIONS)}
-                )
-
-            target_path = self._get_safe_path(files_dir, target_dir)
-            if not target_path.is_dir():
-                raise ValidationError(
-                    detail="目标路径不是目录",
-                    context={"target_path": str(target_path)}
-                )
-
-            # 处理文件名冲突
-            original_name = file.filename
-            file_path = files_dir / original_name
-
-            # 如果文件已存在，添加时间戳避免冲突
-            if file_path.exists():
-                name_without_ext = pathlib.Path(original_name).stem
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                new_name = f"{name_without_ext}_{timestamp}{file_ext}"
-                file_path = files_dir / new_name
-                original_name = new_name
-
-            # 生成文件ID - 使用路径哈希确保唯一性，与文件列表保持一致
-            prefix = self._get_prefix_by_dir(files_dir)
-            file_id = f"{prefix}_{abs(hash(str(file_path)))}"
-
-            # 保存文件
-            with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
-
-            # 创建文件信息
-            file_info: FileInfo = FileInfo(
-                id=file_id,
-                name=original_name,
-                size=file.size,
-                type=file.content_type,
-                path=str(file_path.resolve()),
-                modifiedTime=datetime.now().isoformat(),
-                isDirectory=False
+        # 检查文件大小
+        if file.size > self.MAX_FILE_SIZE:
+            raise ValidationError(
+                detail=f"文件大小超过限制 ({self.MAX_FILE_SIZE // (1024 * 1024)}MB)",
+                context={"file_size": file.size, "max_size": self.MAX_FILE_SIZE}
             )
-            return file_info
-        except ValidationError:
-            raise
-        except Exception as e:
-            logger.error(f"文件上传失败: {e}")
-            raise ServiceError(
-                detail="文件上传失败",
-                service_name="file_service",
-                context={"filename": file.filename, "target_dir": target_dir, "error": str(e)}
+
+        # 检查文件扩展名
+        file_ext = pathlib.Path(file.filename).suffix.lower()
+        if file_ext not in self.ALLOWED_EXTENSIONS:
+            raise ValidationError(
+                detail=f"不支持的文件类型: {file_ext}",
+                context={"file_extension": file_ext, "allowed_extensions": list(self.ALLOWED_EXTENSIONS)}
             )
+
+        target_path = self._get_safe_path(files_dir, target_dir)
+        if not target_path.is_dir():
+            raise ValidationError(
+                detail="目标路径不是目录",
+                context={"target_path": str(target_path)}
+            )
+
+        # 处理文件名冲突
+        original_name = file.filename
+        file_path = files_dir / original_name
+
+        # 如果文件已存在，添加时间戳避免冲突
+        if file_path.exists():
+            name_without_ext = pathlib.Path(original_name).stem
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            new_name = f"{name_without_ext}_{timestamp}{file_ext}"
+            file_path = files_dir / new_name
+            original_name = new_name
+
+        # 生成文件ID - 使用路径哈希确保唯一性，与文件列表保持一致
+        prefix = self._get_prefix_by_dir(files_dir)
+        file_id = f"{prefix}_{abs(hash(str(file_path)))}"
+
+        # 保存文件
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        # 创建文件信息
+        file_info: FileInfo = FileInfo(
+            id=file_id,
+            name=original_name,
+            size=file.size,
+            type=file.content_type,
+            path=str(file_path.resolve()),
+            modifiedTime=datetime.now().isoformat(),
+            isDirectory=False
+        )
+        return file_info
 
     # ==================== 获取文件列表 ====================
 
+    @handle_service_exception
     async def getUploadFils(self, path: str = ".") -> FileListVO:
         """
         获取上传文件目录
@@ -164,6 +158,7 @@ class FileService:
         uploadFileListVO: FileListVO = await self.getFileListVO(self.UPLOAD_FILES_DIR, path)
         return uploadFileListVO
 
+    @handle_service_exception
     async def getLocalFiles(self, path: str = ".") -> FileListVO:
         """
         获取本地文件目录
@@ -177,6 +172,7 @@ class FileService:
         localFileListVO: FileListVO = await self.getFileListVO(self.LOCAL_FILES_DIR, path)
         return localFileListVO
 
+    @handle_service_exception
     async def getOutputFiles(self, path: str = ".") -> FileListVO:
         """
         获取输出文件目录
@@ -269,6 +265,7 @@ class FileService:
         """
         await self.deleteFile(self.UPLOAD_FILES_DIR, file_path)
 
+    @handle_service_exception
     async def deleteUploadFileById(self, file_id: str) -> None:
         """
         根据ID删除上传文件
@@ -285,6 +282,7 @@ class FileService:
             )
         await self.deleteFile(self.UPLOAD_FILES_DIR, file_path)
 
+    @handle_service_exception
     async def batchDeleteUploadFilesById(self, file_ids: List[str]) -> Dict[str, Any]:
         """
         批量根据ID删除上传文件
@@ -318,6 +316,7 @@ class FileService:
             "failedFiles": failed_files
         }
 
+    @handle_service_exception
     async def deleteLocalFile(self, file_path: str) -> None:
         """
         删除本地文件
@@ -327,6 +326,7 @@ class FileService:
         """
         await self.deleteFile(self.LOCAL_FILES_DIR, file_path)
 
+    @handle_service_exception
     async def deleteOutputFile(self, file_path: str) -> None:
         """
         删除输出文件
@@ -347,33 +347,24 @@ class FileService:
         Returns:
             删除结果
         """
-        try:
-            target_path = self._get_safe_path(files_dir, file_path)
-            if target_path.is_dir():
-                # 检查目录是否为空
-                if any(target_path.iterdir()):
-                    raise ValidationError(
-                        detail="目录不为空，无法删除",
-                        context={"file_path": file_path}
-                    )
-                # 删除空目录
-                target_path.rmdir()
-            else:
-                # 删除文件
-                target_path.unlink()
-            return True
-        except ValidationError:
-            raise
-        except Exception as e:
-            logger.error(f"删除文件失败: {e}")
-            raise ServiceError(
-                detail="删除失败",
-                service_name="file_service",
-                context={"file_path": file_path, "error": str(e)}
-            )
+        target_path = self._get_safe_path(files_dir, file_path)
+        if target_path.is_dir():
+            # 检查目录是否为空
+            if any(target_path.iterdir()):
+                raise ValidationError(
+                    detail="目录不为空，无法删除",
+                    context={"file_path": file_path}
+                )
+            # 删除空目录
+            target_path.rmdir()
+        else:
+            # 删除文件
+            target_path.unlink()
+        return True
 
     # ==================== 创建文件夹 ====================
 
+    @handle_service_exception
     async def createFolder(self, folder_name: str, current_path: str = ".") -> None:
         """
         创建文件夹
@@ -382,42 +373,31 @@ class FileService:
             folder_name: 文件夹名称
             current_path: 当前路径
         """
-        try:
-            if not folder_name or not folder_name.strip():
-                raise ValidationError(
-                    detail="文件夹名称不能为空",
-                    context={"folderName": folder_name}
-                )
-
-            # 检查文件夹名称是否包含非法字符
-            invalid_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*']
-            if any(char in folder_name for char in invalid_chars):
-                raise ValidationError(
-                    detail="文件夹名称包含非法字符",
-                    context={"folderName": folder_name, "invalidChars": invalid_chars}
-                )
-
-            target_path = self._get_safe_path(self.UPLOAD_FILES_DIR, current_path)
-            new_folder_path = target_path / folder_name
-
-            if new_folder_path.exists():
-                raise ValidationError(
-                    detail="文件夹已存在",
-                    context={"folderName": folder_name, "path": str(new_folder_path)}
-                )
-
-            new_folder_path.mkdir(parents=True, exist_ok=False)
-            logger.info(f"文件夹创建成功: {new_folder_path}")
-
-        except ValidationError:
-            raise
-        except Exception as e:
-            logger.error(f"创建文件夹失败: {e}")
-            raise ServiceError(
-                detail="创建文件夹失败",
-                service_name="file_service",
-                context={"error": str(e), "folderName": folder_name, "currentPath": current_path}
+        if not folder_name or not folder_name.strip():
+            raise ValidationError(
+                detail="文件夹名称不能为空",
+                context={"folderName": folder_name}
             )
+
+        # 检查文件夹名称是否包含非法字符
+        invalid_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*']
+        if any(char in folder_name for char in invalid_chars):
+            raise ValidationError(
+                detail="文件夹名称包含非法字符",
+                context={"folderName": folder_name, "invalidChars": invalid_chars}
+            )
+
+        target_path = self._get_safe_path(self.UPLOAD_FILES_DIR, current_path)
+        new_folder_path = target_path / folder_name
+
+        if new_folder_path.exists():
+            raise ValidationError(
+                detail="文件夹已存在",
+                context={"folderName": folder_name, "path": str(new_folder_path)}
+            )
+
+        new_folder_path.mkdir(parents=True, exist_ok=False)
+        logger.info(f"文件夹创建成功: {new_folder_path}")
 
     # ==================== 🛠️工具方法 ====================
 

@@ -290,6 +290,7 @@ data: {"type": "complete", "tool_calls": []}
 
 所有文件管理API都使用统一的 `BaseResponse<T>` 格式：
 
+**成功响应**：
 ```json
 {
   "code": 200,
@@ -298,10 +299,28 @@ data: {"type": "complete", "tool_calls": []}
 }
 ```
 
+**错误响应**：
+```json
+{
+  "error": "ERROR_CODE",
+  "message": "错误描述",
+  "detail": "详细错误信息",
+  "context": {},
+  "path": "/api/path"
+}
+```
+
 **响应字段说明**：
-- `code` (number): 状态码，200表示成功
-- `data` (any): 响应数据
-- `message` (string): 响应消息
+- **成功时**：
+  - `code` (number): 固定为200
+  - `data` (any): 响应数据
+  - `message` (string): "ok"
+- **失败时**：
+  - `error` (string): 错误代码
+  - `message` (string): 错误描述
+  - `detail` (string): 详细错误信息
+  - `context` (object): 错误上下文
+  - `path` (string): 请求路径
 
 ### 上传文件
 
@@ -336,9 +355,9 @@ data: {"type": "complete", "tool_calls": []}
 ```
 
 **状态码**:
-- `200`: 上传成功
-- `400`: 文件格式不支持或大小超限
-- `500`: 服务器错误
+- `200`: 上传成功 (BaseResponse.code = 200)
+- `400`: 文件格式不支持或大小超限 (HTTP状态码，异常响应)
+- `500`: 服务器错误 (HTTP状态码，异常响应)
 
 **示例**:
 ```bash
@@ -412,10 +431,10 @@ curl -X GET "http://localhost:8000/files"
 ```
 
 **状态码**:
-- `200`: 删除成功
-- `404`: 文件不存在
-- `400`: 目录不为空，无法删除
-- `500`: 服务器错误
+- `200`: 删除成功 (BaseResponse.code = 200)
+- `404`: 文件不存在 (HTTP状态码，异常响应)
+- `400`: 目录不为空，无法删除 (HTTP状态码，异常响应)
+- `500`: 服务器错误 (HTTP状态码，异常响应)
 
 **示例**:
 ```bash
@@ -489,9 +508,9 @@ curl -X POST "http://localhost:8000/files/batch-delete" \
 ```
 
 **状态码**:
-- `200`: 创建成功
-- `400`: 文件夹名称无效或已存在
-- `500`: 服务器错误
+- `200`: 创建成功 (BaseResponse.code = 200)
+- `400`: 文件夹名称无效或已存在 (HTTP状态码，异常响应)
+- `500`: 服务器错误 (HTTP状态码，异常响应)
 
 **示例**:
 ```bash
@@ -869,20 +888,34 @@ curl -X GET "http://localhost:8000/system/selftest"
 
 ### 错误响应格式
 
-所有错误都遵循统一的 `BaseResponse<T>` 格式：
+**重要说明**：错误响应使用异常机制，不是 `BaseResponse` 格式！
 
+**错误响应格式**：
 ```json
 {
-  "code": 400,
-  "data": null,
-  "message": "错误描述"
+  "error": "ERROR_CODE",
+  "message": "错误描述",
+  "detail": "详细错误信息",
+  "context": {},
+  "path": "/api/path"
 }
 ```
 
 **错误响应字段说明**：
-- `code` (number): HTTP状态码，非200表示错误
-- `data` (null): 错误时数据为null
+- `error` (string): 错误代码 (如 VALIDATION_ERROR, NOT_FOUND 等)
 - `message` (string): 错误描述信息
+- `detail` (string): 详细错误信息
+- `context` (object): 错误上下文信息
+- `path` (string): 请求的API路径
+
+**HTTP状态码映射**：
+- `400`: 参数验证错误、业务逻辑错误
+- `401`: 认证失败
+- `403`: 权限不足
+- `404`: 资源不存在
+- `409`: 资源冲突
+- `500`: 服务器内部错误
+- `503`: 服务不可用
 
 ### 常见错误码
 
@@ -898,54 +931,101 @@ curl -X GET "http://localhost:8000/system/selftest"
 
 ### 错误示例
 
-**参数验证错误**:
+**参数验证错误** (HTTP 400):
 ```json
 {
-  "code": 400,
-  "data": null,
-  "message": "用户名和密码不能为空"
+  "error": "VALIDATION_ERROR",
+  "message": "验证错误",
+  "detail": "用户名和密码不能为空",
+  "context": {
+    "field": "user_name"
+  },
+  "path": "/user/login"
 }
 ```
 
-**认证失败**:
+**认证失败** (HTTP 401):
 ```json
 {
-  "code": 401,
-  "data": null,
-  "message": "用户名或密码错误"
+  "error": "AUTHENTICATION_ERROR",
+  "message": "认证错误",
+  "detail": "用户名或密码错误",
+  "context": {
+    "username": "testuser"
+  },
+  "path": "/user/login"
 }
 ```
 
-**资源不存在**:
+**资源不存在** (HTTP 404):
 ```json
 {
-  "code": 404,
-  "data": null,
-  "message": "文件不存在"
+  "error": "NOT_FOUND",
+  "message": "资源未找到",
+  "detail": "文件不存在",
+  "context": {
+    "resource_type": "file",
+    "resource_id": "upload_123456789"
+  },
+  "path": "/files/delete"
 }
 ```
 
-**目录不为空**:
+**目录不为空** (HTTP 400):
 ```json
 {
-  "code": 400,
-  "data": null,
-  "message": "目录不为空，无法删除"
+  "error": "VALIDATION_ERROR",
+  "message": "验证错误",
+  "detail": "目录不为空，无法删除",
+  "context": {
+    "file_path": "data/folder"
+  },
+  "path": "/files/delete"
 }
 ```
 
 ## 📊 状态码说明
 
-| 状态码 | 含义 | 说明 |
-|--------|------|------|
-| 200 | 成功 | 请求成功处理 |
-| 201 | 已创建 | 资源创建成功 |
-| 400 | 错误请求 | 请求参数错误 |
-| 401 | 未授权 | 认证失败 |
-| 403 | 禁止访问 | 权限不足 |
-| 404 | 未找到 | 资源不存在 |
-| 409 | 冲突 | 资源冲突 |
-| 500 | 服务器错误 | 内部服务器错误 |
+### 重要说明
+
+**双重状态码机制**：
+1. **HTTP状态码**：由FastAPI框架和异常处理器设置
+2. **BaseResponse.code**：成功时固定为200，失败时通过异常处理
+
+**状态码映射表**：
+
+| HTTP状态码 | BaseResponse.code | 含义 | 说明 |
+|------------|-------------------|------|------|
+| 200 | 200 | 成功 | 请求成功处理，返回BaseResponse格式 |
+| 201 | 200 | 已创建 | 资源创建成功，返回BaseResponse格式 |
+| 400 | - | 错误请求 | 参数验证错误，返回异常格式 |
+| 401 | - | 未授权 | 认证失败，返回异常格式 |
+| 403 | - | 禁止访问 | 权限不足，返回异常格式 |
+| 404 | - | 未找到 | 资源不存在，返回异常格式 |
+| 409 | - | 冲突 | 资源冲突，返回异常格式 |
+| 500 | - | 服务器错误 | 内部服务器错误，返回异常格式 |
+
+### 响应格式判断
+
+**成功响应** (HTTP 200):
+```json
+{
+  "code": 200,
+  "data": {...},
+  "message": "ok"
+}
+```
+
+**失败响应** (HTTP 4xx/5xx):
+```json
+{
+  "error": "ERROR_CODE",
+  "message": "错误描述",
+  "detail": "详细错误信息",
+  "context": {},
+  "path": "/api/path"
+}
+```
 
 ## 🔧 开发工具
 
