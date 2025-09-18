@@ -18,17 +18,17 @@ class FileService:
     """文件服务类"""
     
     def __init__(self):
-        # 文件上传配置
-        self.UPLOAD_DIR = pathlib.Path("data")
+        # 文件上传配置 - 指向server_agent目录下的data文件夹
+        self.UPLOAD_DIR = pathlib.Path(__file__).parent.parent / "data"
         self.UPLOAD_DIR.mkdir(exist_ok=True)
         self.MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB（DICOM文件可能较大）
         self.ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.csv', '.dcm', '.DCM', '.nii', '.nii.gz'}
         
-        # 本地文件浏览配置
-        self.LOCAL_FILES_DIR = pathlib.Path(".").resolve()
+        # 本地文件浏览配置 - 指向server_agent目录
+        self.LOCAL_FILES_DIR = pathlib.Path(__file__).parent.parent.resolve()
         
-        # 输出文件浏览配置
-        self.OUTPUT_FILES_DIR = pathlib.Path("output").resolve()
+        # 输出文件浏览配置 - 指向server_agent目录下的output文件夹
+        self.OUTPUT_FILES_DIR = pathlib.Path(__file__).parent.parent / "output"
         self.OUTPUT_FILES_DIR.mkdir(exist_ok=True)
     
     @handle_service_exception
@@ -79,11 +79,12 @@ class FileService:
             # 创建文件信息
             file_info = {
                 "id": file_id,
-                "originalName": original_name,
+                "name": original_name,
                 "size": file.size,
                 "type": file.content_type,
                 "path": str(file_path.resolve()),
-                "uploadTime": datetime.now().isoformat()
+                "modifiedTime": datetime.now().isoformat(),
+                "isDirectory": False
             }
             
             return {"success": True, "file": file_info}
@@ -99,40 +100,54 @@ class FileService:
             )
     
     @handle_service_exception
-    async def get_files_list(self) -> Dict[str, Any]:
+    async def get_files_list(self, path: str = ".") -> Dict[str, Any]:
         """
-        获取data目录中的所有文件列表（包括已上传和已存在的文件）
+        获取data目录中的文件和目录列表
         
+        Args:
+            path: 要浏览的路径，默认为data目录根路径
+            
         Returns:
-            文件列表
+            文件和目录列表
         """
         try:
-            files = []
+            target_path = self._get_safe_path(self.UPLOAD_DIR, path)
             
-            # 递归遍历data目录
-            for file_path in self.UPLOAD_DIR.rglob("*"):
-                if file_path.is_file():
-                    # 计算相对路径
-                    relative_path = str(file_path.relative_to(self.UPLOAD_DIR)).replace('\\', '/')
+            files = []
+            for item in target_path.iterdir():
+                try:
+                    stat = item.stat()
+                    is_directory = item.is_dir()
                     
-                    # 生成唯一ID
-                    file_id = f"data_{abs(hash(str(file_path)))}"
+                    file_id = f"data_{abs(hash(str(item)))}"
+                    file_type = "directory" if is_directory else self._get_content_type(item.suffix)
+                    relative_path = str(item.relative_to(self.UPLOAD_DIR)).replace('\\', '/')
                     
-                    stat = file_path.stat()
                     file_info = {
                         "id": file_id,
-                        "originalName": file_path.name,
-                        "size": stat.st_size,
-                        "type": self._get_content_type(file_path.suffix),
+                        "name": item.name,
+                        "size": stat.st_size if not is_directory else 0,
+                        "type": file_type,
                         "path": relative_path,
-                        "uploadTime": datetime.fromtimestamp(stat.st_mtime).isoformat()
+                        "modifiedTime": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                        "isDirectory": is_directory
                     }
                     files.append(file_info)
+                except (OSError, PermissionError):
+                    continue
             
-            # 按修改时间排序（最新的在前）
-            files.sort(key=lambda x: x["uploadTime"], reverse=True)
+            # 排序：目录在前，文件在后
+            files.sort(key=lambda x: (not x["isDirectory"], x["name"].lower()))
             
-            return {"files": files}
+            # 计算路径信息
+            current_path = self._get_relative_path(target_path, self.UPLOAD_DIR)
+            parent_path = self._get_parent_path(target_path, self.UPLOAD_DIR)
+            
+            return {
+                "files": files,
+                "currentPath": current_path,
+                "parentPath": parent_path
+            }
             
         except Exception as e:
             logger.error(f"获取文件列表失败: {e}")
@@ -724,3 +739,55 @@ class FileService:
             return parent_path if parent_path != "." else "."
         except ValueError:
             return None
+
+    async def create_folder(self, folder_name: str, current_path: str = ".") -> Dict[str, Any]:
+        """创建文件夹"""
+        try:
+            # 验证文件夹名称
+            if not folder_name or not folder_name.strip():
+                raise ServiceError(
+                    detail="文件夹名称不能为空",
+                    service_name="file_service",
+                    context={"folderName": folder_name}
+                )
+            
+            # 检查文件夹名称是否包含非法字符
+            invalid_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*']
+            if any(char in folder_name for char in invalid_chars):
+                raise ServiceError(
+                    detail="文件夹名称包含非法字符",
+                    service_name="file_service",
+                    context={"folderName": folder_name, "invalidChars": invalid_chars}
+                )
+            
+            # 获取目标路径
+            target_path = self._get_safe_path(self.UPLOAD_DIR, current_path)
+            new_folder_path = target_path / folder_name
+            
+            # 检查文件夹是否已存在
+            if new_folder_path.exists():
+                raise ServiceError(
+                    detail="文件夹已存在",
+                    service_name="file_service",
+                    context={"folderName": folder_name, "path": str(new_folder_path)}
+                )
+            
+            # 创建文件夹
+            new_folder_path.mkdir(parents=True, exist_ok=False)
+            
+            logger.info(f"文件夹创建成功: {new_folder_path}")
+            return {
+                "success": True,
+                "message": "文件夹创建成功",
+                "folderPath": str(new_folder_path.relative_to(self.UPLOAD_DIR)).replace('\\', '/')
+            }
+            
+        except ServiceError:
+            raise
+        except Exception as e:
+            logger.error(f"创建文件夹失败: {e}")
+            raise ServiceError(
+                detail="创建文件夹失败",
+                service_name="file_service",
+                context={"error": str(e), "folderName": folder_name, "currentPath": current_path}
+            )

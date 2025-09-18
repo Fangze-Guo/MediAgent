@@ -4,7 +4,7 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { getFileList, deleteFile, batchDeleteFiles, downloadFile, type FileListResponse } from '@/apis/files'
+import { getFileList, deleteFile, batchDeleteFiles, downloadFile, createFolderAPI, type FileListResponse } from '@/apis/files'
 
 export const useFileStore = defineStore('files', () => {
   // 状态
@@ -13,6 +13,8 @@ export const useFileStore = defineStore('files', () => {
   const selectedFileIds = ref<string[]>([])
   const searchText = ref('')
   const error = ref<string | null>(null)
+  const currentPath = ref('.')
+  const parentPath = ref<string | null>(null)
 
   // 计算属性
   const selectedFiles = computed(() => 
@@ -27,7 +29,7 @@ export const useFileStore = defineStore('files', () => {
     // 搜索过滤
     if (searchText.value) {
       filtered = filtered.filter(file => 
-        file.originalName.toLowerCase().includes(searchText.value.toLowerCase())
+        file.name.toLowerCase().includes(searchText.value.toLowerCase())
       )
     }
     
@@ -37,15 +39,19 @@ export const useFileStore = defineStore('files', () => {
   const fileStats = computed(() => {
     const totalFiles = fileList.value.length
     const totalSize = fileList.value.reduce((sum, file) => sum + file.size, 0)
+    const directories = fileList.value.filter(file => file.isDirectory).length
     const imageFiles = fileList.value.filter(file => file.type.startsWith('image/')).length
     const csvFiles = fileList.value.filter(file => file.type.includes('csv')).length
-    const otherFiles = totalFiles - imageFiles - csvFiles
+    const dicomFiles = fileList.value.filter(file => file.type.includes('dicom')).length
+    const otherFiles = totalFiles - directories - imageFiles - csvFiles - dicomFiles
 
     return {
       totalFiles,
       totalSize,
+      directories,
       imageFiles,
       csvFiles,
+      dicomFiles,
       otherFiles
     }
   })
@@ -85,12 +91,19 @@ export const useFileStore = defineStore('files', () => {
   }
 
   // 获取文件列表
-  const fetchFileList = async () => {
+  const fetchFileList = async (path: string = '.') => {
     try {
       setLoading(true)
       setError(null)
-      const response = await getFileList()
+      const response = await getFileList(path)
       fileList.value = response.files
+      // 更新路径信息
+      if (response.currentPath !== undefined) {
+        currentPath.value = response.currentPath
+      }
+      if (response.parentPath !== undefined) {
+        parentPath.value = response.parentPath
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '获取文件列表失败'
       setError(errorMessage)
@@ -200,6 +213,29 @@ export const useFileStore = defineStore('files', () => {
     return fileList.value.find(file => file.id === fileId)
   }
 
+  // 创建文件夹
+  const createFolder = async (folderName: string, currentPath: string = '.') => {
+    try {
+      setLoading(true)
+      setError(null)
+      const result = await createFolderAPI(folderName, currentPath)
+      if (result.success) {
+        // 刷新文件列表
+        await fetchFileList(currentPath)
+        return { success: true }
+      } else {
+        setError(result.message || '创建文件夹失败')
+        return { success: false, message: result.message || '创建文件夹失败' }
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : '创建文件夹失败'
+      setError(errorMessage)
+      return { success: false, message: errorMessage }
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // 重置状态
   const reset = () => {
     fileList.value = []
@@ -238,6 +274,9 @@ export const useFileStore = defineStore('files', () => {
     addFile,
     updateFile,
     getFileById,
-    reset
+    createFolder,
+    reset,
+    currentPath,
+    parentPath
   }
 })

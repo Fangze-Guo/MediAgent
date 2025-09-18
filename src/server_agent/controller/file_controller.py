@@ -15,11 +15,12 @@ from .base import BaseController
 
 class FileInfo(BaseModel):
     id: str
-    originalName: str
+    name: str
     size: int
     type: str
     path: str
-    uploadTime: str
+    modifiedTime: str
+    isDirectory: bool
 
 
 class LocalFileInfo(BaseModel):
@@ -52,6 +53,13 @@ class FileUploadResp(BaseModel):
 
 class FileListResp(BaseModel):
     files: List[FileInfo]
+    currentPath: str
+    parentPath: Optional[str] = None
+
+
+class CreateFolderRequest(BaseModel):
+    folderName: str
+    currentPath: str = "."
 
 
 class LocalFileListResp(BaseModel):
@@ -117,9 +125,9 @@ class FileController(BaseController):
             return FileUploadResp(**result)
 
         @self.router.get("", response_model=FileListResp)
-        async def list_files():
+        async def list_files(path: str = "."):
             """获取已上传文件列表"""
-            result = await self.file_service.get_files_list()
+            result = await self.file_service.get_files_list(path)
             return FileListResp(**result)
 
         @self.router.post("/delete", response_model=DeleteFileResp)
@@ -211,3 +219,8 @@ class FileController(BaseController):
                 media_type=content_type,
                 filename=file_path.name
             )
+
+        @self.router.post("/create-folder")
+        async def create_folder(request: CreateFolderRequest):
+            """创建文件夹"""
+            return await self.file_service.create_folder(request.folderName, request.currentPath)

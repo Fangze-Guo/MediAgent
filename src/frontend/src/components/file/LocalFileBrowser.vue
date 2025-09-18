@@ -110,6 +110,15 @@
               >
                 <EyeOutlined />
               </a-button>
+              <a-button 
+                type="text" 
+                size="small" 
+                title="删除"
+                danger
+                @click="deleteFileHandler(record)"
+              >
+                <DeleteOutlined />
+              </a-button>
             </div>
           </template>
         </template>
@@ -160,7 +169,7 @@ import {
   DeleteOutlined,
   HomeOutlined
 } from '@ant-design/icons-vue'
-import { getLocalFiles, getLocalFileDownloadUrl, formatFileSize, type LocalFileInfo } from '@/apis/files.ts'
+import { getLocalFiles, getLocalFileDownloadUrl, formatFileSize, deleteLocalFile, type LocalFileInfo } from '@/apis/files.ts'
 
 // 响应式数据
 const fileList = ref<LocalFileInfo[]>([])
@@ -232,6 +241,8 @@ const getFileIcon = (fileType: string) => {
     return PictureOutlined
   } else if (fileType.includes('csv') || fileType.includes('excel')) {
     return FileExcelOutlined
+  } else if (fileType.includes('dicom') || fileType.includes('application/dicom')) {
+    return PictureOutlined // 使用图片图标表示DICOM医学图像
   } else {
     return FileTextOutlined
   }
@@ -241,6 +252,7 @@ const getFileIcon = (fileType: string) => {
 const getTypeColor = (fileType: string) => {
   if (fileType.startsWith('image/')) return 'blue'
   if (fileType.includes('csv') || fileType.includes('excel')) return 'green'
+  if (fileType.includes('dicom') || fileType.includes('application/dicom')) return 'purple'
   if (fileType.includes('text')) return 'orange'
   return 'default'
 }
@@ -250,6 +262,7 @@ const getTypeName = (fileType: string) => {
   if (fileType.startsWith('image/')) return '图片'
   if (fileType.includes('csv')) return 'CSV'
   if (fileType.includes('excel')) return 'Excel'
+  if (fileType.includes('dicom') || fileType.includes('application/dicom')) return 'DICOM'
   if (fileType.includes('text')) return '文本'
   return '文件'
 }
@@ -400,6 +413,31 @@ const uploadFilesToCurrentDirectory = async (files: File[]) => {
 // 处理选择变化
 const onSelectChange = (keys: string[]) => {
   selectedFiles.value = keys
+}
+
+// 单项删除文件
+const deleteFileHandler = (file: LocalFileInfo) => {
+  Modal.confirm({
+    title: '确认删除',
+    content: `确定要删除${file.isDirectory ? '目录' : '文件'} "${file.name}" 吗？`,
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: async () => {
+      try {
+        const result = await deleteLocalFile(file.path)
+        if (result.success) {
+          message.success(`${file.isDirectory ? '目录' : '文件'}删除成功`)
+          refresh()
+        } else {
+          message.error(result.message || '删除失败')
+        }
+      } catch (error) {
+        console.error('删除文件失败:', error)
+        message.error('删除失败')
+      }
+    }
+  })
 }
 
 // 批量删除文件

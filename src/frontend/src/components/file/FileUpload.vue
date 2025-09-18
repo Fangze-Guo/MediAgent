@@ -26,7 +26,7 @@
         <UploadOutlined class="upload-icon" />
         <div class="upload-text">
           <p class="upload-title">点击或拖拽文件到此处上传</p>
-          <p class="upload-hint">支持图片文件 (JPG, PNG, GIF, WebP) 和 CSV 文件</p>
+          <p class="upload-hint">支持图片文件 (JPG, PNG, GIF, WebP)、CSV 文件和 DICOM 文件 (.dcm)</p>
         </div>
       </div>
 
@@ -125,7 +125,7 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   multiple: true,
-  accept: 'image/*,.csv',
+  accept: 'image/*,.csv,.dcm,.DCM',
   maxSize: 10
 })
 

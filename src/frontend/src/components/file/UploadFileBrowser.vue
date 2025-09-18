@@ -33,7 +33,13 @@
           <template #icon>
             <UploadOutlined />
           </template>
-          上传文件
+          上传到当前目录
+        </a-button>
+        <a-button @click="showCreateFolderModal">
+          <template #icon>
+            <FolderAddOutlined />
+          </template>
+          创建文件夹
         </a-button>
       </div>
       <div class="toolbar-right">
@@ -63,35 +69,53 @@
           class="file-table"
       >
         <template #bodyCell="{ column, record }">
-          <template v-if="column.dataIndex === 'originalName'">
-            <div class="file-name-cell">
+          <template v-if="column.dataIndex === 'name'">
+            <div class="file-name-cell" :class="{ 'clickable': record.isDirectory }" @click="handleItemClick(record)">
               <component
-                  :is="record.type.startsWith('image/') ? PictureOutlined : (record.type.includes('csv') ? FileExcelOutlined : FileOutlined)"
-                  class="file-icon" />
-              <span class="file-name" :title="record.originalName">{{ record.originalName }}</span>
+                  :is="getFileIcon(record.type)"
+                  class="file-icon" :class="{ 'directory-icon': record.isDirectory }" />
+              <span class="file-name" :title="record.name">{{ record.name }}</span>
             </div>
           </template>
           <template v-else-if="column.dataIndex === 'type'">
-            <a-tag
-                :color="record.type.startsWith('image/') ? 'blue' : (record.type.includes('csv') ? 'green' : 'default')">
-              {{ record.type.startsWith('image/') ? '图片' : (record.type.includes('csv') ? 'CSV' : '其他') }}
+            <a-tag :color="getTypeColor(record.type)">
+              {{ getTypeName(record.type) }}
             </a-tag>
           </template>
           <template v-else-if="column.dataIndex === 'size'">
-            {{ formatFileSize(record.size) }}
+            <span v-if="record.isDirectory">-</span>
+            <span v-else>{{ formatFileSize(record.size) }}</span>
           </template>
-          <template v-else-if="column.dataIndex === 'uploadTime'">
-            {{ new Date(record.uploadTime).toLocaleString('zh-CN') }}
+          <template v-else-if="column.dataIndex === 'modifiedTime'">
+            {{ new Date(record.modifiedTime).toLocaleString('zh-CN') }}
           </template>
           <template v-else-if="column.dataIndex === 'actions'">
             <div class="actions">
-              <a-button type="text" size="small" title="预览" @click="previewFileHandler(record)">
-                <EyeOutlined />
-              </a-button>
-              <a-button type="text" size="small" title="下载" @click="downloadFile(record)">
+              <a-button 
+                v-if="!record.isDirectory"
+                type="text" 
+                size="small" 
+                title="下载"
+                @click="downloadFile(record)"
+              >
                 <DownloadOutlined />
               </a-button>
-              <a-button type="text" size="small" danger title="删除" @click="deleteFileHandler(record)">
+              <a-button 
+                v-if="!record.isDirectory"
+                type="text" 
+                size="small" 
+                title="预览"
+                @click="previewFileHandler(record)"
+              >
+                <EyeOutlined />
+              </a-button>
+              <a-button 
+                type="text" 
+                size="small" 
+                title="删除"
+                danger
+                @click="deleteFileHandler(record)"
+              >
                 <DeleteOutlined />
               </a-button>
             </div>
@@ -102,18 +126,35 @@
 
     <a-modal v-model:open="previewVisible" title="文件预览" width="800px" :footer="null">
       <div v-if="previewFile" class="file-preview">
-        <div v-if="previewFile.type.startsWith('image/')" class="image-preview">
-          <img :src="getImageUrl(previewFile)" :alt="previewFile.originalName"
-               style="max-width: 100%; max-height: 500px; object-fit: contain;" />
+        <div v-if="isImageFile(previewFile)" class="image-preview">
+          <img 
+            :src="getImageUrl(previewFile)" 
+            :alt="previewFile.name"
+            style="max-width: 100%; max-height: 500px; object-fit: contain;"
+          />
         </div>
         <div v-else class="file-info">
           <FileOutlined style="font-size: 48px; color: #1890ff; margin-bottom: 16px;" />
-          <h3>{{ previewFile.originalName }}</h3>
-          <p>文件大小: {{ previewFile.size }}</p>
+          <h3>{{ previewFile.name }}</h3>
+          <p>文件大小: {{ formatFileSize(previewFile.size) }}</p>
           <p>文件类型: {{ previewFile.type }}</p>
-          <p>上传时间: {{ previewFile.uploadTime }}</p>
+          <p>修改时间: {{ new Date(previewFile.modifiedTime).toLocaleString('zh-CN') }}</p>
         </div>
       </div>
+    </a-modal>
+
+    <!-- 创建文件夹模态框 -->
+    <a-modal
+        v-model:open="createFolderVisible"
+        title="创建文件夹"
+        @ok="handleCreateFolder"
+        :confirm-loading="createFolderLoading"
+    >
+      <a-form :model="createFolderForm" :rules="createFolderRules" ref="createFolderFormRef">
+        <a-form-item label="文件夹名称" name="folderName">
+          <a-input v-model:value="createFolderForm.folderName" placeholder="请输入文件夹名称" />
+        </a-form-item>
+      </a-form>
     </a-modal>
   </div>
 </template>
@@ -128,12 +169,14 @@ import {
   EyeOutlined,
   FileExcelOutlined,
   FileOutlined,
+  FolderAddOutlined,
+  FolderOutlined,
   HomeOutlined,
   PictureOutlined,
   ReloadOutlined,
   UploadOutlined,
 } from '@ant-design/icons-vue'
-import { formatFileSize, uploadFile } from '@/apis/files'
+import { formatFileSize, uploadFile, createFolderAPI } from '@/apis/files'
 import { useFileStore } from '@/store/files'
 
 const fileStore = useFileStore()
@@ -141,14 +184,31 @@ const fileStore = useFileStore()
 const previewVisible = ref(false)
 const previewFile = ref<any>(null)
 const isDragOver = ref(false)
+const currentPath = ref('.')
+const parentPath = ref<string | null>(null)
 
-// 与 OutputFileBrowser 一致的列定义与 bodyCell 渲染习惯
+// 创建文件夹相关状态
+const createFolderVisible = ref(false)
+const createFolderLoading = ref(false)
+const createFolderForm = ref({
+  folderName: ''
+})
+const createFolderFormRef = ref()
+const createFolderRules = {
+  folderName: [
+    { required: true, message: '请输入文件夹名称', trigger: 'blur' },
+    { min: 1, max: 50, message: '文件夹名称长度应在1-50个字符之间', trigger: 'blur' },
+    { pattern: /^[^<>:"/\\|?*]+$/, message: '文件夹名称不能包含特殊字符', trigger: 'blur' }
+  ]
+}
+
+// 与LocalFileBrowser一致的列定义
 const columns = [
   {
     title: '名称',
-    dataIndex: 'originalName',
-    key: 'originalName',
-    sorter: (a: any, b: any) => a.originalName.localeCompare(b.originalName),
+    dataIndex: 'name',
+    key: 'name',
+    sorter: (a: any, b: any) => a.name.localeCompare(b.name),
   },
   {
     title: '类型',
@@ -164,58 +224,161 @@ const columns = [
     sorter: (a: any, b: any) => a.size - b.size,
   },
   {
-    title: '上传时间',
-    dataIndex: 'uploadTime',
-    key: 'uploadTime',
+    title: '修改时间',
+    dataIndex: 'modifiedTime',
+    key: 'modifiedTime',
     width: 180,
-    sorter: (a: any, b: any) => new Date(a.uploadTime).getTime() - new Date(b.uploadTime).getTime(),
+    sorter: (a: any, b: any) => new Date(a.modifiedTime).getTime() - new Date(b.modifiedTime).getTime(),
   },
   {title: '操作', dataIndex: 'actions', key: 'actions', width: 150},
 ]
 
-// 仍保持原始数据类型，模板中格式化展示
+// 与LocalFileBrowser保持一致的数据结构
 const dataSource = computed(() => fileStore.filteredFiles.map(f => ({
   key: f.id,
   id: f.id,
-  originalName: f.originalName,
+  name: f.name,
   size: f.size,
   type: f.type,
-  uploadTime: f.uploadTime,
+  modifiedTime: f.modifiedTime,
+  isDirectory: f.isDirectory,
+  path: f.path,
 })))
 
-// 路径导航（已上传文件没有目录结构，这里做禁用处理）
-const pathParts = computed(() => [])
-const canGoUp = computed(() => false)
-const getPathUpTo = (_index: number) => '.'
-const navigateToPath = (_path: string) => {
-  refresh()
+// 路径导航相关
+const pathParts = computed(() => {
+  if (!currentPath.value || currentPath.value === '.') return []
+  return currentPath.value.split('/').filter(part => part)
+})
+
+const canGoUp = computed(() => {
+  return parentPath.value !== null && parentPath.value !== undefined
+})
+
+const getPathUpTo = (index: number) => {
+  const parts = pathParts.value.slice(0, index + 1)
+  return parts.length > 0 ? parts.join('/') : '.'
 }
+
+const navigateToPath = (path: string) => {
+  fetchFiles(path)
+}
+
 const goUp = () => {
+  if (!canGoUp.value || !parentPath.value) return
+  fetchFiles(parentPath.value)
 }
 
 const onSelectChange = (keys: string[]) => {
   fileStore.setSelectedFileIds(keys)
 }
 
-const refresh = async () => {
+const fetchFiles = async (path: string = '.') => {
   try {
-    await fileStore.fetchFileList()
+    await fileStore.fetchFileList(path)
+    // 更新路径信息
+    if (fileStore.currentPath !== undefined) {
+      currentPath.value = fileStore.currentPath
+    }
+    if (fileStore.parentPath !== undefined) {
+      parentPath.value = fileStore.parentPath
+    }
   } catch (e) {
     message.error('获取文件列表失败')
   }
 }
 
+const refresh = async () => {
+  await fetchFiles(currentPath.value)
+}
+
+// 显示创建文件夹模态框
+const showCreateFolderModal = () => {
+  createFolderForm.value.folderName = ''
+  createFolderVisible.value = true
+}
+
+// 创建文件夹
+const handleCreateFolder = async () => {
+  try {
+    await createFolderFormRef.value?.validate()
+    createFolderLoading.value = true
+    
+    const result = await createFolderAPI(createFolderForm.value.folderName, currentPath.value)
+    if (result.success) {
+      message.success('文件夹创建成功')
+      createFolderVisible.value = false
+      await refresh()
+    } else {
+      message.error(result.message || '创建文件夹失败')
+    }
+  } catch (error) {
+    console.error('创建文件夹失败:', error)
+    message.error('创建文件夹失败')
+  } finally {
+    createFolderLoading.value = false
+  }
+}
+
+// 处理文件/目录点击
+const handleItemClick = (item: any) => {
+  if (item.isDirectory) {
+    // 进入目录
+    const newPath = currentPath.value === '.' ? item.name : `${currentPath.value}/${item.name}`
+    fetchFiles(newPath)
+  } else {
+    // 预览文件
+    previewFileHandler(item)
+  }
+}
+
+// 获取文件图标
+const getFileIcon = (fileType: string) => {
+  if (fileType === 'directory') {
+    return FolderOutlined
+  } else if (fileType.startsWith('image/')) {
+    return PictureOutlined
+  } else if (fileType.includes('csv') || fileType.includes('excel')) {
+    return FileExcelOutlined
+  } else if (fileType.includes('dicom') || fileType.includes('application/dicom')) {
+    return PictureOutlined // 使用图片图标表示DICOM医学图像
+  } else {
+    return FileOutlined
+  }
+}
+
+// 获取类型颜色
+const getTypeColor = (fileType: string) => {
+  if (fileType === 'directory') return 'blue'
+  if (fileType.startsWith('image/')) return 'blue'
+  if (fileType.includes('csv') || fileType.includes('excel')) return 'green'
+  if (fileType.includes('dicom') || fileType.includes('application/dicom')) return 'purple'
+  if (fileType.includes('text')) return 'orange'
+  return 'default'
+}
+
+// 获取类型名称
+const getTypeName = (fileType: string) => {
+  if (fileType === 'directory') return '目录'
+  if (fileType.startsWith('image/')) return '图片'
+  if (fileType.includes('csv')) return 'CSV'
+  if (fileType.includes('excel')) return 'Excel'
+  if (fileType.includes('dicom') || fileType.includes('application/dicom')) return 'DICOM'
+  if (fileType.includes('text')) return '文本'
+  return '其他'
+}
+
 const deleteFileHandler = (file: any) => {
   Modal.confirm({
     title: '确认删除',
-    content: `确定要删除文件 "${file.originalName}" 吗？`,
+    content: `确定要删除${file.isDirectory ? '目录' : '文件'} "${file.name}" 吗？`,
     okText: '删除',
     okType: 'danger',
     cancelText: '取消',
     onOk: async () => {
       const ok = await fileStore.removeFile(file.id)
-      if (ok) message.success('文件删除成功')
-      else message.error(fileStore.error || '删除文件失败')
+      if (ok) message.success(`${file.isDirectory ? '目录' : '文件'}删除成功`)
+      else message.error(fileStore.error || '删除失败')
     }
   })
 }
@@ -240,13 +403,18 @@ const handleBatchDelete = () => {
 }
 
 const downloadFile = async (file: any) => {
+  if (file.isDirectory) {
+    message.warning('目录无法下载')
+    return
+  }
+  
   const result = await fileStore.downloadFileById(file.id)
   if (result.success && result.downloadUrl) {
     const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
     const fullUrl = `${baseURL}${result.downloadUrl}`
     const link = document.createElement('a')
     link.href = fullUrl
-    link.download = file.originalName
+    link.download = file.name
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -259,6 +427,10 @@ const downloadFile = async (file: any) => {
 const previewFileHandler = (file: any) => {
   previewFile.value = file
   previewVisible.value = true
+}
+
+const isImageFile = (file: any) => {
+  return file ? file.type.startsWith('image/') : false
 }
 
 const getImageUrl = (file: any) => {
@@ -329,7 +501,7 @@ const handleRefreshEvent = () => {
 }
 
 onMounted(() => {
-  refresh()
+  fetchFiles('.')
   window.addEventListener('open-file-upload', handleOpenUploadEvent)
   window.addEventListener('refresh-file-list', handleRefreshEvent)
 })
@@ -447,5 +619,36 @@ onUnmounted(() => {
   margin: 0;
   color: #666;
   font-size: 14px;
+}
+
+.file-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-name-cell.clickable {
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.file-name-cell.clickable:hover {
+  background-color: #f5f5f5;
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin: -4px -8px;
+}
+
+.file-icon {
+  font-size: 16px;
+  color: #1890ff;
+}
+
+.directory-icon {
+  color: #faad14;
+}
+
+.file-name {
+  font-weight: 500;
 }
 </style>

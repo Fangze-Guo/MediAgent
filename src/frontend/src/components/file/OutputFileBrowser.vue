@@ -110,6 +110,15 @@
               >
                 <EyeOutlined />
               </a-button>
+              <a-button 
+                type="text" 
+                size="small" 
+                title="删除"
+                danger
+                @click="deleteFileHandler(record)"
+              >
+                <DeleteOutlined />
+              </a-button>
             </div>
           </template>
         </template>
@@ -160,7 +169,7 @@ import {
   ReloadOutlined,
   UploadOutlined
 } from '@ant-design/icons-vue'
-import { formatFileSize, getOutputFiles, type OutputFileInfo } from '@/apis/files'
+import { formatFileSize, getOutputFiles, deleteOutputFile, type OutputFileInfo } from '@/apis/files'
 
 // 响应式数据
 const fileList = ref<OutputFileInfo[]>([])
@@ -405,6 +414,31 @@ const uploadFilesToCurrentDirectory = async (files: File[]) => {
 // 处理选择变化
 const onSelectChange = (keys: string[]) => {
   selectedFiles.value = keys
+}
+
+// 单项删除文件
+const deleteFileHandler = (file: OutputFileInfo) => {
+  Modal.confirm({
+    title: '确认删除',
+    content: `确定要删除${file.isDirectory ? '目录' : '文件'} "${file.name}" 吗？`,
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: async () => {
+      try {
+        const result = await deleteOutputFile(file.path)
+        if (result.success) {
+          message.success(`${file.isDirectory ? '目录' : '文件'}删除成功`)
+          refresh()
+        } else {
+          message.error(result.message || '删除失败')
+        }
+      } catch (error) {
+        console.error('删除文件失败:', error)
+        message.error('删除失败')
+      }
+    }
+  })
 }
 
 // 批量删除文件
