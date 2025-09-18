@@ -427,7 +427,7 @@ const deleteFileHandler = (file: OutputFileInfo) => {
     onOk: async () => {
       try {
         const result = await deleteOutputFile(file.path)
-        if (result.success) {
+        if (result.code === 200) {
           message.success(`${file.isDirectory ? '目录' : '文件'}删除成功`)
           refresh()
         } else {

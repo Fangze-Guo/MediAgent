@@ -5,48 +5,69 @@
 import { get, post } from '@/utils/request'
 
 /**
+ * 通用响应接口 - 与后端BaseResponse同步
+ */
+export interface BaseResponse<T = any> {
+    /** 响应码 */
+    code: number
+    /** 响应数据 */
+    data: T
+    /** 响应消息 */
+    message: string
+}
+
+/**
  * 文件上传响应接口
  */
 export interface FileUploadResponse {
-    /** 上传是否成功 */
-    success: boolean
+    /** 响应码 */
+    code: number
     /** 文件信息 */
-    file: {
+    data: {
         /** 文件ID */
         id: string
-        /** 原始文件名 */
-        originalName: string
+        /** 文件名 */
+        name: string
         /** 文件大小（字节） */
         size: number
         /** 文件类型 */
         type: string
         /** 文件路径 */
         path: string
-        /** 上传时间 */
-        uploadTime: string
+        /** 修改时间 */
+        modifiedTime: string
+        /** 是否为目录 */
+        isDirectory: boolean
     }
-    /** 错误信息（如果上传失败） */
-    error?: string
+    /** 响应消息 */
+    message: string
 }
 
 /**
  * 文件列表响应接口
  */
 export interface FileListResponse {
-    /** 文件列表 */
-    files: Array<{
-        id: string
-        name: string
-        size: number
-        type: string
-        path: string
-        modifiedTime: string
-        isDirectory: boolean
-    }>
-    /** 当前路径 */
-    currentPath?: string
-    /** 父路径 */
-    parentPath?: string | null
+    /** 响应码 */
+    code: number
+    /** 文件列表数据 */
+    data: {
+        /** 文件列表 */
+        files: Array<{
+            id: string
+            name: string
+            size: number
+            type: string
+            path: string
+            modifiedTime: string
+            isDirectory: boolean
+        }>
+        /** 当前路径 */
+        currentPath: string
+        /** 父路径 */
+        parentPath: string | null
+    }
+    /** 响应消息 */
+    message: string
 }
 
 /**
@@ -183,26 +204,31 @@ export function isSupportedFileType(file: File): boolean {
 }
 
 /**
- * 删除文件响应接口
+ * 删除文件响应接口 - 与后端BaseResponse同步
  */
-export interface DeleteFileResponse {
-    /** 删除是否成功 */
-    success: boolean
-    /** 错误信息（如果删除失败） */
-    error?: string
-}
+export type DeleteFileResponse = BaseResponse<null>
 
 /**
- * 批量删除文件响应接口
+ * 批量删除文件响应数据
  */
-export interface BatchDeleteFilesResponse {
+export interface BatchDeleteFilesData {
     /** 删除是否成功 */
     success: boolean
     /** 成功删除的文件数量 */
     deletedCount: number
-    /** 错误信息（如果删除失败） */
-    error?: string
+    /** 失败的文件数量 */
+    failedCount: number
+    /** 失败的文件列表 */
+    failedFiles: Array<{
+        fileId: string
+        error: string
+    }>
 }
+
+/**
+ * 批量删除文件响应接口 - 与后端BaseResponse同步
+ */
+export type BatchDeleteFilesResponse = BaseResponse<BatchDeleteFilesData>
 
 /**
  * 下载文件响应接口
@@ -224,7 +250,7 @@ export interface DownloadFileResponse {
  *
  * @example
  * ```typescript
- * const result = await deleteFile('file-id-123')
+ * const result = await deleteFile('upload_1234567890')
  * if (result.success) {
  *   console.log('文件删除成功')
  * }
@@ -322,8 +348,8 @@ export interface LocalFileListResponse {
  */
 export async function getLocalFiles(path: string = '.'): Promise<LocalFileListResponse> {
     try {
-        const response = await get<LocalFileListResponse>(`/files/local?path=${encodeURIComponent(path)}`)
-        return response.data
+        const response = await get<{ code: number; data: LocalFileListResponse; message: string }>(`/files/local?path=${encodeURIComponent(path)}`)
+        return response.data.data
     } catch (error) {
         console.error('获取本地文件列表失败:', error)
         throw new Error('获取本地文件列表失败，请稍后再试')
@@ -376,8 +402,8 @@ export interface OutputFileListResponse {
  */
 export async function getOutputFiles(path: string = '.'): Promise<OutputFileListResponse> {
     try {
-        const response = await get<OutputFileListResponse>(`/files/output?path=${encodeURIComponent(path)}`)
-        return response.data
+        const response = await get<{ code: number; data: OutputFileListResponse; message: string }>(`/files/output?path=${encodeURIComponent(path)}`)
+        return response.data.data
     } catch (error) {
         console.error('获取输出文件列表失败:', error)
         throw new Error('获取输出文件列表失败，请稍后再试')
@@ -390,12 +416,9 @@ export async function getOutputFiles(path: string = '.'): Promise<OutputFileList
  * @param currentPath 当前路径
  * @returns 创建结果
  */
-export async function createFolderAPI(folderName: string, currentPath: string = '.'): Promise<{
-    success: boolean;
-    message?: string
-}> {
+export async function createFolderAPI(folderName: string, currentPath: string = '.'): Promise<BaseResponse<null>> {
     try {
-        const response = await post<{ success: boolean; message?: string }>('/files/create-folder', {
+        const response = await post<BaseResponse<null>>('/files/create-folder', {
             folderName,
             currentPath
         })
@@ -411,10 +434,10 @@ export async function createFolderAPI(folderName: string, currentPath: string = 
  * @param filePath 文件路径
  * @returns 删除结果
  */
-export async function deleteLocalFile(filePath: string): Promise<{ success: boolean; message?: string }> {
+export async function deleteLocalFile(filePath: string): Promise<BaseResponse<null>> {
     try {
-        const response = await post<{ success: boolean; message?: string }>('/files/local/delete', {
-            filePath
+        const response = await post<BaseResponse<null>>('/files/local/delete', {
+            file_path: filePath
         })
         return response.data
     } catch (error) {
@@ -428,10 +451,10 @@ export async function deleteLocalFile(filePath: string): Promise<{ success: bool
  * @param filePath 文件路径
  * @returns 删除结果
  */
-export async function deleteOutputFile(filePath: string): Promise<{ success: boolean; message?: string }> {
+export async function deleteOutputFile(filePath: string): Promise<BaseResponse<null>> {
     try {
-        const response = await post<{ success: boolean; message?: string }>('/files/output/delete', {
-            filePath
+        const response = await post<BaseResponse<null>>('/files/output/delete', {
+            file_path: filePath
         })
         return response.data
     } catch (error) {

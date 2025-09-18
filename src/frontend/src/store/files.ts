@@ -6,9 +6,20 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { getFileList, deleteFile, batchDeleteFiles, downloadFile, createFolderAPI, type FileListResponse } from '@/apis/files'
 
+// 文件信息类型
+type FileInfo = {
+  id: string
+  name: string
+  size: number
+  type: string
+  path: string
+  modifiedTime: string
+  isDirectory: boolean
+}
+
 export const useFileStore = defineStore('files', () => {
   // 状态
-  const fileList = ref<FileListResponse['files']>([])
+  const fileList = ref<FileListResponse['data']['files']>([])
   const loading = ref(false)
   const selectedFileIds = ref<string[]>([])
   const searchText = ref('')
@@ -18,7 +29,7 @@ export const useFileStore = defineStore('files', () => {
 
   // 计算属性
   const selectedFiles = computed(() => 
-    fileList.value.filter(file => selectedFileIds.value.includes(file.id))
+    fileList.value.filter((file: FileInfo) => selectedFileIds.value.includes(file.id))
   )
 
   const selectedCount = computed(() => selectedFileIds.value.length)
@@ -28,7 +39,7 @@ export const useFileStore = defineStore('files', () => {
     
     // 搜索过滤
     if (searchText.value) {
-      filtered = filtered.filter(file => 
+      filtered = filtered.filter((file: FileInfo) => 
         file.name.toLowerCase().includes(searchText.value.toLowerCase())
       )
     }
@@ -38,11 +49,11 @@ export const useFileStore = defineStore('files', () => {
 
   const fileStats = computed(() => {
     const totalFiles = fileList.value.length
-    const totalSize = fileList.value.reduce((sum, file) => sum + file.size, 0)
-    const directories = fileList.value.filter(file => file.isDirectory).length
-    const imageFiles = fileList.value.filter(file => file.type.startsWith('image/')).length
-    const csvFiles = fileList.value.filter(file => file.type.includes('csv')).length
-    const dicomFiles = fileList.value.filter(file => file.type.includes('dicom')).length
+    const totalSize = fileList.value.reduce((sum: number, file: FileInfo) => sum + file.size, 0)
+    const directories = fileList.value.filter((file: FileInfo) => file.isDirectory).length
+    const imageFiles = fileList.value.filter((file: FileInfo) => file.type.startsWith('image/')).length
+    const csvFiles = fileList.value.filter((file: FileInfo) => file.type.includes('csv')).length
+    const dicomFiles = fileList.value.filter((file: FileInfo) => file.type.includes('dicom')).length
     const otherFiles = totalFiles - directories - imageFiles - csvFiles - dicomFiles
 
     return {
@@ -83,7 +94,7 @@ export const useFileStore = defineStore('files', () => {
   }
 
   const selectAllFiles = () => {
-    selectedFileIds.value = filteredFiles.value.map(file => file.id)
+    selectedFileIds.value = filteredFiles.value.map((file: FileInfo) => file.id)
   }
 
   const clearSelection = () => {
@@ -96,13 +107,13 @@ export const useFileStore = defineStore('files', () => {
       setLoading(true)
       setError(null)
       const response = await getFileList(path)
-      fileList.value = response.files
+      fileList.value = response.data.files
       // 更新路径信息
-      if (response.currentPath !== undefined) {
-        currentPath.value = response.currentPath
+      if (response.data.currentPath !== undefined) {
+        currentPath.value = response.data.currentPath
       }
-      if (response.parentPath !== undefined) {
-        parentPath.value = response.parentPath
+      if (response.data.parentPath !== undefined) {
+        parentPath.value = response.data.parentPath
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '获取文件列表失败'
@@ -120,9 +131,9 @@ export const useFileStore = defineStore('files', () => {
       setError(null)
       const result = await deleteFile(fileId)
       
-      if (result.success) {
-        // 从列表中移除文件
-        fileList.value = fileList.value.filter(file => file.id !== fileId)
+      if (result.code === 200) {
+        // 从本地列表中移除文件，提供即时反馈
+        fileList.value = fileList.value.filter((file: FileInfo) => file.id !== fileId)
         // 从选中列表中移除
         const index = selectedFileIds.value.indexOf(fileId)
         if (index > -1) {
@@ -130,7 +141,7 @@ export const useFileStore = defineStore('files', () => {
         }
         return true
       } else {
-        setError(result.error || '删除文件失败')
+        setError(result.message || '删除文件失败')
         return false
       }
     } catch (err) {
@@ -149,14 +160,14 @@ export const useFileStore = defineStore('files', () => {
       setError(null)
       const result = await batchDeleteFiles(fileIds)
       
-      if (result.success) {
-        // 从列表中移除文件
-        fileList.value = fileList.value.filter(file => !fileIds.includes(file.id))
+      if (result.code === 200) {
+        // 重新获取文件列表以确保数据同步
+        await fetchFileList(currentPath.value)
         // 清空选中列表
         clearSelection()
-        return { success: true, deletedCount: result.deletedCount }
+        return { success: true, deletedCount: result.data.deletedCount }
       } else {
-        setError(result.error || '批量删除失败')
+        setError(result.message || '批量删除失败')
         return { success: false, deletedCount: 0 }
       }
     } catch (err) {
@@ -188,9 +199,9 @@ export const useFileStore = defineStore('files', () => {
   }
 
   // 添加文件到列表（上传成功后调用）
-  const addFile = (file: FileListResponse['files'][0]) => {
+  const addFile = (file: FileInfo) => {
     // 检查文件是否已存在
-    const existingIndex = fileList.value.findIndex(f => f.id === file.id)
+    const existingIndex = fileList.value.findIndex((f: FileInfo) => f.id === file.id)
     if (existingIndex > -1) {
       // 更新现有文件
       fileList.value[existingIndex] = file
@@ -201,8 +212,8 @@ export const useFileStore = defineStore('files', () => {
   }
 
   // 更新文件信息
-  const updateFile = (fileId: string, updates: Partial<FileListResponse['files'][0]>) => {
-    const index = fileList.value.findIndex(file => file.id === fileId)
+  const updateFile = (fileId: string, updates: Partial<FileInfo>) => {
+    const index = fileList.value.findIndex((file: FileInfo) => file.id === fileId)
     if (index > -1) {
       fileList.value[index] = { ...fileList.value[index], ...updates }
     }
@@ -210,7 +221,7 @@ export const useFileStore = defineStore('files', () => {
 
   // 根据ID查找文件
   const getFileById = (fileId: string) => {
-    return fileList.value.find(file => file.id === fileId)
+    return fileList.value.find((file: FileInfo) => file.id === fileId)
   }
 
   // 创建文件夹
@@ -219,7 +230,7 @@ export const useFileStore = defineStore('files', () => {
       setLoading(true)
       setError(null)
       const result = await createFolderAPI(folderName, currentPath)
-      if (result.success) {
+      if (result.code === 200) {
         // 刷新文件列表
         await fetchFileList(currentPath)
         return { success: true }

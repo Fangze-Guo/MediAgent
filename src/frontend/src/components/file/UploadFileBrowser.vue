@@ -305,7 +305,7 @@ const handleCreateFolder = async () => {
     createFolderLoading.value = true
     
     const result = await createFolderAPI(createFolderForm.value.folderName, currentPath.value)
-    if (result.success) {
+    if (result.code === 200) {
       message.success('文件夹创建成功')
       createFolderVisible.value = false
       await refresh()
@@ -459,10 +459,10 @@ const uploadSelectedFiles = async (files: File[]) => {
   try {
     for (const file of files) {
       const result = await uploadFile(file)
-      if (result.success) {
+      if (result.code === 200) {
         await refresh()
       } else {
-        throw new Error(result.error || '上传失败')
+        throw new Error(result.message || '上传失败')
       }
     }
     message.success(`成功上传 ${files.length} 个文件`)

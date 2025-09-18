@@ -5,8 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .chat_controller import ChatController
-from .tool_controller import ToolController
-from .file_controller import FileController
+from .FileController import FileController
 from .system_controller import SystemController
 from .user_controller import UserController
 from .progress_controller import router as progress_router
@@ -32,14 +31,12 @@ def create_app() -> FastAPI:
 
     # 创建控制器实例
     chat_controller = ChatController()
-    tool_controller = ToolController()
     file_controller = FileController()
     system_controller = SystemController()
     user_controller = UserController()
 
     # 注册路由
     app.include_router(chat_controller.router)
-    app.include_router(tool_controller.router)
     app.include_router(file_controller.router)
     app.include_router(system_controller.router)
     app.include_router(user_controller.router)
@@ -50,24 +47,10 @@ def create_app() -> FastAPI:
 
     return app
 
-
-def get_all_controllers():
-    """获取所有控制器实例"""
-    return {
-        'chat': ChatController(),
-        'tool': ToolController(),
-        'file': FileController(),
-        'system': SystemController(),
-        'user': UserController(),
-    }
-
-
 # 导出主要接口
 __all__ = [
     'create_app',
-    'get_all_controllers',
     'ChatController',
-    'ToolController', 
     'FileController',
     'SystemController',
     'UserController',

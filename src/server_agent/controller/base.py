@@ -8,7 +8,6 @@ from typing import List
 from fastapi import APIRouter
 
 from src.server_agent.agent import MCPAgent
-from src.server_agent.constants.EnvConfig import BASE_URL, MODEL
 
 # 全局变量
 agent = MCPAgent()
