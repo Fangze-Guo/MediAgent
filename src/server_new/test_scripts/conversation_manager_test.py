@@ -13,7 +13,7 @@ DB_PATH      = in_data("db","app.sqlite3")    # 你的 SQLite 数据库文件（
 CONV_ROOT    = in_data("conversations")   # 对话根目录（需存在且可写）
 TEST_UID     = "6127016735"               # 用于测试的用户 UID
 ENSURE_UID   = True                          # 若 users 表存在且没有该 uid，则插入一条记录
-USE_SUBDIR   = True                          # 是否在根目录下新建隔离子目录（推荐 True）
+USE_SUBDIR   = False                          # 是否在根目录下新建隔离子目录（推荐 True）
 # ===========================================================
 
 # ---------------- import ConversationManager (兼容多路径) ----------------
