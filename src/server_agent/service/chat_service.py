@@ -13,12 +13,12 @@ logger = logging.getLogger(__name__)
 
 class ChatService:
     """聊天服务类"""
-    
+
     def __init__(self, agent):
         self.agent = agent
-    
+
     @handle_service_exception
-    async def chat(self, conversation_id: str, message: str, history: List[Dict[str, Any]], files: List[Any] = None, assistant_type: str = "general") -> Dict[str, Any]:
+    async def chat(self, conversation_id: str, message: str, history: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         普通聊天服务
         
@@ -26,161 +26,165 @@ class ChatService:
             conversation_id: 会话ID
             message: 用户消息
             history: 历史消息
-            files: 关联文件列表
-            
+
         Returns:
             聊天响应结果
         """
+        # 构建消息列表
+        msgs = [{"role": "system",
+                 "content": "你可以在需要时调用可用工具来完成任务，工具返回JSON，请先解析后用中文总结关键结果。"}]
+        msgs += history
+        msgs += [{"role": "user", "content": message}]
+        # 调用AI聊天
+        result: ConversationInfo = await self.agent.chat(msgs)
+        return {
+            "conversation_id": conversation_id,
+            "answer": result["content"],
+            "tool_calls": result["tool_calls"]
+        }
+
+
+@handle_service_exception
+async def chat_stream(self, conversation_id: str, message: str, history: List[Dict[str, Any]], files: List[Any] = None,
+                      assistant_type: str = "general") -> AsyncGenerator[str, None]:
+    """
+    流式聊天服务
+
+    Args:
+        conversation_id: 会话ID
+        message: 用户消息
+        history: 历史消息
+        files: 关联文件列表
+
+    Yields:
+        Server-Sent Events 格式的流式数据
+    """
+    try:
+        # 构建系统消息
+        system_content = self._build_system_content(files, assistant_type)
+
+        # 构建消息列表
+        msgs = [{"role": "system", "content": system_content}]
+        msgs += history
+        msgs += [{"role": "user", "content": message}]
+
+        # 发送开始信号
+        yield f"data: {json.dumps({'type': 'start', 'conversation_id': conversation_id}, ensure_ascii=False)}\n\n"
+
+        # 流式获取AI回复
         try:
-            # 构建消息列表
-            msgs = [{"role": "system",
-                     "content": "你可以在需要时调用可用工具来完成任务，工具返回JSON，请先解析后用中文总结关键结果。"}]
-            msgs += history
-            msgs += [{"role": "user", "content": message}]
-            
-            # 调用AI聊天
-            result = await self.agent.chat(msgs)
-            
-            return {
-                "conversation_id": conversation_id,
-                "answer": result["content"],
-                "tool_calls": result["tool_calls"]
-            }
-            
-        except Exception as e:
-            logger.error(f"聊天服务错误: {e}")
-            raise ServiceError(
-                detail="聊天服务错误",
-                service_name="chat_service",
-                context={"conversation_id": conversation_id, "error": str(e)}
-            )
-    
-    @handle_service_exception
-    async def chat_stream(self, conversation_id: str, message: str, history: List[Dict[str, Any]], files: List[Any] = None, assistant_type: str = "general") -> AsyncGenerator[str, None]:
-        """
-        流式聊天服务
-        
-        Args:
-            conversation_id: 会话ID
-            message: 用户消息
-            history: 历史消息
-            files: 关联文件列表
-            
-        Yields:
-            Server-Sent Events 格式的流式数据
-        """
-        try:
-            # 构建系统消息
-            system_content = self._build_system_content(files, assistant_type)
-            
-            # 构建消息列表
-            msgs = [{"role": "system", "content": system_content}]
-            msgs += history
-            msgs += [{"role": "user", "content": message}]
-            
-            # 发送开始信号
-            yield f"data: {json.dumps({'type': 'start', 'conversation_id': conversation_id}, ensure_ascii=False)}\n\n"
-            
-            # 流式获取AI回复
             async for chunk in self.agent.chat_stream(msgs):
-                if chunk['type'] == 'content':
-                    yield f"data: {json.dumps({'type': 'content', 'content': chunk['content']}, ensure_ascii=False)}\n\n"
-                elif chunk['type'] == 'tool_call':
-                    yield f"data: {json.dumps({'type': 'tool_call', 'tool': chunk['tool']}, ensure_ascii=False)}\n\n"
-                elif chunk['type'] == 'complete':
-                    yield f"data: {json.dumps({'type': 'complete', 'tool_calls': chunk.get('tool_calls', [])}, ensure_ascii=False)}\n\n"
-                    break
-                    
-        except Exception as e:
-            logger.error(f"流式聊天服务错误: {e}")
-            yield f"data: {json.dumps({'type': 'error', 'error': str(e)}, ensure_ascii=False)}\n\n"
-    
-    def _build_system_content(self, files: List[Any] = None, assistant_type: str = "general") -> str:
-        """
-        构建系统消息内容
-        
-        Args:
-            files: 文件列表
-            assistant_type: 助手类型 (medical, data, document, general)
-            
-        Returns:
-            系统消息内容
-        """
-        # 根据助手类型和文件类型确定系统提示词
-        system_content = self._get_system_prompt_by_type(assistant_type, files)
-        
-        # 如果有文件，添加文件信息到系统消息
-        if files:
-            logger.info(f"处理 {len(files)} 个文件")
-            system_content += f"\n\n可用文件："
-            
-            for i, file in enumerate(files):
-                logger.debug(f"文件 {i}: {type(file)} - {file}")
-                
-                # 处理字典格式的文件对象
-                if isinstance(file, dict):
-                    file_name = file.get('originalName', file.get('name', '未知文件'))
-                    file_type = file.get('type', '')
-                    file_path = file.get('path', '')
+                if chunk and isinstance(chunk, dict) and 'type' in chunk:
+                    if chunk['type'] == 'content':
+                        yield f"data: {json.dumps({'type': 'content', 'content': chunk['content']}, ensure_ascii=False)}\n\n"
+                    elif chunk['type'] == 'tool_call':
+                        yield f"data: {json.dumps({'type': 'tool_call', 'tool': chunk['tool']}, ensure_ascii=False)}\n\n"
+                    elif chunk['type'] == 'complete':
+                        yield f"data: {json.dumps({'type': 'complete', 'tool_calls': chunk.get('tool_calls', [])}, ensure_ascii=False)}\n\n"
+                        # 发送结束信号
+                        yield f"data: {json.dumps({'type': 'end'}, ensure_ascii=False)}\n\n"
+                        break
                 else:
-                    # 处理对象格式的文件
-                    file_name = getattr(file, 'originalName', getattr(file, 'name', '未知文件'))
-                    file_type = getattr(file, 'type', '')
-                    file_path = getattr(file, 'path', '')
-                
-                if file_type.startswith('image/'):
-                    system_content += f"\n- {file_name} → {file_path}"
-                elif 'csv' in file_type:
-                    system_content += f"\n- {file_name} → {file_path}"
-                else:
-                    system_content += f"\n- {file_name} → {file_path}"
-            
-            system_content += f"\n\n注意：调用工具时使用完整路径，不要使用原始文件名。"
-        
-        return system_content
-    
-    def _get_system_prompt_by_type(self, assistant_type: str, files: List[Any] = None) -> str:
-        """
-        根据助手类型获取系统提示词
-        
-        Args:
-            assistant_type: 助手类型
-            files: 文件列表
-            
-        Returns:
-            系统提示词
-        """
-        # 检查文件类型以确定是否需要特殊处理
-        has_medical_files = self._has_medical_files(files)
-        
-        if assistant_type == "medical" or has_medical_files:
-            return self._get_medical_system_prompt()
-        elif assistant_type == "data":
-            return self._get_data_analysis_system_prompt()
-        elif assistant_type == "document":
-            return self._get_document_system_prompt()
-        else:
-            return self._get_general_system_prompt()
-    
-    def _has_medical_files(self, files: List[Any] = None) -> bool:
-        """检查是否有医学图像文件"""
-        if not files:
-            return False
-            
-        for file in files:
-            file_name = ""
+                    logger.warning(f"收到无效的chunk: {chunk}")
+                    continue
+        except Exception as stream_error:
+            logger.error(f"流式处理错误: {stream_error}")
+            yield f"data: {json.dumps({'type': 'error', 'error': f'流式处理错误: {str(stream_error)}'}, ensure_ascii=False)}\n\n"
+
+    except Exception as e:
+        logger.error(f"流式聊天服务错误: {e}")
+        yield f"data: {json.dumps({'type': 'error', 'error': str(e)}, ensure_ascii=False)}\n\n"
+
+
+def _build_system_content(self, files: List[Any] = None, assistant_type: str = "general") -> str:
+    """
+    构建系统消息内容
+
+    Args:
+        files: 文件列表
+        assistant_type: 助手类型 (medical, data, document, general)
+
+    Returns:
+        系统消息内容
+    """
+    # 根据助手类型和文件类型确定系统提示词
+    system_content = self._get_system_prompt_by_type(assistant_type, files)
+
+    # 如果有文件，添加文件信息到系统消息
+    if files:
+        logger.info(f"处理 {len(files)} 个文件")
+        system_content += f"\n\n可用文件："
+
+        for i, file in enumerate(files):
+            logger.debug(f"文件 {i}: {type(file)} - {file}")
+
+            # 处理字典格式的文件对象
             if isinstance(file, dict):
-                file_name = file.get('originalName', file.get('name', ''))
+                file_name = file.get('originalName', file.get('name', '未知文件'))
+                file_type = file.get('type', '')
+                file_path = file.get('path', '')
             else:
-                file_name = getattr(file, 'originalName', getattr(file, 'name', ''))
-            
-            if any(ext in file_name.lower() for ext in ['.dcm', '.dicom', '.nii', '.nii.gz']):
-                return True
+                # 处理对象格式的文件
+                file_name = getattr(file, 'originalName', getattr(file, 'name', '未知文件'))
+                file_type = getattr(file, 'type', '')
+                file_path = getattr(file, 'path', '')
+
+            if file_type.startswith('image/'):
+                system_content += f"\n- {file_name} → {file_path}"
+            elif 'csv' in file_type:
+                system_content += f"\n- {file_name} → {file_path}"
+            else:
+                system_content += f"\n- {file_name} → {file_path}"
+
+        system_content += f"\n\n注意：调用工具时使用完整路径，不要使用原始文件名。"
+
+    return system_content
+
+
+def _get_system_prompt_by_type(self, assistant_type: str, files: List[Any] = None) -> str:
+    """
+    根据助手类型获取系统提示词
+
+    Args:
+        assistant_type: 助手类型
+        files: 文件列表
+
+    Returns:
+        系统提示词
+    """
+    # 检查文件类型以确定是否需要特殊处理
+    has_medical_files = self._has_medical_files(files)
+
+    if assistant_type == "medical" or has_medical_files:
+        return self._get_medical_system_prompt()
+    elif assistant_type == "data":
+        return self._get_data_analysis_system_prompt()
+    elif assistant_type == "document":
+        return self._get_document_system_prompt()
+    else:
+        return self._get_general_system_prompt()
+
+
+def _has_medical_files(self, files: List[Any] = None) -> bool:
+    """检查是否有医学图像文件"""
+    if not files:
         return False
-    
-    def _get_medical_system_prompt(self) -> str:
-        """医学图像处理专家系统提示词"""
-        return """你是一位专业的医学图像处理专家，专门负责DICOM到NII格式转换。你具备以下专业知识：
+
+    for file in files:
+        file_name = ""
+        if isinstance(file, dict):
+            file_name = file.get('originalName', file.get('name', ''))
+        else:
+            file_name = getattr(file, 'originalName', getattr(file, 'name', ''))
+
+        if any(ext in file_name.lower() for ext in ['.dcm', '.dicom', '.nii', '.nii.gz']):
+            return True
+    return False
+
+
+def _get_medical_system_prompt(self) -> str:
+    """医学图像处理专家系统提示词"""
+    return """你是一位专业的医学图像处理专家，专门负责DICOM到NII格式转换。你具备以下专业知识：
 
 **专业背景：**
 - 深度理解DICOM (Digital Imaging and Communications in Medicine) 格式规范
@@ -206,11 +210,18 @@ class ChatService:
 - 当需要调用工具时，请直接调用，不要输出思考过程
 - 工具返回JSON格式，请解析后用中文总结关键结果
 - 回复要专业、详细，体现医学图像处理专家的水平
-- 主动提供技术建议和最佳实践"""
-    
-    def _get_data_analysis_system_prompt(self) -> str:
-        """数据分析专家系统提示词"""
-        return """你是一位专业的数据分析专家，擅长数据清洗、分析和可视化。你具备以下专业知识：
+- 主动提供技术建议和最佳实践
+
+**输出目录规则：**
+- 所有处理结果默认保存到 output 目录中
+- 当用户要求处理文件时，自动将输出路径设置为 output/ 目录
+- 如果用户没有指定具体输出文件名，使用有意义的默认名称
+- 确保输出目录存在，如果不存在则自动创建"""
+
+
+def _get_data_analysis_system_prompt(self) -> str:
+    """数据分析专家系统提示词"""
+    return """你是一位专业的数据分析专家，擅长数据清洗、分析和可视化。你具备以下专业知识：
 
 **专业背景：**
 - 精通Python数据科学栈（pandas, numpy, matplotlib, seaborn）
@@ -235,10 +246,11 @@ class ChatService:
 - 当需要调用工具时，请直接调用，不要输出思考过程
 - 工具返回JSON格式，请解析后用中文总结关键结果
 - 回复要专业、准确，体现数据分析专家的水平"""
-    
-    def _get_document_system_prompt(self) -> str:
-        """文档处理专家系统提示词"""
-        return """你是一位专业的文档处理专家，擅长各种文档格式的解析和处理。你具备以下专业知识：
+
+
+def _get_document_system_prompt(self) -> str:
+    """文档处理专家系统提示词"""
+    return """你是一位专业的文档处理专家，擅长各种文档格式的解析和处理。你具备以下专业知识：
 
 **专业背景：**
 - 精通PDF、Word、Excel等文档格式处理
@@ -263,10 +275,11 @@ class ChatService:
 - 当需要调用工具时，请直接调用，不要输出思考过程
 - 工具返回JSON格式，请解析后用中文总结关键结果
 - 回复要专业、准确，体现文档处理专家的水平"""
-    
-    def _get_general_system_prompt(self) -> str:
-        """通用助手系统提示词"""
-        return """你是一个智能助手，可以调用工具来帮助用户完成任务。
+
+
+def _get_general_system_prompt(self) -> str:
+    """通用助手系统提示词"""
+    return """你是一个智能助手，可以调用工具来帮助用户完成任务。
 
 **重要规则：**
 1. 当需要调用工具时，请直接调用，不要输出<think>标签或思考过程

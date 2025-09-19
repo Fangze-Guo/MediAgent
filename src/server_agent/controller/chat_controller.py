@@ -8,14 +8,7 @@ from pydantic import BaseModel
 
 from .base import BaseController
 from src.server_agent.service import ChatService
-
-
-class ChatReq(BaseModel):
-    conversation_id: str
-    message: str
-    history: List[Dict[str, Any]] = []
-    files: List[Any] = []  # 这里应该是FileInfo类型，但为了避免循环导入暂时用List[Any]
-    assistant_type: str = "general"  # 助手类型：medical, data, document, general
+from src.server_agent.model import ChatRequest
 
 
 class ChatResp(BaseModel):
@@ -29,22 +22,22 @@ class ChatController(BaseController):
 
     def __init__(self):
         super().__init__(prefix="/chat", tags=["聊天"])
-        self.chat_service = ChatService(self.agent)
+        self.chatService = ChatService(self.agent)
         self._register_routes()
 
     def _register_routes(self):
         """注册路由"""
 
-        @self.router.post("", response_model=ChatResp)
-        async def chat(req: ChatReq):
+        @self.router.post("")
+        async def chat(request: ChatRequest):
             """普通聊天接口"""
             await self.ensure_initialized()
-            result = await self.chat_service.chat(
-                conversation_id=req.conversation_id,
-                message=req.message,
-                history=req.history,
-                files=req.files,
-                assistant_type=req.assistant_type
+            result = await self.chatService.chat(
+                conversation_id=request.conversation_id,
+                message=request.message,
+                history=request.history,
+                files=request.files,
+                assistant_type=request.assistant_type
             )
             return ChatResp(**result)
 
@@ -54,7 +47,7 @@ class ChatController(BaseController):
             await self.ensure_initialized()
 
             async def generate():
-                async for chunk in self.chat_service.chat_stream(
+                async for chunk in self.chatService.chat_stream(
                         conversation_id=req.conversation_id,
                         message=req.message,
                         history=req.history,
@@ -70,5 +63,8 @@ class ChatController(BaseController):
                     "Cache-Control": "no-cache",
                     "Connection": "keep-alive",
                     "X-Accel-Buffering": "no",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                    "Access-Control-Allow-Headers": "Content-Type",
                 },
             )

@@ -5,8 +5,8 @@ from typing import Any
 import httpx  # 用于更精细地捕获底层 HTTP 异常
 from openai import AsyncOpenAI
 
-from src.server_agent.mcp_client import load_all_clients
 from src.server_agent.constants.EnvConfig import BASE_URL, API_KEY, MODEL
+from src.server_agent.mcp_client import load_all_clients
 
 # === 可按需调整的超时/重试策略（集中配置更清晰） ===
 LLM_REQUEST_TIMEOUT_SEC = 60  # 单次 LLM 请求的总超时（上层保护）
@@ -32,11 +32,11 @@ class MCPAgent:
             self.mcp_clients = await load_all_clients()
             self.tools.clear()
             self._tool_map.clear()
-            
+
             if not self.mcp_clients:
                 print("警告: 没有可用的MCP客户端，将使用纯LLM模式")
                 return
-            
+
             # 汇总所有 MCP 服务器的工具
             for mc in self.mcp_clients:
                 try:
@@ -57,9 +57,9 @@ class MCPAgent:
                 except Exception as e:
                     print(f"MCP客户端工具加载失败: {e}")
                     continue
-            
+
             print(f"总共加载了 {len(self.tools)} 个工具")
-            
+
         except Exception as e:
             print(f"MCP工具初始化失败: {e}")
             print("将使用纯LLM模式（无工具）")
@@ -108,14 +108,23 @@ class MCPAgent:
         for _ in range(max_iters):
             # —— 用 asyncio.wait_for 给整次 LLM 推理包一层保护超时 ——
             try:
+                # 构建请求参数，只有当有工具时才包含tools参数
+                request_params = {
+                    "model": MODEL,
+                    "messages": messages,
+                    "temperature": 0.2,
+                }
+
+                # 只有当工具列表不为空时才添加tools参数
+                if self.tools:
+                    request_params["tools"] = self.tools
+                    request_params["tool_choice"] = "auto"
+                    print(f"使用工具模式，工具数量: {len(self.tools)}")
+                else:
+                    print("使用纯LLM模式（无工具）")
+
                 resp = await asyncio.wait_for(
-                    self.client.chat.completions.create(
-                        model=MODEL,
-                        messages=messages,
-                        tools=self.tools,  # 工具列表在这边暴露给模型
-                        tool_choice="auto",
-                        temperature=0.2,
-                    ),
+                    self.client.chat.completions.create(**request_params),
                     timeout=LLM_REQUEST_TIMEOUT_SEC,
                 )
             except asyncio.TimeoutError:
@@ -172,15 +181,24 @@ class MCPAgent:
         # 若当前没有任何工具（例如 init_tools 失败），仍允许纯 LLM 对话
         for _ in range(max_iters):
             try:
+                # 构建请求参数，只有当有工具时才包含tools参数
+                request_params = {
+                    "model": MODEL,
+                    "messages": messages,
+                    "temperature": 0.1,  # 降低温度，减少随机性
+                    "stream": True  # 启用流式输出
+                }
+
+                # 只有当工具列表不为空时才添加tools参数
+                if self.tools:
+                    request_params["tools"] = self.tools
+                    request_params["tool_choice"] = "auto"
+                    print(f"流式聊天使用工具模式，工具数量: {len(self.tools)}")
+                else:
+                    print("流式聊天使用纯LLM模式（无工具）")
+
                 # 使用流式API调用
-                stream = await self.client.chat.completions.create(
-                    model=MODEL,
-                    messages=messages,
-                    tools=self.tools,
-                    tool_choice="auto",
-                    temperature=0.1,  # 降低温度，减少随机性
-                    stream=True  # 启用流式输出
-                )
+                stream = await self.client.chat.completions.create(**request_params)
 
                 assistant_message = {"role": "assistant", "content": "", "tool_calls": []}
                 current_tool_calls = []
