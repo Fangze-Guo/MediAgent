@@ -1,14 +1,19 @@
 """
 聊天相关API控制器
 """
-from typing import List, Dict, Any
+from __future__ import annotations
 
-from fastapi.responses import StreamingResponse
+import json
+from typing import List, Any
+
+from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel
 
-from .base import BaseController
-from src.server_agent.service import ChatService
+from src.server_agent.common import ResultUtils, BaseResponse
+from src.server_agent.model.entity.ChatInfo import ChatInfo
 from src.server_agent.model import ChatRequest
+from src.server_agent.service import ChatService
+from .base import BaseController
 
 
 class ChatResp(BaseModel):
@@ -29,32 +34,37 @@ class ChatController(BaseController):
         """注册路由"""
 
         @self.router.post("")
-        async def chat(request: ChatRequest):
+        async def chat(request: ChatRequest) -> "BaseResponse[ChatInfo]":
             """普通聊天接口"""
             await self.ensure_initialized()
-            result = await self.chatService.chat(
+            chatInfo: ChatInfo = await self.chatService.chat(
                 conversation_id=request.conversation_id,
                 message=request.message,
                 history=request.history,
                 files=request.files,
                 assistant_type=request.assistant_type
             )
-            return ChatResp(**result)
+            return ResultUtils.success(chatInfo)
 
         @self.router.post("/stream")
-        async def chat_stream(req: ChatReq):
+        async def chat_stream(request: ChatRequest):
             """流式聊天接口，支持实时输出"""
             await self.ensure_initialized()
 
             async def generate():
-                async for chunk in self.chatService.chat_stream(
-                        conversation_id=req.conversation_id,
-                        message=req.message,
-                        history=req.history,
-                        files=req.files,
-                        assistant_type=req.assistant_type
-                ):
-                    yield chunk
+                try:
+                    async for chunk in self.chatService.chat_stream(
+                            conversation_id=request.conversation_id,
+                            message=request.message,
+                            history=request.history,
+                            files=request.files,
+                            assistant_type=request.assistant_type
+                    ):
+                        yield chunk
+                except Exception as e:
+                    # 确保在异常情况下也发送结束信号
+                    yield f"data: {json.dumps({'type': 'error', 'error': str(e)}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'end'}, ensure_ascii=False)}\n\n"
 
             return StreamingResponse(
                 generate(),

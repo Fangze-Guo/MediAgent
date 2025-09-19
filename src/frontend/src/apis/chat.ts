@@ -97,7 +97,7 @@ export async function chat(req: ChatReqDto, signal?: AbortSignal): Promise<ChatR
  * 流式聊天接口类型定义
  */
 export interface StreamChunk {
-  type: 'start' | 'content' | 'tool_call' | 'complete' | 'error'
+  type: 'start' | 'content' | 'tool_call' | 'complete' | 'error' | 'end'
   content?: string
   tool?: string
   tool_calls?: unknown[]
@@ -169,7 +169,43 @@ export async function chatStream(
       while (true) {
         const { done, value } = await reader.read()
         
-        if (done) break
+        if (done) {
+          // 处理最后的数据
+          if (buffer.trim()) {
+            const lines = buffer.split('\n')
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const data = JSON.parse(line.slice(6)) as StreamChunk
+                  
+                  switch (data.type) {
+                    case 'start':
+                      callbacks.onStart?.(data.conversation_id || '')
+                      break
+                    case 'content':
+                      callbacks.onContent?.(data.content || '')
+                      break
+                    case 'tool_call':
+                      callbacks.onToolCall?.(data.tool || '')
+                      break
+                    case 'complete':
+                      callbacks.onComplete?.(data.tool_calls || [])
+                      break
+                    case 'error':
+                      callbacks.onError?.(data.error || '未知错误')
+                      break
+                    case 'end':
+                      // 流结束，正常退出
+                      return
+                  }
+                } catch (parseError) {
+                  console.warn('解析流数据失败:', parseError, '原始数据:', line)
+                }
+              }
+            }
+          }
+          break
+        }
         
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
@@ -192,9 +228,12 @@ export async function chatStream(
                   break
                 case 'complete':
                   callbacks.onComplete?.(data.tool_calls || [])
-                  return
+                  break
                 case 'error':
                   callbacks.onError?.(data.error || '未知错误')
+                  break
+                case 'end':
+                  // 流结束，正常退出
                   return
               }
             } catch (parseError) {

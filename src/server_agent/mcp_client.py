@@ -1,7 +1,9 @@
 # mcp_client.py
-import os, shlex, asyncio
-from typing import List, Dict, Any
+import os
+import shlex
 from contextlib import AsyncExitStack
+from typing import List, Dict, Any
+
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -17,25 +19,28 @@ class MCPClient:
         """
         self.launch_cmd = launch_cmd
         self.exit_stack = AsyncExitStack()
-        self.session: ClientSession | None = None#这边的session仍然还是一个空对象，ClientSession只是一个类型提示，后续才完成session的初始化
+        self.session: ClientSession | None = None  # 这边的session仍然还是一个空对象，ClientSession只是一个类型提示，后续才完成session的初始化
 
     async def __aenter__(self):
+        """
+        启动 MCP 工具服务器并建立客户端连接
+        """
         parts = shlex.split(self.launch_cmd, posix=(os.name != "nt"))
-        
+
         # 设置工作目录为项目根目录
         import pathlib
         project_root = pathlib.Path(__file__).parent.parent.parent
-        
+
         # 修改命令，使用绝对路径
         if len(parts) > 1 and parts[1] and not pathlib.Path(parts[1]).is_absolute():
             parts[1] = str(project_root / parts[1])
-        
+
         print(f"启动MCP服务器: {' '.join(parts)}")
         print(f"工作目录: {project_root}")
-        
+
         params = StdioServerParameters(
-            command=parts[0], 
-            args=parts[1:], 
+            command=parts[0],
+            args=parts[1:],
             env=None
         )
         stdio_transport = await self.exit_stack.enter_async_context(stdio_client(params))
@@ -67,12 +72,13 @@ class MCPClient:
             "content": [c.model_dump() for c in result.content] if hasattr(result, "content") else result
         }
 
+
 async def load_all_clients() -> List[MCPClient]:
     # 获取项目根目录
     import pathlib
     project_root = pathlib.Path(__file__).parent.parent.parent
     tools_server_path = project_root / "src" / "server_agent" / "tools_server.py"
-    
+
     # 如果没有配置MCP_SERVERS或配置无效，使用默认配置
     if not MCP_SERVERS or not MCP_SERVERS.strip():
         servers = [f"python {tools_server_path}"]
@@ -88,9 +94,9 @@ async def load_all_clients() -> List[MCPClient]:
             elif s:
                 fixed_servers.append(s)
         servers = fixed_servers
-    
+
     print(f"MCP服务器配置: {servers}")
-    
+
     clients = []
     for s in servers:
         try:

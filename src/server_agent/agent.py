@@ -1,10 +1,11 @@
 import asyncio
 import json
-from typing import Any
+from typing import Any, List, Coroutine
 
 import httpx  # 用于更精细地捕获底层 HTTP 异常
 from openai import AsyncOpenAI
 
+from src.server_agent.model.entity import ToolCallInfo, ChatInfo
 from src.server_agent.constants.EnvConfig import BASE_URL, API_KEY, MODEL
 from src.server_agent.mcp_client import load_all_clients
 
@@ -95,14 +96,14 @@ class MCPAgent:
                 ensure_ascii=False
             )
 
-    async def chat(self, messages: list[dict], max_iters=5) -> dict:
+    async def chat(self, messages: list[dict], max_iters=5) -> ChatInfo:
         """
         messages: [{"role":"user","content":"..."}] 累积历史
         返回：{"role":"assistant","content":"...", "tool_calls":[...]}
         """
         # 处理一轮对话，要实现上下文功能还需要外部控制
         # 一轮对话内模型可能多次调用工具，这边属于LLM和agent之间的内部行为，直到LLM不再调用工具才认为已经可以向用户返回结果了
-        tool_calls_log = []
+        tool_calls_log: List[ToolCallInfo] = []
 
         # 若当前没有任何工具（例如 init_tools 失败），仍允许纯 LLM 对话
         for _ in range(max_iters):
@@ -129,22 +130,21 @@ class MCPAgent:
                 )
             except asyncio.TimeoutError:
                 # 返回一个清晰可见的文本给前端/用户
-                return {"role": "assistant", "content": "(LLM 超时未响应，请稍后重试)", "tool_calls": tool_calls_log}
+                return ChatInfo(role="assistant", content="(LLM 调用超时)", tool_calls=tool_calls_log)
             except httpx.HTTPError as e:
                 # 捕获底层网络错误（连接失败、读超时、TLS 等）
-                return {"role": "assistant", "content": f"(LLM 调用失败：{e})", "tool_calls": tool_calls_log}
+                return ChatInfo(role="assistant", content="(LLM 底层网络异常)", tool_calls=tool_calls_log)
             except Exception as e:
                 # 其他非预期异常兜底
-                return {"role": "assistant", "content": f"(LLM 异常：{e})", "tool_calls": tool_calls_log}
+                return ChatInfo(role="assistant", content="(LLM 响应异常)", tool_calls=tool_calls_log)
 
             # —— 解析模型输出（严格防御：choices 为空/无 message 等情况） ——
             if not resp.choices:
-                return {"role": "assistant", "content": "(LLM 无可用结果)", "tool_calls": tool_calls_log}
+                return ChatInfo(role="assistant", content="(LLM 无可用结果)", tool_calls=tool_calls_log)
             choice = resp.choices[0]
             msg = getattr(choice, "message", None)
             if msg is None:
-                return {"role": "assistant", "content": "(LLM 响应格式异常：缺少 message)", "tool_calls": tool_calls_log}
-
+                return ChatInfo(role="assistant", content="(LLM 响应格式异常：缺少 message)", tool_calls=tool_calls_log)
             if getattr(msg, "tool_calls", None):
                 # 模型要求调用工具（可能一次或多次）
                 for tc in msg.tool_calls:
@@ -165,7 +165,7 @@ class MCPAgent:
                 continue
             else:
                 # 没有更多工具调用，返回最终答案
-                return {"role": "assistant", "content": (msg.content or ""), "tool_calls": tool_calls_log}
+                return ChatInfo("assistant", content=(msg.content or ""), tool_calls=tool_calls_log)
 
         # 超过迭代上限也返回（避免死循环）
         return {"role": "assistant", "content": "(对话达到最大迭代次数)", "tool_calls": tool_calls_log}
