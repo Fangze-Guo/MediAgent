@@ -26,5 +26,5 @@ build/
 ### VS Code ###
 .vscode/
 /src/server_new/data/test/
-/src/server_new/mediagent/test_scripts/
-/src/server_new/test_scripts/
+
+
