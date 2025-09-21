@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Generic, TypeVar, Optional
 
+from src.server_agent.exceptions import ErrorCode
+
 # 定义泛型类型变量
 T = TypeVar('T')
 
@@ -13,10 +15,10 @@ class BaseResponse(Generic[T]):
     message: str = ""
 
     @classmethod
-    def from_error_code(cls, error_code) -> 'BaseResponse[T]':
+    def from_error_code(cls, error_code: ErrorCode) -> 'BaseResponse[T]':
         """从错误码对象创建响应实例"""
         return cls(
-            code=error_code.code,
+            code=error_code.http_status,
             data=None,
             message=error_code.message
         )

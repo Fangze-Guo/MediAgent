@@ -4,12 +4,13 @@ Controllers包 - 统一管理所有API控制器
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .chat_controller import ChatController
+from src.server_agent.exceptions import setup_exception_handlers
+from .ChatController import ChatController
+from .ConversationController import ConversationController
 from .FileController import FileController
+from .progress_controller import router as progress_router
 from .system_controller import SystemController
 from .user_controller import UserController
-from .progress_controller import router as progress_router
-from src.server_agent.exceptions import setup_exception_handlers
 
 
 def create_app() -> FastAPI:
@@ -34,6 +35,7 @@ def create_app() -> FastAPI:
     file_controller = FileController()
     system_controller = SystemController()
     user_controller = UserController()
+    conversation_controller = ConversationController()
 
     # 注册路由
     app.include_router(chat_controller.router)
@@ -41,11 +43,13 @@ def create_app() -> FastAPI:
     app.include_router(system_controller.router)
     app.include_router(user_controller.router)
     app.include_router(progress_router)
+    app.include_router(conversation_controller.router)
 
     # 设置异常处理器
     setup_exception_handlers(app)
 
     return app
+
 
 # 导出主要接口
 __all__ = [
@@ -54,4 +58,5 @@ __all__ = [
     'FileController',
     'SystemController',
     'UserController',
+    'ConversationController'
 ]

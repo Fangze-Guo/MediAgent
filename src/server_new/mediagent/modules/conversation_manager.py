@@ -24,7 +24,7 @@ class ConversationManager:
     def __init__(self, database_path: str, conversation_root: str):
         """
         :param database_path: SQLite 数据库文件路径（如: src/server_new/data/db/app.sqlite3）
-        :param conversation_root: 对话文件根目录（如: src/server_new/conversations）
+        :param conversation_root: 对话文件根目录（如: src/server_new/data/conversations）
         """
         self.database_path = Path(database_path)
         self.conversation_root = Path(conversation_root)

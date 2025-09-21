@@ -6,12 +6,12 @@ from __future__ import annotations
 import json
 from typing import List, Any
 
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from src.server_agent.common import ResultUtils, BaseResponse
-from src.server_agent.model.entity.ChatInfo import ChatInfo
 from src.server_agent.model import ChatRequest
+from src.server_agent.model.entity.ChatInfo import ChatInfo
 from src.server_agent.service import ChatService
 from .base import BaseController
 

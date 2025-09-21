@@ -1,8 +1,6 @@
-from typing import List, Dict, Any
-
 from pydantic import BaseModel
+
 
 class ConversationInfo(BaseModel):
     conversation_id: str
-    answer: str
-    tool_calls: List[Dict[str, Any]]
+    message: str
