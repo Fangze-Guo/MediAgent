@@ -27,17 +27,18 @@ for patient_dir in dcm_dir.iterdir():
         continue
 
     c0_dir = patient_dir / "C0"
-    c2_dir = patient_dir / "C2"
-    if not c0_dir.exists() or not c2_dir.exists():
+    # c2_dir = patient_dir / "C2"
+    # if not c0_dir.exists() or not c2_dir.exists():
+    if not c0_dir.exists():
         continue
 
     c0_img_sitk = read_dicom_series(c0_dir)
-    c2_img_sitk = read_dicom_series(c2_dir)
+    # c2_img_sitk = read_dicom_series(c2_dir)
 
     dst_dir = og_dir / patient_dir.name
     dst_dir.mkdir(parents=True, exist_ok=True)
     sitk.WriteImage(c0_img_sitk, str(dst_dir / "C0.nii.gz"))
-    sitk.WriteImage(c2_img_sitk, str(dst_dir / "C2.nii.gz"))
+    # sitk.WriteImage(c2_img_sitk, str(dst_dir / "C2.nii.gz"))
 
     print(f"{patient_dir.name} C0 size: {c0_img_sitk.GetSize()}, spacing: {c0_img_sitk.GetSpacing()}")
-    print(f"{patient_dir.name} C2 size: {c2_img_sitk.GetSize()}, spacing: {c2_img_sitk.GetSpacing()}")
+    # print(f"{patient_dir.name} C2 size: {c2_img_sitk.GetSize()}, spacing: {c2_img_sitk.GetSpacing()}")

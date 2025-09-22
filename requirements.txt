@@ -15,3 +15,6 @@ requests~=2.32.5
 tqdm~=4.67.1
 loguru~=0.7.3
 monai~=1.5.0
+numpy~=2.2.6
+torch~=2.6.0
+setuptools~=78.1.1
