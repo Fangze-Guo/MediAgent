@@ -50,7 +50,7 @@ async def main():
             await session.initialize()
 
             # 1) ingest
-            r = await session.call_tool("start_ingest", {"source": "dummy://source", "out_dir": str(s1)})
+            r = await session.call_tool("start_ingest", {"in_dir": "dummy://source", "out_dir": str(s1)})
             j = parse_json(r); run_id = j["run_id"]; print("ingest run:", run_id)
             await tail(session, run_id)
 

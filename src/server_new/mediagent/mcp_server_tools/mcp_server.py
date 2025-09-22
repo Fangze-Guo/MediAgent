@@ -100,12 +100,12 @@ async def ping(ctx: Context) -> dict:
     return {"ok": True}
 
 @server.tool()
-async def start_ingest(ctx: Context, source: str, out_dir: str) -> dict:
+async def start_ingest(ctx: Context, in_dir: str, out_dir: str) -> dict:
     """
     启动 step1_ingest.py（后台运行），立即返回 run_id / log_path；
     客户端可轮询 poll_logs(get_status) 获取实时日志/状态。
     """
-    ri = await _launch_and_capture("step1_ingest.py", "--source", source, "--out-dir", out_dir, out_dir=out_dir)
+    ri = await _launch_and_capture("step1_ingest.py", "--source", in_dir, "--out-dir", out_dir, out_dir=out_dir)
     return {
         "run_id": ri.run_id,
         "log_path": str(ri.log_path),
