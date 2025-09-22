@@ -75,6 +75,45 @@
         <a-layout-footer>
           <!-- 输入区域 -->
           <div class="input-area">
+            <!-- 当前会话文件显示区域 -->
+            <div v-if="currentSessionFiles.length > 0" class="session-files">
+              <div class="files-header">
+                <span class="files-title">
+                  <FileOutlined />
+                  当前会话文件 ({{ currentSessionFiles.length }})
+                </span>
+              </div>
+              <div class="files-list">
+                <div 
+                  v-for="file in currentSessionFiles" 
+                  :key="file.id"
+                  class="file-item"
+                >
+                  <div class="file-info">
+                    <div class="file-icon">
+                      <FileImageOutlined v-if="file.type.startsWith('image/')" />
+                      <FileTextOutlined v-else-if="file.type.includes('csv')" />
+                      <FileOutlined v-else />
+                    </div>
+                    <div class="file-details">
+                      <div class="file-name">{{ file.name }}</div>
+                      <div class="file-meta">
+                        {{ formatFileSize(file.size) }} • {{ formatTime(file.modifiedTime) }}
+                      </div>
+                    </div>
+                  </div>
+                  <a-button 
+                    type="text" 
+                    size="small" 
+                    danger
+                    @click="removeSessionFile(file.id)"
+                  >
+                    <DeleteOutlined />
+                  </a-button>
+                </div>
+              </div>
+            </div>
+            
             <!-- 输入容器 -->
             <div class="input-container">
               <!-- 顶部工具栏 -->
@@ -158,6 +197,7 @@
           @upload-success="handleFileUploadSuccess"
           @upload-error="handleFileUploadError"
           @use-file="handleUseFile"
+          @batch-use-complete="handleBatchUseComplete"
       />
     </a-modal>
   </div>
@@ -170,6 +210,7 @@
  */
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { message } from 'ant-design-vue'
 import { chatStream } from '@/apis/chat'
 import { useConversationsStore } from '@/store/conversations'
 import FileUpload from '@/components/file/FileUpload.vue'
@@ -211,7 +252,7 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null)
 /** 是否显示文件上传区域 */
 const showFileUpload = ref(false)
 /** 当前会话关联的文件信息 */
-const currentSessionFiles = ref<FileUploadResponse['file'][]>([])
+const currentSessionFiles = ref<FileUploadResponse['data'][]>([])
 /** 当前选择的模型 */
 const selectedModel = ref('QWen-Plus')
 /** 用户是否手动滚动了页面 */
@@ -312,7 +353,7 @@ const handleScroll = () => {
  * 处理文件上传成功
  * @param _file
  */
-const handleFileUploadSuccess = (_file: FileUploadResponse['file']) => {
+const handleFileUploadSuccess = (_file: FileUploadResponse['data']) => {
   // 文件上传成功处理
 }
 
@@ -335,23 +376,72 @@ const handleUploadClick = () => {
  * 使用文件
  * @param file 要使用的文件
  */
-const handleUseFile = (file: FileUploadResponse['file']) => {
+const handleUseFile = (file: FileUploadResponse['data']) => {
+  // 检查文件是否已经存在
+  const existingFile = currentSessionFiles.value.find(f => f.id === file.id)
+  if (existingFile) {
+    message.warning(`文件 "${file.name}" 已经在当前会话中`)
+    return
+  }
+  
   // 将文件添加到当前会话的文件列表中
   currentSessionFiles.value.push(file)
+  
+  // 显示成功提示
+  message.success(`文件 "${file.name}" 已添加到当前会话`)
+}
 
-  // 根据文件类型生成不同的提示信息
-  let message: string
-  if (file.type.startsWith('image/')) {
-    message = `我已经上传了图片文件 "${file.originalName}"，"将图片调整为800x600像素"，输出路径为./output/${file.originalName}。`
-  } else if (file.type.includes('csv')) {
-    message = `我已经上传了CSV文件 "${file.originalName}"，"生成这个CSV文件的摘要"，输出路径为./output/${file.originalName}。。`
-  } else {
-    message = `无法处理该文件`
+/**
+ * 从当前会话中移除文件
+ * @param fileId 文件ID
+ */
+const removeSessionFile = (fileId: string) => {
+  const fileIndex = currentSessionFiles.value.findIndex((f: FileUploadResponse['data']) => f.id === fileId)
+  if (fileIndex > -1) {
+    const fileName = currentSessionFiles.value[fileIndex].name
+    currentSessionFiles.value.splice(fileIndex, 1)
+    message.success(`文件 "${fileName}" 已从当前会话中移除`)
   }
+}
 
-  // 将文件信息添加到输入消息中
-  inputMessage.value = message
+/**
+ * 处理批量使用完成事件
+ */
+const handleBatchUseComplete = () => {
+  // 关闭文件上传模态框
   showFileUpload.value = false
+}
+
+/**
+ * 格式化文件大小
+ * @param bytes 文件大小（字节）
+ * @returns 格式化后的文件大小
+ */
+const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+/**
+ * 格式化时间
+ * @param timeString 时间字符串
+ * @returns 格式化后的时间
+ */
+const formatTime = (timeString: string): string => {
+  try {
+    const date = new Date(timeString)
+    return date.toLocaleString('zh-CN', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  } catch {
+    return timeString
+  }
 }
 
 
@@ -821,6 +911,83 @@ const getAssistantAvatarStyle = () => {
 .input-area {
   height: auto; /* 改为自适应高度 */
   width: 100%;
+}
+
+/* 当前会话文件显示区域 */
+.session-files {
+  padding: 12px 16px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.session-files .files-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.session-files .files-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+}
+
+.session-files .files-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.session-files .file-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.session-files .file-item:hover {
+  border-color: #d1d5db;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.session-files .file-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.session-files .file-icon {
+  color: #6b7280;
+  font-size: 16px;
+}
+
+.session-files .file-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.session-files .file-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-files .file-meta {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 2px;
 }
 
 /* 输入容器 */

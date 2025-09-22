@@ -3,6 +3,7 @@
 """
 
 from fastapi import UploadFile, File, Form
+from typing import List
 
 from src.server_agent.common import BaseResponse
 from src.server_agent.common.ResultUtils import ResultUtils
@@ -34,6 +35,15 @@ class FileController(BaseController):
             """上传文件接口"""
             file: FileInfo = await self.fileService.uploadFileToData(file, target_dir)
             return ResultUtils.success(file)
+
+        @self.router.post("/upload-multiple")
+        async def uploadMultipleFilesToData(
+                files: List[UploadFile] = File(...),
+                target_dir: str = Form(".")
+        ) -> BaseResponse[List[FileInfo]]:
+            """批量上传文件接口"""
+            uploaded_files: List[FileInfo] = await self.fileService.uploadMultipleFilesToData(files, target_dir)
+            return ResultUtils.success(uploaded_files)
 
         @self.router.get("")
         async def listFiles(path: str = ".") -> BaseResponse[FileListVO]:
@@ -76,6 +86,15 @@ class FileController(BaseController):
             file: FileInfo = await self.fileService.uploadFileToLocal(file, target_dir)
             return ResultUtils.success(file)
 
+        @self.router.post("/local/upload-multiple")
+        async def uploadMultipleFilesToLocal(
+                files: List[UploadFile] = File(...),
+                target_dir: str = Form(".")
+        ) -> BaseResponse[List[FileInfo]]:
+            """批量上传文件到指定本地目录"""
+            uploaded_files: List[FileInfo] = await self.fileService.uploadMultipleFilesToLocal(files, target_dir)
+            return ResultUtils.success(uploaded_files)
+
         @self.router.post("/local/delete")
         async def delete_local_file(file_path: str = Form(...)) -> BaseResponse[None]:
             """删除本地文件"""
@@ -98,6 +117,15 @@ class FileController(BaseController):
             """上传文件到指定输出目录"""
             file: FileInfo = await self.fileService.uploadFileToOutput(file, target_dir)
             return ResultUtils.success(file)
+
+        @self.router.post("/output/upload-multiple")
+        async def uploadMultipleFilesToOutput(
+                files: List[UploadFile] = File(...),
+                target_dir: str = Form(".")
+        ) -> BaseResponse[List[FileInfo]]:
+            """批量上传文件到指定输出目录"""
+            uploaded_files: List[FileInfo] = await self.fileService.uploadMultipleFilesToOutput(files, target_dir)
+            return ResultUtils.success(uploaded_files)
 
         @self.router.post("/output/delete")
         async def delete_output_file(file_path: str = Form(...)) -> BaseResponse[None]:

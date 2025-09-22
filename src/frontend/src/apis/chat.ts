@@ -21,16 +21,18 @@ export interface ChatMessageDto {
 export interface FileInfo {
   /** 文件ID */
   id: string
-  /** 原始文件名 */
-  originalName: string
+  /** 文件名 */
+  name: string
   /** 文件大小（字节） */
   size: number
   /** 文件类型 */
   type: string
   /** 文件路径 */
   path: string
-  /** 上传时间 */
-  uploadTime: string
+  /** 修改时间 */
+  modifiedTime: string
+  /** 是否为目录 */
+  isDirectory: boolean
 }
 
 /**

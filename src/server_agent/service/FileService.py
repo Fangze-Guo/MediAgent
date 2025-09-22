@@ -47,6 +47,31 @@ class FileService:
         return fileInfo
 
     @handle_service_exception
+    async def uploadMultipleFilesToData(self, files: List[UploadFile], target_dir: str = ".") -> List[FileInfo]:
+        """
+        批量上传文件
+        
+        Args:
+            files: 上传的文件列表
+            target_dir: 目标目录
+            
+        Returns:
+            文件信息列表
+        """
+        uploaded_files: List[FileInfo] = []
+        
+        for file in files:
+            try:
+                file_info: FileInfo = await self.uploadFile(self.UPLOAD_FILES_DIR, file, target_dir)
+                uploaded_files.append(file_info)
+            except Exception as e:
+                # 记录单个文件上传失败，但继续处理其他文件
+                logging.error(f"文件 {file.filename} 上传失败: {e}")
+                continue
+        
+        return uploaded_files
+
+    @handle_service_exception
     async def uploadFileToLocal(self, file: UploadFile, target_dir: str = ".") -> FileInfo:
         """
         上传文件到本地目录
@@ -62,6 +87,31 @@ class FileService:
         return fileInfo
 
     @handle_service_exception
+    async def uploadMultipleFilesToLocal(self, files: List[UploadFile], target_dir: str = ".") -> List[FileInfo]:
+        """
+        批量上传文件到本地目录
+
+        Args:
+            files: 上传的文件列表
+            target_dir: 目标目录
+
+        Returns:
+            文件信息列表
+        """
+        uploaded_files: List[FileInfo] = []
+        
+        for file in files:
+            try:
+                file_info: FileInfo = await self.uploadFile(self.LOCAL_FILES_DIR, file, target_dir)
+                uploaded_files.append(file_info)
+            except Exception as e:
+                # 记录单个文件上传失败，但继续处理其他文件
+                logging.error(f"文件 {file.filename} 上传失败: {e}")
+                continue
+        
+        return uploaded_files
+
+    @handle_service_exception
     async def uploadFileToOutput(self, file: UploadFile, target_dir: str = ".") -> FileInfo:
         """
         上传文件到输出目录
@@ -75,6 +125,31 @@ class FileService:
         """
         fileInfo: FileInfo = await self.uploadFile(self.OUTPUT_FILES_DIR, file, target_dir)
         return fileInfo
+
+    @handle_service_exception
+    async def uploadMultipleFilesToOutput(self, files: List[UploadFile], target_dir: str = ".") -> List[FileInfo]:
+        """
+        批量上传文件到输出目录
+
+        Args:
+            files: 上传的文件列表
+            target_dir: 目标目录
+
+        Returns:
+            文件信息列表
+        """
+        uploaded_files: List[FileInfo] = []
+        
+        for file in files:
+            try:
+                file_info: FileInfo = await self.uploadFile(self.OUTPUT_FILES_DIR, file, target_dir)
+                uploaded_files.append(file_info)
+            except Exception as e:
+                # 记录单个文件上传失败，但继续处理其他文件
+                logging.error(f"文件 {file.filename} 上传失败: {e}")
+                continue
+        
+        return uploaded_files
 
     async def uploadFile(self, files_dir: pathlib.Path, file: UploadFile, target_dir: str = ".") -> FileInfo:
         """

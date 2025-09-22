@@ -26,7 +26,8 @@
         <UploadOutlined class="upload-icon" />
         <div class="upload-text">
           <p class="upload-title">点击或拖拽文件到此处上传</p>
-          <p class="upload-hint">支持图片文件 (JPG, PNG, GIF, WebP)、CSV 文件和 DICOM 文件 (.dcm)</p>
+          <p class="upload-hint">支持多文件上传：图片文件 (JPG, PNG, GIF, WebP)、CSV 文件和 DICOM 文件 (.dcm)</p>
+          <p class="upload-hint-small">可同时选择多个文件进行批量上传</p>
         </div>
       </div>
 
@@ -43,10 +44,31 @@
 
     <!-- 已上传文件列表 -->
     <div v-if="uploadedFiles.length > 0" class="uploaded-files">
-      <h4 class="files-title">
-        <FileOutlined />
-        已上传文件 ({{ uploadedFiles.length }})
-      </h4>
+      <div class="files-header">
+        <h4 class="files-title">
+          <FileOutlined />
+          已上传文件 ({{ uploadedFiles.length }})
+        </h4>
+        <div class="batch-actions">
+          <a-button 
+            type="primary" 
+            size="small"
+            @click="handleUseAllFiles"
+            :disabled="uploadedFiles.length === 0"
+          >
+            全部使用
+          </a-button>
+          <a-button 
+            type="link" 
+            size="small"
+            danger
+            @click="handleRemoveAllFiles"
+            :disabled="uploadedFiles.length === 0"
+          >
+            全部删除
+          </a-button>
+        </div>
+      </div>
       <div class="files-list">
         <div 
           v-for="file in uploadedFiles" 
@@ -56,11 +78,11 @@
           <div class="file-info">
             <FileOutlined class="file-icon" />
             <div class="file-details">
-              <div class="file-name" :title="file.originalName">
-                {{ file.originalName }}
+              <div class="file-name" :title="file.name">
+                {{ file.name }}
               </div>
               <div class="file-meta">
-                {{ formatFileSize(file.size) }} • {{ formatTime(file.uploadTime) }}
+                {{ formatFileSize(file.size) }} • {{ formatTime(file.modifiedTime) }}
               </div>
             </div>
           </div>
@@ -132,11 +154,13 @@ const props = withDefaults(defineProps<Props>(), {
 // Emits
 const emit = defineEmits<{
   /** 文件上传成功事件 */
-  uploadSuccess: [file: FileUploadResponse['file']]
+  uploadSuccess: [file: FileUploadResponse['data']]
   /** 文件上传失败事件 */
   uploadError: [error: string]
   /** 使用文件事件 */
-  useFile: [file: FileUploadResponse['file']]
+  useFile: [file: FileUploadResponse['data']]
+  /** 批量使用完成事件 */
+  batchUseComplete: []
 }>()
 
 // 响应式数据
@@ -145,7 +169,7 @@ const uploading = ref(false)
 const uploadProgress = ref(0)
 const uploadError = ref('')
 const dragOver = ref(false)
-const uploadedFiles = ref<FileUploadResponse['file'][]>([])
+const uploadedFiles = ref<FileUploadResponse['data'][]>([])
 
 // 计算属性
 const acceptedTypes = computed(() => props.accept)
@@ -237,11 +261,11 @@ const uploadSingleFile = async (file: File) => {
       uploadProgress.value = progress
     })
 
-    if (response.success) {
-      uploadedFiles.value.push(response.file)
-      emit('uploadSuccess', response.file)
+    if (response.code === 200) {
+      uploadedFiles.value.push(response.data)
+      emit('uploadSuccess', response.data)
     } else {
-      throw new Error(response.error || '上传失败')
+      throw new Error(response.message || '上传失败')
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : '上传失败'
@@ -257,7 +281,7 @@ const uploadSingleFile = async (file: File) => {
 /**
  * 使用文件
  */
-const handleUseFile = (file: FileUploadResponse['file']) => {
+const handleUseFile = (file: FileUploadResponse['data']) => {
   emit('useFile', file)
 }
 
@@ -267,6 +291,40 @@ const handleUseFile = (file: FileUploadResponse['file']) => {
 const handleRemoveFile = (fileId: string) => {
   uploadedFiles.value = uploadedFiles.value.filter(f => f.id !== fileId)
   message.success('文件已删除')
+}
+
+/**
+ * 使用所有文件
+ */
+const handleUseAllFiles = () => {
+  if (uploadedFiles.value.length === 0) {
+    message.warning('没有可用的文件')
+    return
+  }
+  
+  // 触发所有文件的使用事件
+  uploadedFiles.value.forEach(file => {
+    emit('useFile', file)
+  })
+  
+  message.success(`已添加 ${uploadedFiles.value.length} 个文件到当前会话`)
+  
+  // 批量使用后关闭模态框
+  emit('batchUseComplete')
+}
+
+/**
+ * 删除所有文件
+ */
+const handleRemoveAllFiles = () => {
+  if (uploadedFiles.value.length === 0) {
+    message.warning('没有可删除的文件')
+    return
+  }
+  
+  const fileCount = uploadedFiles.value.length
+  uploadedFiles.value = []
+  message.success(`已删除 ${fileCount} 个文件`)
 }
 
 /**
@@ -343,6 +401,12 @@ const formatTime = (timeString: string): string => {
   margin: 0;
 }
 
+.upload-hint-small {
+  font-size: 11px;
+  color: #999;
+  margin: 4px 0 0 0;
+}
+
 .uploading-content {
   display: flex;
   flex-direction: column;
@@ -360,14 +424,26 @@ const formatTime = (timeString: string): string => {
   margin-top: 24px;
 }
 
+.files-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
 .files-title {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 0 16px 0;
+  margin: 0;
   font-size: 16px;
   font-weight: 500;
   color: #333;
+}
+
+.batch-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .files-list {
