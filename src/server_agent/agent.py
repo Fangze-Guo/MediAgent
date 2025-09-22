@@ -1,13 +1,13 @@
 import asyncio
 import json
-from typing import Any, List, Coroutine
+from typing import Any, List
 
 import httpx  # 用于更精细地捕获底层 HTTP 异常
 from openai import AsyncOpenAI
 
-from src.server_agent.model.entity import ToolCallInfo, ChatInfo
 from src.server_agent.constants.EnvConfig import BASE_URL, API_KEY, MODEL
 from src.server_agent.mcp_client import load_all_clients
+from src.server_agent.model.entity import ToolCallInfo, ChatInfo
 
 # === 可按需调整的超时/重试策略（集中配置更清晰） ===
 LLM_REQUEST_TIMEOUT_SEC = 60  # 单次 LLM 请求的总超时（上层保护）
@@ -29,6 +29,19 @@ class MCPAgent:
         # 动态维护工具列表和工具到服务器的映射，但是目前没有做重名工具的处理，后续有需要可能需要添加命名空间的功能
 
     async def init_tools(self):
+        """
+        初始化所有 MCP 工具，加载所有 MCP 客户端并获取其工具列表。
+
+        该方法会异步加载所有可用的 MCP 客户端，并从每个客户端获取工具列表，
+        然后将其转换为 OpenAI 兼容的工具格式，供模型调用。
+
+        工具信息将被存储在以下属性中：
+        - self.tools: OpenAI 格式的工具列表，用于模型调用
+        - self._tool_map: 工具名称到 MCP 客户端的映射，用于后续调用
+        - self.mcp_clients: 所有已加载的 MCP 客户端列表
+
+        如果加载失败或没有可用客户端，将清空工具列表并使用纯 LLM 模式。
+        """
         try:
             self.mcp_clients = await load_all_clients()
             self.tools.clear()
@@ -60,6 +73,8 @@ class MCPAgent:
                     continue
 
             print(f"总共加载了 {len(self.tools)} 个工具")
+            for tool in self.tools:
+                print(f"工具: {tool['function']['name']}")
 
         except Exception as e:
             print(f"MCP工具初始化失败: {e}")
@@ -69,6 +84,16 @@ class MCPAgent:
             self._tool_map = {}
 
     async def _call_tool(self, name: str, arguments_json: str | dict[str, Any]) -> str:
+        """
+        调用指定名称的工具，并返回结构化的结果字符串。
+
+        参数:
+            name: 工具名称，用于在工具映射中查找对应的MCP客户端
+            arguments_json: 工具调用参数，可以是JSON字符串或字典格式
+
+        返回值:
+            str: 工具调用结果的JSON字符串，包含成功结果或错误信息
+        """
         # —— 解析参数 & 路由到对应的 MCP 客户端 ——
         args = json.loads(arguments_json) if isinstance(arguments_json, str) else (arguments_json or {})
         mc = self._tool_map.get(name)
@@ -98,8 +123,16 @@ class MCPAgent:
 
     async def chat(self, messages: list[dict], max_iters=5) -> ChatInfo:
         """
-        messages: [{"role":"user","content":"..."}] 累积历史
-        返回：{"role":"assistant","content":"...", "tool_calls":[...]}
+        执行一轮对话交互，支持工具调用和多轮内部迭代。
+
+        参数:
+            messages (list[dict]): 包含历史对话消息的列表，每条消息格式为 {"role": "...", "content": "..."}。
+                                   通常由用户发起，例如 [{"role": "user", "content": "你好"}]。
+            max_iters (int): 最大工具调用迭代次数，防止无限循环调用，默认值为 5。
+
+        返回:
+            ChatInfo: 模型最终的回复内容，格式为 {"role": "assistant", "content": "...", "tool_calls": [...]}。
+                      如果发生错误或超时，也会返回对应的提示信息。
         """
         # 处理一轮对话，要实现上下文功能还需要外部控制
         # 一轮对话内模型可能多次调用工具，这边属于LLM和agent之间的内部行为，直到LLM不再调用工具才认为已经可以向用户返回结果了
@@ -172,16 +205,24 @@ class MCPAgent:
 
     async def chat_stream(self, messages: list[dict], max_iters=5):
         """
-        流式聊天方法，逐步返回AI回复内容
-        messages: [{"role":"user","content":"..."}] 累积历史
-        返回：异步生成器，产生 {"type": "content", "content": "..."} 等
+        流式聊天方法，逐步返回AI回复内容。支持工具调用与纯LLM对话模式。
+
+        参数:
+            messages (list[dict]): 聊天历史消息列表，格式如 [{"role": "user", "content": "..."}]。
+            max_iters (int): 最大迭代次数，用于限制工具调用的循环次数，默认为5次。
+
+        返回:
+            异步生成器，产生字典对象，包含以下几种类型：
+                - {"type": "content", "content": "..."}：模型逐步输出的内容片段。
+                - {"type": "tool_call", "tool": "..."}：表示调用某个工具。
+                - {"type": "complete", "tool_calls": [...]}：表示对话完成，并附带所有工具调用日志。
         """
         tool_calls_log = []
 
         # 若当前没有任何工具（例如 init_tools 失败），仍允许纯 LLM 对话
         for _ in range(max_iters):
             try:
-                # 构建请求参数，只有当有工具时才包含tools参数
+                # 构建请求参数
                 request_params = {
                     "model": MODEL,
                     "messages": messages,

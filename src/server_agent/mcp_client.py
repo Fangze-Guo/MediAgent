@@ -19,7 +19,7 @@ class MCPClient:
         """
         self.launch_cmd = launch_cmd
         self.exit_stack = AsyncExitStack()
-        self.session: ClientSession | None = None  # 这边的session仍然还是一个空对象，ClientSession只是一个类型提示，后续才完成session的初始化
+        self.session: ClientSession | None = None
 
     async def __aenter__(self):
         """
@@ -74,6 +74,15 @@ class MCPClient:
 
 
 async def load_all_clients() -> List[MCPClient]:
+    """
+    异步加载所有MCP客户端
+
+    该函数根据配置加载多个MCP服务器客户端，支持默认配置和自定义配置。
+    如果某个客户端加载失败，会记录错误信息但不会中断其他客户端的加载。
+
+    Returns:
+        List[MCPClient]: 成功加载的MCP客户端列表
+    """
     # 获取项目根目录
     import pathlib
     project_root = pathlib.Path(__file__).parent.parent.parent
@@ -84,9 +93,11 @@ async def load_all_clients() -> List[MCPClient]:
         servers = [f"python {tools_server_path}"]
     else:
         servers = MCP_SERVERS.split(";")
+        print(f"servers: {servers}")
         # 检查并修复路径
         fixed_servers = []
         for s in servers:
+            print(f"检查路径: {s}")
             s = s.strip()
             if s and "tools_server.py" in s:
                 # 如果路径中包含tools_server.py，使用绝对路径
