@@ -10,8 +10,9 @@ import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .user_controller import router as user_router
+from .test_controller import router as test_router
 
-from mediagent.modules.task_manager import TaskManager
+from mediagent.modules.task_manager import AsyncTaskManager
 from mediagent.paths import in_data
 from mediagent.paths import in_mediagent
 
@@ -21,15 +22,22 @@ try:
 except Exception:
     DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
-class Settings(BaseSettings):
-    MODEL_URL=os.getenv("MODEL_URL")
-    MODEL_API_KEY=os.getenv("MODEL_API_KEY")
-    MODEL=os.getenv("MODEL")
+class Settings:
+    """最简单的配置容器：不做校验、不自动读取 .env，仅存放数值。"""
+    def __init__(self):
+        # 环境相关（可选：保留 None）
+        self.MODEL_URL = os.getenv("MODEL_URL")       # 或者写死: None
+        self.MODEL_API_KEY = os.getenv("MODEL_API_KEY")
+        self.MODEL = os.getenv("MODEL")
 
-    PUBLIC_DATASETS_ROOT = in_data("files", "public")  # 例如：r"D:\datasets\public"
-    WORKSPACE_ROOT = in_data("files", "private")  # 例如：r"D:\projects\MediAgent\workspace"
-    DATABASE_FILE = in_data("db", "app.sqlite3")  # 例如：r"D:\projects\MediAgent\data\app.sqlite3"  (必须已存在)
-    MCPSERVER_FILE = in_mediagent("mcp_server_tools","mcp_server.py")  # 例如：r"D:\projects\MediAgent\server\mcp_server.py"  (必须已存在)
+        # 供 Services 使用的路径
+        self.data_dir: Path = DATA_DIR
+
+        # TaskManager 需要的路径/文件
+        self.PUBLIC_DATASETS_ROOT: Path = in_data("files", "public")
+        self.WORKSPACE_ROOT: Path = in_data("files", "private")
+        self.DATABASE_FILE: Path = in_data("db", "app.sqlite3")
+        self.MCPSERVER_FILE: Path = in_mediagent("mcp_server_tools", "mcp_server.py")
 
 
 class Services:
@@ -46,28 +54,26 @@ class Services:
         self.bg_task = None
 
         # 新增：唯一 TaskManager 实例占位
-        self.tm: TaskManager | None = None
+        self.tm: AsyncTaskManager | None = None
 
     async def ainit(self):
         # 重/异步初始化
 
-        self.tm = TaskManager(
+        self.tm = AsyncTaskManager(
             public_datasets_source_root=self.settings.PUBLIC_DATASETS_ROOT,
             workspace_root=self.settings.WORKSPACE_ROOT,
             database_file=self.settings.DATABASE_FILE,
             mcpserver_file=self.settings.MCPSERVER_FILE
         )
-        self.tm.start()#完成对任务管理器的初始化，而任务管理器会连带着把mcp服务器一起初始化
 
-        pass
+        await self.tm.astart()
 
     async def aclose(self):
         # 统一释放
-        # if self.bg_task: self.bg_task.cancel(); await self.bg_task
-        # if self.redis: await self.redis.close()
-        # if self.db: await self.db.dispose()
-        # if self.llm: await self.llm.aclose()
-        pass
+
+        if self.tm is not None:
+            await self.tm.aclose()
+            self.tm = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -98,6 +104,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(user_router)
+    app.include_router(test_router)
 
 
     return app
