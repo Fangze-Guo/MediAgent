@@ -1,4 +1,4 @@
-# task_manager.py —— 常驻会话版本（后台线程独占 stdio，会话复用）
+# task_manager.py —— 常驻会话版本（只允许“会返回 run_id 的工具”参与编排）
 from __future__ import annotations
 import sys
 import sqlite3
@@ -10,7 +10,7 @@ import uuid
 import traceback
 from pathlib import Path
 from queue import Queue, Empty
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Set
 from mediagent.paths import in_data
 
 # ===================== 日志配置（可修改） =====================
@@ -23,10 +23,6 @@ from mcp.client.stdio import stdio_client
 
 
 # ============================ 轻量日志工具 ============================
-# 说明：
-# - 线程安全写文件；每个进程一个日志文件，例如 task_manager_20250922_160405_pid12345.log
-# - 用 log_info / log_warn / log_error / log_debug 写日志
-# - 统一格式：TS | Thread | LEVEL | TAG | message
 _log_lock = threading.RLock()
 _log_file_path: Optional[Path] = None
 
@@ -39,10 +35,13 @@ def _init_log_file_once() -> None:
             return
         LOG_DIR.mkdir(parents=True, exist_ok=True)
         ts = time.strftime("%Y%m%d_%H%M%S")
-        pid = str(os.getpid()) if 'os' in globals() else "na"
+        try:
+            import os as _os
+            pid = str(_os.getpid())
+        except Exception:
+            pid = "na"
         fname = f"task_manager_{ts}_pid{pid}.log"
         _log_file_path = (LOG_DIR / fname).resolve()
-        # 写一行头
         try:
             with open(_log_file_path, "a", encoding="utf-8") as f:
                 f.write(f"{_now()} | main | INFO  | LOG | log file created: {_log_file_path}\n")
@@ -50,7 +49,6 @@ def _init_log_file_once() -> None:
             pass
 
 def _now() -> str:
-    # 精确到毫秒
     t = time.time()
     lt = time.localtime(t)
     ms = int((t - int(t)) * 1000)
@@ -68,25 +66,16 @@ def _w(level: str, tag: str, msg: str) -> None:
                 with open(_log_file_path, "a", encoding="utf-8") as f:
                     f.write(line)
     except Exception:
-        # 避免日志写入问题影响主流程
         pass
 
-def log_info(tag: str, msg: str) -> None:
-    _w("INFO", tag, msg)
-
-def log_warn(tag: str, msg: str) -> None:
-    _w("WARN", tag, msg)
-
-def log_error(tag: str, msg: str) -> None:
-    _w("ERROR", tag, msg)
-
-def log_debug(tag: str, msg: str) -> None:
-    _w("DEBUG", tag, msg)
+def log_info(tag: str, msg: str) -> None:  _w("INFO", tag, msg)
+def log_warn(tag: str, msg: str) -> None:  _w("WARN", tag, msg)
+def log_error(tag: str, msg: str) -> None: _w("ERROR", tag, msg)
+def log_debug(tag: str, msg: str) -> None: _w("DEBUG", tag, msg)
 
 def log_exception(tag: str, prefix: str, exc: BaseException) -> None:
     tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
     _w("ERROR", tag, f"{prefix}; EXC={exc!r}\n{tb}".rstrip())
-
 
 def _schema_to_json(schema_obj: Any) -> Optional[Dict[str, Any]]:
     if schema_obj is None:
@@ -140,7 +129,7 @@ class MCPExecutor:
             err = self._error
             self._error = None
             log_exception("MCP", "Executor startup encountered error (bubble up)", err)
-            raise err  # 将连接期错误冒泡
+            raise err
         log_info("MCP", "Executor started and ready")
 
     def close(self, timeout: float = 10.0) -> None:
@@ -149,12 +138,10 @@ class MCPExecutor:
         if loop is None:
             log_info("MCP", "Executor close(): loop is None, return")
             return
-        # 通知 runner 结束
         def _signal_stop():
             if self._stop_evt is not None:
                 self._stop_evt.set()
         loop.call_soon_threadsafe(_signal_stop)
-        # 停止事件循环
         loop.call_soon_threadsafe(loop.stop)
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=timeout)
@@ -182,7 +169,7 @@ class MCPExecutor:
         fut = asyncio.run_coroutine_threadsafe(self._coro_call_tool(tool_name, arguments), loop)
         try:
             res = fut.result()
-            # 尽量打印 run_id/简要回显，避免大型 JSON 占满日志
+            # 便于日志定位 run_id
             rid = None
             if isinstance(res, dict):
                 rid = res.get("run_id") or (res.get("data", {}) if isinstance(res.get("data"), dict) else {}).get("run_id")
@@ -209,7 +196,6 @@ class MCPExecutor:
     async def _coro_call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
         assert self._session is not None
         res = await self._session.call_tool(tool_name, arguments)
-        # 友好解析：优先 JSON → 其次文本 → 否则返回片段信息列表
         try:
             for seg in res.content:
                 if getattr(seg, "type", None) == "json":
@@ -229,8 +215,75 @@ class MCPExecutor:
                 out.append(("unknown", str(seg)))
         return out
 
+    # 新增：线程安全同步方法
+    def list_job_tools_meta(self) -> list[dict]:
+        loop = self._loop
+        if loop is None or self._session is None:
+            log_error("MCP", "list_job_tools_meta(): loop/session not ready")
+            raise RuntimeError("MCP 执行器未就绪")
+        fut = asyncio.run_coroutine_threadsafe(self._coro_list_job_tools(), loop)
+        tools = fut.result()
+        log_info("MCP", f"list_job_tools_meta(): got {len(tools)} tools (via MCP tool)")
+        return tools
+
+    # 新增：实际协程——调用自定义 MCP 工具 list_job_tools 并解析
+    async def _coro_list_job_tools(self) -> list[dict]:
+        assert self._session is not None
+        res = await self._session.call_tool("list_job_tools", {})
+        # 1) 优先 JSON 段
+        try:
+            for seg in res.content:
+                if getattr(seg, "type", None) == "json":
+                    data = seg.data or {}
+                    items = data.get("tools", [])
+                    out = []
+                    for x in items:
+                        if isinstance(x, dict) and x.get("name"):
+                            out.append({"name": str(x["name"]).strip(),
+                                        "description": str(x.get("description", "")).strip()})
+                        elif isinstance(x, str):
+                            out.append({"name": x.strip(), "description": ""})
+                    if out:
+                        return out
+        except Exception:
+            pass
+        # 2) 兼容：如果服务端以 text 段返回 JSON 字符串
+        try:
+            texts = [seg.text for seg in res.content if
+                     getattr(seg, "type", None) == "text" and getattr(seg, "text", None)]
+            blob = "\n".join(texts).strip()
+            if blob.startswith("{") or blob.startswith("["):
+                data = json.loads(blob)
+                items = data.get("tools", []) if isinstance(data, dict) else data
+                out = []
+                for x in items:
+                    if isinstance(x, dict) and x.get("name"):
+                        out.append({"name": str(x["name"]).strip(),
+                                    "description": str(x.get("description", "")).strip()})
+                    elif isinstance(x, str):
+                        out.append({"name": x.strip(), "description": ""})
+                if out:
+                    return out
+        except Exception as e:
+            log_warn("MCP", f"_coro_list_job_tools(): text->json parse failed: {e!r}")
+        # 3) 打点调试：看看到底收到了什么
+        try:
+            preview = []
+            for seg in res.content:
+                t = getattr(seg, "type", None)
+                if t == "json":
+                    preview.append(("json", list((seg.data or {}).keys())))
+                elif t == "text":
+                    txt = (seg.text or "")[:200]
+                    preview.append(("text", txt))
+                else:
+                    preview.append((t, ""))
+            log_warn("MCP", f"_coro_list_job_tools(): no parse, preview={preview}")
+        except Exception:
+            pass
+        return []
+
     async def _runner(self) -> None:
-        """启动 stdio client + ClientSession 并保持常驻，直到收到 stop 事件。"""
         params = StdioServerParameters(
             command=sys.executable,
             args=[self._server_path.as_posix()],
@@ -243,9 +296,9 @@ class MCPExecutor:
             read, write = await self._client_cm.__aenter__()
             async with ClientSession(read, write) as session:
                 self._session = session
-                await session.initialize()  # MCP 1.13.x 无参
+                await session.initialize()
                 log_info("MCP", "ClientSession initialized")
-                self._ready_evt.set()      # 对外：已就绪
+                self._ready_evt.set()
                 await self._stop_evt.wait()
                 log_info("MCP", "Stop event received, shutting down session")
         except BaseException as e:
@@ -283,14 +336,13 @@ class MCPExecutor:
 # ========================= TaskManager =========================
 class TaskManager:
     """
-    常驻版初始化 + 启动流程：
-      1) 参数规范化 + 校验 DB/MCP 文件存在
-      2) 连接 SQLite
-      3) 创建任务队列
-      4) 启动 MCPExecutor（常驻会话）
-      5) 通过执行器 list_tools() 拉取工具并缓存
-      6) 提供 call_tool() 复用常驻会话
-      7) start(): 恢复数据库状态 + 启动运行线程（主循环）
+    - 初始化后会：
+        * 连接 SQLite
+        * 启动常驻 MCP 会话
+        * 拉取全部工具（all_tools_index）
+        * 通过 list_job_tools 获取 “仅对外暴露的作业工具” 白名单（allowed_tool_names）
+        * self.tools_index 仅包含白名单内工具；用于 create_task 校验与对外展示
+    - 运行线程：主循环按 steps 顺序串联启动 “start_*” 类工具，并用 get_status 轮询状态
     """
     def __init__(
         self,
@@ -317,7 +369,7 @@ class TaskManager:
             log_error("INIT", f"mcp server not found: {self.mcpserver_path}")
             raise FileNotFoundError(f"MCP 服务器文件不存在：{self.mcpserver_path}")
 
-        # 3) 连接数据库（仅连通性验证）
+        # 3) 连接数据库
         try:
             self.db = sqlite3.connect(self.db_path.as_posix(), check_same_thread=False)
             self.db.row_factory = sqlite3.Row
@@ -333,10 +385,35 @@ class TaskManager:
 
         # 5) 启动常驻 MCP 执行器并就绪后拉取工具
         self._mcp = MCPExecutor(self.mcpserver_path)
-        self._mcp.start()  # 阻塞等待就绪或抛错
-        tools = self._mcp.list_tools()
-        self.tools_index: Dict[str, Dict[str, Any]] = {t["name"]: t for t in tools}
-        log_info("MCP", f"tools indexed: {list(self.tools_index.keys())}")
+        self._mcp.start()  # 阻塞等待就绪
+
+        # 5.1 优先：通过自定义 MCP 工具拿 {name, description}
+        tools_meta = self._mcp.list_job_tools_meta()
+        if tools_meta:
+            # 5.2 白名单名称（来自 meta）
+            self.allowed_tool_names = {t["name"] for t in tools_meta if isinstance(t, dict) and t.get("name")}
+            log_info("MCP", f"allowed tools (from meta): {sorted(self.allowed_tool_names)}")
+
+            # 5.3 给 LLM 的工具索引：只含 name/description（不含 schema）
+            self.tools_index = {
+                t["name"]: {"name": t["name"], "description": t.get("description", "")}
+                for t in tools_meta if isinstance(t, dict) and t.get("name")
+            }
+
+            # （可选）仍保留 all_tools_index 方便调试
+            all_tools = self._mcp.list_tools()
+            self.all_tools_index = {t["name"]: t for t in all_tools if isinstance(t, dict) and t.get("name")}
+        else:
+            # —— 回退逻辑：旧接口 ——
+            all_tools = self._mcp.list_tools()
+            self.all_tools_index = {t["name"]: t for t in all_tools if isinstance(t, dict) and t.get("name")}
+            self.allowed_tool_names = self._fetch_allowed_tool_names()
+            self.tools_index = {
+                name: {"name": name, "description": (self.all_tools_index.get(name, {}).get("description") or "")}
+                for name in self.allowed_tool_names
+            }
+
+            log_info("MCP", f"allowed tools (fallback): {sorted(self.tools_index.keys())}")
 
         # 6) 初始化运行状态
         self.task_running: Optional[str] = None
@@ -346,19 +423,54 @@ class TaskManager:
         self._stop_evt = threading.Event()
         log_info("INIT", "TaskManager __init__ done")
 
-    # —— 对外工具调用（复用常驻会话） ——
+    # —— 白名单拉取 / 回退策略 ——
+    def _fetch_allowed_tool_names(self) -> Set[str]:
+        """
+        通过 MCP 的 list_job_tools 获取白名单。
+        若无该工具（兼容旧版），退化为以 'start_' 开头的工具名。
+        """
+        allowed: Set[str] = set()
+        try:
+            res = self._mcp.call_tool("list_job_tools", {})
+            if isinstance(res, dict) and isinstance(res.get("tools"), list):
+                # 兼容两种格式：["start_ingest", ...] 或 [{"name": "...", "description": "..."}]
+                items = res["tools"]
+                names: set[str] = set()
+                for x in items:
+                    if isinstance(x, str):
+                        names.add(x)
+                    elif isinstance(x, dict) and x.get("name"):
+                        names.add(str(x["name"]))
+                allowed = names
+                log_info("MCP", f"list_job_tools -> {sorted(allowed)}")
+        except Exception as e:
+            log_warn("MCP", f"list_job_tools not available or failed: {e!r}")
+
+        if not allowed:
+            # 回退策略：名称以 start_ 开头
+            allowed = {name for name in self.all_tools_index.keys() if str(name).startswith("start_")}
+            log_info("MCP", f"fallback allowed tools by prefix start_: {sorted(allowed)}")
+        return allowed
+
+    # —— 对外工具调用 ——（允许内部用到非白名单工具，如 get_status）
     def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
         return self._mcp.call_tool(tool_name, arguments)
 
+    # —— 对外展示（只展示白名单工具）——
     def list_tools(self) -> List[Dict[str, Any]]:
         return list(self.tools_index.values())
 
-    # ==================== 创建任务（新增） ====================
+    # —— 调试/诊断：展示全部工具（含内部）——
+    def list_all_tools(self) -> List[Dict[str, Any]]:
+        return list(self.all_tools_index.values())
+
+    # ==================== 创建任务 ====================
     def _validate_steps(self, steps: List[Dict[str, Any]], check_tools: bool = True) -> Tuple[int, List[Dict[str, Any]]]:
         """
         校验并标准化 steps：
         - step_number 必须从 1 连续、无重复
         - tool_name 非空，source_kind ∈ {dataset, step, direct}
+        - 若 check_tools=True：tool_name 必须在“白名单工具” self.tools_index 中
         - 返回 (total_steps, normalized_steps)
         """
         log_info("CREATE", f"_validate_steps(): steps_count={len(steps) if isinstance(steps, list) else 'N/A'} check_tools={check_tools}")
@@ -406,7 +518,8 @@ class TaskManager:
         if check_tools:
             for s in normalized:
                 if s["tool_name"] not in self.tools_index:
-                    raise ValueError(f"未知工具：{s['tool_name']}")
+                    # 只允许“会返回 run_id”的工具；内部工具（poll_logs/get_status/cancel）会被挡住
+                    raise ValueError(f"未知或不允许的工具：{s['tool_name']}")
 
         total_steps = len(nums_sorted)
         normalized.sort(key=lambda x: x["step_number"])
@@ -422,12 +535,9 @@ class TaskManager:
     ) -> Dict[str, Any]:
         """
         创建新任务：
-        - 随机生成 task_uid
-        - 校验 steps，计算 total_steps
-        - 原样保存 request_json
-        - queued 插入 tasks 表（zero-step 直接 succeeded）
-        - 入队 task_queue（非 zero-step）
-        返回: {"task_uid", "status", "total_steps"}
+        - 校验 steps（按白名单）
+        - 入库 tasks/steps（queued）
+        - 入内存队列等待主循环调度
         """
         log_info("CREATE", f"create_task(): user_uid={user_uid!r}, check_tools={check_tools}")
         if not user_uid:
@@ -487,7 +597,7 @@ class TaskManager:
         输入目录解析：
           - dataset:  public_root/<source>
           - step:     workspace_root/<user_uid>/workspace/<task_uid>/<prev_step_uid>
-          - direct:   Path(source)（允许绝对路径；相对路径按 CWD 解析）
+          - direct:   Path(source)
           - relative: 追加到以上基路径上，禁止逃逸
         """
         log_info("IO", f"_resolve_input_dir(): task={task_uid}, kind={source_kind}, source={source}, relative={relative}")
@@ -538,11 +648,6 @@ class TaskManager:
         return final
 
     def _alloc_step_uid_and_output_dir(self, task_uid: str) -> Tuple[str, Path]:
-        """
-        为新步骤实例分配 step_uid，并计算输出目录：
-            workspace_root/<user_uid>/workspace/<task_uid>/<step_uid>
-        不主动清空目录，若不存在则创建。
-        """
         user_uid = self._get_user_uid_by_task(task_uid)
         step_uid = uuid.uuid4().hex
         out_dir = (self.workspace_root / user_uid / "workspace" / task_uid / step_uid).resolve()
@@ -550,15 +655,9 @@ class TaskManager:
         log_info("IO", f"_alloc_step_uid_and_output_dir(): task={task_uid}, step_uid={step_uid}, out_dir={out_dir}")
         return step_uid, out_dir
 
-    # ---------- 产物导出（新增） ----------
+    # ---------- 产物导出 ----------
     def _export_results(self, task_uid: str, step_uid: str) -> None:
-        """
-        将最后一步的输出目录内容复制到 workspace/<user_uid>/workspace/<task_uid>/results
-        - 合并拷贝：已存在同名文件将覆盖；目录合并
-        - 逐项拷贝并记录日志；失败项目跳过但不断流程
-        """
         import shutil
-
         try:
             user_uid = self._get_user_uid_by_task(task_uid)
         except Exception as e:
@@ -584,11 +683,9 @@ class TaskManager:
                 d = dst_dir / item.name
                 try:
                     if s.is_dir():
-                        # Python 3.8+ dirs_exist_ok
                         shutil.copytree(s, d, dirs_exist_ok=True)
                         log_debug("RESULT", f"copytree OK: {s} -> {d}")
                     elif s.is_file():
-                        # 确保父目录
                         d.parent.mkdir(parents=True, exist_ok=True)
                         shutil.copy2(s, d)
                         log_debug("RESULT", f"copy2 OK: {s} -> {d}")
@@ -596,13 +693,11 @@ class TaskManager:
                         log_warn("RESULT", f"skip non-file/dir: {s}")
                 except Exception as ie:
                     log_exception("RESULT", f"copy item failed: {s} -> {d}", ie)
-                    # 不中断整体流程
                     continue
         except Exception as e:
             log_exception("RESULT", "iterate src_dir failed", e)
             return
 
-        # 生成一个简单清单
         try:
             manifest = {
                 "task_uid": task_uid,
@@ -617,9 +712,6 @@ class TaskManager:
             log_exception("RESULT", "write export manifest failed", e)
 
     def _export_latest_results_for_task(self, task_uid: str) -> None:
-        """
-        找到该任务状态为 succeeded 的最大步骤号的 step_uid，并进行导出
-        """
         try:
             row = self.db.execute(
                 "SELECT step_uid FROM steps WHERE task_uid=? AND status='succeeded' "
@@ -637,14 +729,11 @@ class TaskManager:
 
     # ==================== 启动/恢复 + 主循环 ====================
     def start(self) -> None:
-        """恢复数据库状态，构建队列，启动运行线程（主循环）。"""
         log_info("RUN", "start(): entering")
         self.task_queue = Queue()
         self._stop_evt.clear()
-
         self._recover_on_startup()
         self._load_queued_tasks_into_queue()
-
         self._runner_thread = threading.Thread(
             target=self._main_loop, name="task-runner", daemon=True
         )
@@ -652,7 +741,6 @@ class TaskManager:
         log_info("RUN", "start(): runner thread started")
 
     def stop(self, timeout: float = 5.0) -> None:
-        """请求停止运行线程，不影响 MCPExecutor。"""
         log_info("RUN", "stop(): stop_evt set, waiting thread")
         self._stop_evt.set()
         if self._runner_thread and self._runner_thread.is_alive():
@@ -661,7 +749,6 @@ class TaskManager:
         log_info("RUN", "stop(): runner thread joined")
 
     def close(self) -> None:
-        """优雅关闭：停止主循环 → 关闭 MCP → 关闭 DB。"""
         log_info("RUN", "close(): enter")
         try:
             self.stop()
@@ -684,18 +771,14 @@ class TaskManager:
         log_info("RECOVER", "recover_on_startup(): begin")
         cur = self.db.cursor()
 
-        cur.execute(
-            "SELECT step_uid, task_uid, step_number FROM steps WHERE status = 'running'"
-        )
+        cur.execute("SELECT step_uid, task_uid, step_number FROM steps WHERE status = 'running'")
         rows = cur.fetchall()
         log_info("RECOVER", f"steps.running count={len(rows)} -> mark failed")
         for r in rows:
             step_uid = r["step_uid"]
             task_uid = r["task_uid"]
             step_number = r["step_number"]
-            self.db.execute(
-                "UPDATE steps SET status='failed' WHERE step_uid = ?", (step_uid,)
-            )
+            self.db.execute("UPDATE steps SET status='failed' WHERE step_uid = ?", (step_uid,))
             self.db.execute(
                 "UPDATE tasks SET failed_step_number=?, failed_step_uid=? WHERE task_uid=?",
                 (step_number, step_uid, task_uid),
@@ -717,11 +800,8 @@ class TaskManager:
         log_info("RECOVER", "recover_on_startup(): committed")
 
     def _load_queued_tasks_into_queue(self) -> None:
-        """将所有 queued 任务入内存队列（避免重复）"""
         seen: set[str] = set()
-        cur = self.db.execute(
-            "SELECT task_uid FROM tasks WHERE status='queued' ORDER BY rowid ASC"
-        )
+        cur = self.db.execute("SELECT task_uid FROM tasks WHERE status='queued' ORDER BY rowid ASC")
         rows = cur.fetchall()
         log_info("QUEUE", f"load queued tasks: count={len(rows)}")
         for r in rows:
@@ -737,7 +817,6 @@ class TaskManager:
         while not self._stop_evt.is_set():
             try:
                 if self.task_running is None:
-                    # A) 没有任务在跑：从队列取一个（若空则 5s 后再看）
                     try:
                         task_uid = self.task_queue.get_nowait()
                         log_info("LOOP", f"A-POP: got task_uid={task_uid}")
@@ -760,7 +839,6 @@ class TaskManager:
                     log_info("LOOP", f"A-CHECK: last_done={last_done}, total={total}")
 
                     if last_done >= total:
-                        # 任务已完成但状态未标记，先导出再标记成功
                         self._export_latest_results_for_task(task_uid)
                         self.db.execute(
                             "UPDATE tasks SET status='succeeded', current_step_number=NULL, current_step_uid=NULL "
@@ -771,15 +849,13 @@ class TaskManager:
                         log_info("LOOP", f"A-MARK: already complete -> succeeded, task={task_uid}")
                         continue
 
-                    self.db.execute(
-                        "UPDATE tasks SET status='running' WHERE task_uid=?", (task_uid,)
-                    )
+                    self.db.execute("UPDATE tasks SET status='running' WHERE task_uid=?", (task_uid,))
                     self.db.commit()
                     self.task_running = task_uid
                     log_info("LOOP", f"A-SET: task_running={task_uid}, status=running")
                     continue
 
-                # B) 有任务在跑：确保确实有步骤在执行
+                # B) 有任务在跑
                 task_uid = self.task_running
                 task = self._get_task(task_uid)
                 if task is None:
@@ -792,7 +868,6 @@ class TaskManager:
                 log_info("LOOP", f"B-STATE: task={task_uid}, last_done={last_done}, total={total}")
 
                 if last_done >= total:
-                    # 可能是上一轮已把最后一步标成功，这里补导出并收尾
                     self._export_latest_results_for_task(task_uid)
                     self.db.execute(
                         "UPDATE tasks SET status='succeeded', current_step_number=NULL, current_step_uid=NULL "
@@ -825,22 +900,17 @@ class TaskManager:
                             return False
 
                     if done and _is_zero(exit_code):
-                        # 成功：落盘 steps=Succeeded、tasks.last_completed_step=step_number
                         self.db.execute("UPDATE steps SET status='succeeded' WHERE step_uid=?", (step_row["step_uid"],))
                         self.db.execute(
                             "UPDATE tasks SET last_completed_step=?, current_step_number=NULL, current_step_uid=NULL WHERE task_uid=?",
                             (step_row["step_number"], task_uid),
                         )
                         self.db.commit()
-                        log_info("LOOP", f"B-DONE-OK: step_number={step_row['step_number']} succeeded; will create next")
+                        log_info("LOOP", f"B-DONE-OK: step_number={step_row['step_number']} succeeded")
 
-                        # 如果这是最后一个步骤，立即导出产物并标记任务成功
                         if int(step_row["step_number"]) >= total:
                             self._export_results(task_uid, step_row["step_uid"])
-                            self.db.execute(
-                                "UPDATE tasks SET status='succeeded' WHERE task_uid=?",
-                                (task_uid,),
-                            )
+                            self.db.execute("UPDATE tasks SET status='succeeded' WHERE task_uid=?", (task_uid,))
                             self.db.commit()
                             log_info("RESULT", f"final step succeeded -> exported + task succeeded, task={task_uid}")
                             self.task_running = None
@@ -851,7 +921,6 @@ class TaskManager:
                         continue
 
                     elif done and exit_code is not None and not _is_zero(exit_code):
-                        # 失败
                         self.db.execute("UPDATE steps SET status='failed' WHERE step_uid=?", (step_row["step_uid"],))
                         self.db.execute(
                             "UPDATE tasks SET status='failed', failed_step_number=?, failed_step_uid=?, "
@@ -865,7 +934,6 @@ class TaskManager:
                         continue
 
                     elif done and exit_code is None:
-                        # 边缘竞态：给一次“短暂确认”
                         log_debug("LOOP", "B-POLL: done=True but exit_code=None, short sleep for confirm")
                         time.sleep(0.05)
                         st2 = self._safe_get_status(run_id)
@@ -881,18 +949,15 @@ class TaskManager:
 
                             if int(step_row["step_number"]) >= total:
                                 self._export_results(task_uid, step_row["step_uid"])
-                                self.db.execute(
-                                    "UPDATE tasks SET status='succeeded' WHERE task_uid=?",
-                                    (task_uid,),
-                                )
+                                self.db.execute("UPDATE tasks SET status='succeeded' WHERE task_uid=?", (task_uid,))
                                 self.db.commit()
                                 log_info("RESULT", f"final step succeeded (confirm) -> exported + task succeeded, task={task_uid}")
                                 self.task_running = None
                                 time.sleep(0.05)
                                 continue
-
                             time.sleep(0.05)
                             continue
+
                         elif ec2 is not None and not _is_zero(ec2):
                             self.db.execute("UPDATE steps SET status='failed' WHERE step_uid=?", (step_row["step_uid"],))
                             self.db.execute(
@@ -910,14 +975,12 @@ class TaskManager:
                             time.sleep(0.1)
                             continue
                     else:
-                        # 未完成
                         time.sleep(0.2)
                         continue
 
                 # 没有运行中的步骤：创建下一步实例
                 next_k = (int(task["last_completed_step"] or 0)) + 1
                 if next_k > total:
-                    # 保险：再判一次完成，做导出并收尾
                     self._export_latest_results_for_task(task_uid)
                     self.db.execute(
                         "UPDATE tasks SET status='succeeded', current_step_number=NULL, current_step_uid=NULL "
@@ -974,7 +1037,7 @@ class TaskManager:
                 log_info("LOOP", f"B-CALL: tool={tool_name}, next_k={next_k}, in_dir={in_dir}, out_dir={out_dir}, "
                                   f"add_keys={list((additional_params or {}).keys())}")
 
-                # 提交到 MCP：直到成功（demo 版，简单重试，间隔 0.5s）
+                # 提交到 MCP：直到成功（简单重试）
                 run_id = None
                 retries = 0
                 while run_id is None and not self._stop_evt.is_set():
@@ -1001,7 +1064,6 @@ class TaskManager:
                         time.sleep(0.5)
 
                     if retries >= 10 and run_id is None:
-                        # 限制重试次数，避免无限重试
                         log_error("LOOP", f"B-CALL: run_id still None after {retries} retries, will fail step")
                         break
 
@@ -1045,7 +1107,6 @@ class TaskManager:
         return row
 
     def _fail_task_with_step(self, task_uid: str, step_number: int, step_uid: Optional[str]) -> None:
-        """标记任务失败，并填写失败步信息，清空 current_step_*。"""
         if step_uid:
             self.db.execute("UPDATE steps SET status='failed' WHERE step_uid=?", (step_uid,))
         self.db.execute(
@@ -1057,38 +1118,27 @@ class TaskManager:
         log_error("TASK", f"_fail_task_with_step(): task={task_uid}, step_number={step_number}, step_uid={step_uid}")
 
     def _safe_get_status(self, run_id: str) -> Dict[str, Any]:
-        """调用 get_status 工具；支持 dict 和 JSON 字符串；异常时返回空 dict。"""
         try:
             res = self.call_tool("get_status", {"run_id": run_id})
 
-            # 直接是 dict
             if isinstance(res, dict):
-                done = res.get("done")
-                exit_code = res.get("exit_code")
-                log_debug("MCP", f"_safe_get_status(): run_id={run_id}, done={done}, exit_code={exit_code}")
+                log_debug("MCP", f"_safe_get_status(): run_id={run_id}, done={res.get('done')}, exit_code={res.get('exit_code')}")
                 return res
 
-            # 是 JSON 字符串或 bytes，尝试解析
             if isinstance(res, (str, bytes)):
                 txt = res.decode("utf-8", errors="ignore") if isinstance(res, bytes) else res
                 txt_stripped = txt.strip()
-                # 仅当看起来像 JSON 时再解析，避免误伤纯日志文本
                 if txt_stripped.startswith("{") or txt_stripped.startswith("["):
                     try:
                         obj = json.loads(txt_stripped)
                         if isinstance(obj, dict):
-                            done = obj.get("done")
-                            exit_code = obj.get("exit_code")
-                            log_debug("MCP",
-                                      f"_safe_get_status(): (parsed str) run_id={run_id}, done={done}, exit_code={exit_code}")
+                            log_debug("MCP", f"_safe_get_status(): parsed JSON for run_id={run_id}")
                             return obj
                         else:
-                            log_warn("MCP",
-                                     f"_safe_get_status(): parsed JSON is not a dict (type={type(obj).__name__})")
+                            log_warn("MCP", f"_safe_get_status(): parsed JSON is not a dict (type={type(obj).__name__})")
                     except Exception as je:
                         log_warn("MCP", f"_safe_get_status(): json parse failed: {je!r}; preview={txt_stripped[:200]}")
 
-            # 其他类型或解析失败
             log_warn("MCP", f"_safe_get_status(): unsupported type={type(res).__name__}; return empty dict")
             return {}
         except Exception as e:
@@ -1096,10 +1146,9 @@ class TaskManager:
             return {}
 
     def _get_step_def_from_request(self, task_row: sqlite3.Row, step_number: int) -> Optional[Dict[str, Any]]:
-        """从 tasks.request_json 解析并取出指定步骤号的定义。允许两种结构：list 或 dict。"""
         req = task_row["request_json"]
         if not req:
-            log_warn("TASK", "_get_step_def_from_request(): empty request_json")
+            log_warn("TASK", "_get_step_def_from_request(): 'steps' missing due to empty request_json")
             return None
         try:
             obj = json.loads(req) if isinstance(req, (str, bytes)) else req
@@ -1131,13 +1180,8 @@ class TaskManager:
         log_warn("TASK", f"_get_step_def_from_request(): step_number={step_number} not found")
         return None
 
-    # =============== 新增：按任务ID查询任务运行情况（仅查状态，不查日志） ===============
+    # =============== 按任务ID查询任务运行情况（仅查状态，不查日志） ===============
     def get_task_status(self, task_uid: str) -> Dict[str, Any]:
-        """
-        根据任务ID查询任务运行情况（只读数据库状态，不调用外部 get_status / 不查日志）：
-        - 若任务处于 running：额外返回当前步骤的简要信息（步骤号、step_uid、tool_name、run_id、步骤自身status）。
-        - 若任务为 queued/succeeded/failed/canceled/paused：仅返回任务总体信息。
-        """
         log_info("QUERY", f"get_task_status(NO-LOGS): task_uid={task_uid}")
         task = self._get_task(task_uid)
         if task is None:
@@ -1151,18 +1195,14 @@ class TaskManager:
             "user_uid": task["user_uid"],
             "total_steps": int(task["total_steps"] or 0),
             "last_completed_step": int(task["last_completed_step"] or 0),
-            "current_step_number": (
-                int(task["current_step_number"]) if task["current_step_number"] is not None else None),
+            "current_step_number": (int(task["current_step_number"]) if task["current_step_number"] is not None else None),
             "current_step_uid": task["current_step_uid"],
             "failed_step_number": (int(task["failed_step_number"]) if task["failed_step_number"] is not None else None),
             "failed_step_uid": task["failed_step_uid"],
         }
 
-        # 仅在 running 时，返回当前步骤的数据库信息（不外部轮询）
         if str(task["status"]) == "running":
             step_row = None
-
-            # 优先用 current_step_uid 精确命中
             if task["current_step_uid"]:
                 step_row = self.db.execute(
                     "SELECT step_uid, step_number, tool_name, status, run_id "
@@ -1170,7 +1210,6 @@ class TaskManager:
                     (task["current_step_uid"],),
                 ).fetchone()
 
-            # 兜底：找一条处于 running 的步骤
             if step_row is None:
                 step_row = self.db.execute(
                     "SELECT step_uid, step_number, tool_name, status, run_id "
@@ -1184,13 +1223,12 @@ class TaskManager:
                     "step_uid": step_row["step_uid"],
                     "step_number": int(step_row["step_number"]),
                     "tool_name": step_row["tool_name"],
-                    "status": step_row["status"],  # 仅数据库状态
-                    "run_id": step_row["run_id"],  # 仅作为引用，不外部查询
+                    "status": step_row["status"],
+                    "run_id": step_row["run_id"],
                 }
             else:
                 base["running_step"] = None
 
-        # 简单进度（基于 last_completed_step / total_steps）
         try:
             total = base["total_steps"] or 0
             done = base["last_completed_step"] or 0
@@ -1200,14 +1238,9 @@ class TaskManager:
 
         return base
 
-# ========================= Async 外观：不改现有实现，异步友好 =========================
+
+# ========================= Async 外观：包装同步实现 =========================
 class AsyncTaskManager:
-    """
-    轻量异步外观：
-    - astart()/aclose() 负责在后台初始化/关闭同步版 TaskManager
-    - 其余方法用 asyncio.to_thread 包装同步调用，避免阻塞事件循环
-    - 不改你现有主循环/日志/SQLite 连接等实现
-    """
     def __init__(
         self,
         public_datasets_source_root: str | Path,
@@ -1224,9 +1257,7 @@ class AsyncTaskManager:
         self._tm: Optional[TaskManager] = None
         self._started = False
 
-    # ---------- 生命周期 ----------
     async def astart(self) -> None:
-        """异步初始化并启动内部 TaskManager（放到线程池执行，避免阻塞事件循环）。"""
         if self._started:
             return
 
@@ -1237,7 +1268,7 @@ class AsyncTaskManager:
                 database_file=self._cfg[2],
                 mcpserver_file=self._cfg[3],
             )
-            tm.start()  # 启动它自己的后台运行线程
+            tm.start()
             return tm
 
         self._tm = await asyncio.to_thread(_init_and_start)
@@ -1245,7 +1276,6 @@ class AsyncTaskManager:
         log_info("ASYNC", "AsyncTaskManager started")
 
     async def aclose(self) -> None:
-        """异步关闭内部 TaskManager。"""
         if not self._started or self._tm is None:
             return
 
@@ -1260,7 +1290,6 @@ class AsyncTaskManager:
         self._started = False
         log_info("ASYNC", "AsyncTaskManager closed")
 
-    # ---------- 代理方法（全部放到线程池执行） ----------
     def _require_tm(self) -> TaskManager:
         if not self._started or self._tm is None:
             raise RuntimeError("AsyncTaskManager 未启动：请先调用 astart()")
@@ -1269,6 +1298,10 @@ class AsyncTaskManager:
     async def list_tools(self) -> List[Dict[str, Any]]:
         tm = self._require_tm()
         return await asyncio.to_thread(tm.list_tools)
+
+    async def list_all_tools(self) -> List[Dict[str, Any]]:
+        tm = self._require_tm()
+        return await asyncio.to_thread(tm.list_all_tools)
 
     async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
         tm = self._require_tm()
@@ -1288,11 +1321,10 @@ class AsyncTaskManager:
         tm = self._require_tm()
         return await asyncio.to_thread(tm.get_task_status, task_uid)
 
-    # 可选：暴露同步实例（少数需要直接访问底层对象的地方）
     @property
     def sync(self) -> TaskManager:
         return self._require_tm()
 
 
-# 兼容：某些环境缺少 os 的情况下（上面日志初始化里用到了）
-import os  # 放在文件尾，确保已导入
+# 兼容：确保 os 已导入（日志初始化曾引用）
+import os  # noqa: E402

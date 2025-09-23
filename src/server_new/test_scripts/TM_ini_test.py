@@ -1,20 +1,20 @@
-# test_init_task_manager_async.py
+# TM_tools_descriptions_test.py
 from __future__ import annotations
 import asyncio
 import sys
 from pathlib import Path
-from pprint import pprint
+from textwrap import indent
+
 from mediagent.paths import in_data, in_mediagent
 
-# ======== 需要你自己填写的变量（用绝对路径更稳）========
-PUBLIC_DATASETS_ROOT = in_data("files", "public")     # 例如：r"D:\datasets\public"
-WORKSPACE_ROOT       = in_data("files", "private")    # 例如：r"D:\projects\MediAgent\workspace"
-DATABASE_FILE        = in_data("db", "app.sqlite3")   # 例如：r"D:\projects\MediAgent\data\app.sqlite3" (必须已存在)
-MCPSERVER_FILE       = in_mediagent("mcp_server_tools", "mcp_server.py")  # 例如：r"...\mcp_server.py" (必须已存在)
+# ======== 需要你自己填写/确认的变量（建议保持与你现有脚本一致）========
+PUBLIC_DATASETS_ROOT = in_data("files", "public")
+WORKSPACE_ROOT       = in_data("files", "private")
+DATABASE_FILE        = in_data("db", "app.sqlite3")   # 必须已存在
+MCPSERVER_FILE       = in_mediagent("mcp_server_tools", "mcp_server.py")  # 必须已存在
 
-# ======== 导入你的 AsyncTaskManager 类 ========
+# ======== 导入 AsyncTaskManager（按你的工程结构修改）========
 try:
-    # 按你的工程实际路径修改这一行
     from mediagent.modules.task_manager import AsyncTaskManager
 except Exception as e:
     print("[FATAL] 无法导入 AsyncTaskManager，请检查模块路径。")
@@ -23,14 +23,105 @@ except Exception as e:
     sys.exit(1)
 
 
-def check_path(label: str, p: str | Path) -> Path:
+def _check_path(label: str, p: str | Path) -> Path:
     path = Path(p).expanduser().resolve()
     print(f"[check] {label}: {path}")
     return path
 
 
+def _has_schema_fields(tools: list[dict]) -> bool:
+    """是否包含我们不想给 LLM 的 schema 字段。"""
+    if not isinstance(tools, list):
+        return False
+    keys = {"inputSchema", "planningInputSchema", "runtimeInputSchema"}
+    return any(isinstance(t, dict) and any(k in t for k in keys) for t in tools)
+
+
+def _missing_descriptions(tools: list[dict]) -> bool:
+    """是否存在缺少 description 的项。"""
+    if not isinstance(tools, list):
+        return True
+    return any(isinstance(t, dict) and not (t.get("description") or "").strip() for t in tools)
+
+
+def _brief(text: str, max_lines: int = 12) -> str:
+    """把长描述做行数限制的预览（完整描述仍然会在下方提供展开提示）。"""
+    if not text:
+        return ""
+    lines = text.strip().splitlines()
+    if len(lines) <= max_lines:
+        return text.strip()
+    preview = "\n".join(lines[:max_lines])
+    more = len(lines) - max_lines
+    return f"{preview}\n…（以下省略 {more} 行，可在 mcp_server.py 中查看完整描述）"
+
+
+async def _fetch_tools_via_tm(tm: AsyncTaskManager) -> list[dict]:
+    """使用 TaskManager 的 list_tools（理想路径：透传 list_job_tools 的结果）"""
+    try:
+        tools = await tm.list_tools()
+        if isinstance(tools, dict) and "tools" in tools:
+            tools = tools["tools"]
+        if not isinstance(tools, list):
+            raise TypeError("tm.list_tools() 返回的不是 list/可迭代工具项")
+        return tools
+    except Exception as e:
+        print("[warn] tm.list_tools() 调用失败：", repr(e))
+        return []
+
+
+async def _fetch_tools_via_mcp(tm: AsyncTaskManager) -> list[dict]:
+    """直接调用 MCP 的 list_job_tools（兜底路径）"""
+    try:
+        # 优先使用 tm.mcp.call_tool
+        if hasattr(tm, "mcp") and hasattr(tm.mcp, "call_tool"):
+            resp = await tm.mcp.call_tool("list_job_tools", args={})
+        # 次选：某些封装可能提供 call_mcp_tool
+        elif hasattr(tm, "call_mcp_tool"):
+            resp = await tm.call_mcp_tool("list_job_tools", args={})
+        else:
+            print("[warn] 未找到 tm.mcp.call_tool 或 tm.call_mcp_tool，无法直接调用 MCP。")
+            return []
+        tools = resp.get("tools", [])
+        if not isinstance(tools, list):
+            print("[warn] MCP list_job_tools 返回格式异常：", resp)
+            return []
+        return tools
+    except Exception as e:
+        print("[warn] 直接调用 MCP list_job_tools 失败：", repr(e))
+        return []
+
+
+def _normalize_tools(tools: list[dict]) -> list[dict]:
+    """只保留 {name, description}，并确保为字符串。"""
+    out: list[dict] = []
+    for t in tools:
+        if not isinstance(t, dict):
+            continue
+        name = str(t.get("name", "")).strip()
+        desc = str(t.get("description", "")).strip()
+        if not name:
+            continue
+        out.append({"name": name, "description": desc})
+    return out
+
+
+def _print_tools(tools: list[dict], preview_lines: int = 12) -> None:
+    print(f"\n[tools] 共 {len(tools)} 个工具（仅展示 name/description）：")
+    for i, t in enumerate(tools, 1):
+        print(f"\n  --- Tool #{i} ---")
+        print(f"  name: {t['name']}")
+        desc = t.get("description", "")
+        if not desc:
+            print("  description: （缺失）")
+            continue
+        brief = _brief(desc, max_lines=preview_lines)
+        print("  description:")
+        print(indent(brief, "    "))
+
+
 async def main():
-    # 0) 基础输入检查（便于尽早发现路径问题）
+    # —— 基础路径校验 ——
     if not DATABASE_FILE or not Path(DATABASE_FILE).exists():
         print("[FATAL] 请正确填写 DATABASE_FILE（必须已存在的 sqlite 文件）。")
         return
@@ -38,14 +129,14 @@ async def main():
         print("[FATAL] 请正确填写 MCPSERVER_FILE（必须已存在的 mcp 服务器脚本）。")
         return
 
-    pub_root = check_path("public_datasets_source_root", PUBLIC_DATASETS_ROOT) if PUBLIC_DATASETS_ROOT else None
-    ws_root  = check_path("workspace_root", WORKSPACE_ROOT) if WORKSPACE_ROOT else None
-    db_path  = check_path("database_file", DATABASE_FILE)
-    mcp_path = check_path("mcpserver_file", MCPSERVER_FILE)
+    pub_root = _check_path("public_datasets_source_root", PUBLIC_DATASETS_ROOT) if PUBLIC_DATASETS_ROOT else None
+    ws_root  = _check_path("workspace_root", WORKSPACE_ROOT) if WORKSPACE_ROOT else None
+    db_path  = _check_path("database_file", DATABASE_FILE)
+    mcp_path = _check_path("mcpserver_file", MCPSERVER_FILE)
 
-    print("\n[step] 开始执行异步初始化…\n")
+    print("\n[step] 初始化 AsyncTaskManager …\n")
 
-    tm = None
+    tm: AsyncTaskManager | None = None
     try:
         tm = AsyncTaskManager(
             public_datasets_source_root=pub_root or ".",
@@ -56,40 +147,54 @@ async def main():
         await tm.astart()
         print("[ok] AsyncTaskManager 启动成功。")
 
-        # 1) MCP 工具列表（验证会话就绪）
-        tools = await tm.list_tools()
-        print(f"[check] 已加载工具数量：{len(tools)}")
-        if tools:
-            print("[preview] 工具名（最多列出前10个）：")
-            for name in [t["name"] for t in tools][:10]:
-                print("  -", name)
+        # 1) 先用 TM 的 list_tools()
+        tools_tm = await _fetch_tools_via_tm(tm)
 
-        # 2) 数据库连通性与简要结构探测（通过底层同步实例执行到线程池）
-        async def _peek_tables():
-            def _run():
-                cur = tm.sync.db.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name LIMIT 10;"
-                )
-                return [r[0] for r in cur.fetchall()]
-            return await asyncio.to_thread(_run)
+        # 2) 判定是否需要兜底（若含 schema 或描述缺失，则尝试直接从 MCP 获取）
+        need_fallback = _has_schema_fields(tools_tm) or _missing_descriptions(tools_tm)
+        if need_fallback:
+            print("\n[info] 检测到 list_tools() 返回包含 schema 或描述缺失，尝试直接调用 MCP 的 list_job_tools…")
+            tools_mcp = await _fetch_tools_via_mcp(tm)
+            if tools_mcp:
+                tools = tools_mcp
+                print("[info] 已改用 MCP list_job_tools 的结果。")
+            else:
+                tools = tools_tm
+                print("[warn] MCP list_job_tools 兜底失败，仍沿用 tm.list_tools() 的结果。")
+        else:
+            tools = tools_tm
 
+        # 3) 规范化并打印
+        tools_norm = _normalize_tools(tools)
+        if not tools_norm:
+            print("\n[warn] 未获取到任何工具（name/description）。请确认：")
+            print("  - mcp_server.py 中是否定义了 @server.tool() 的 list_job_tools 并返回 {'tools': [...]}；")
+            print("  - AsyncTaskManager.list_tools() 是否直接透传了该结果；")
+        else:
+            _print_tools(tools_norm, preview_lines=14)
+
+        # 4) 额外健康检查（可选）
         try:
-            tables = await _peek_tables()
-            print(f"[check] 数据库连接正常，示例表：{tables or '（未发现表，若你还没建表可以忽略）'}")
+            # 简单 DB 探测
+            def _peek_tables():
+                cur = tm.sync.db.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name LIMIT 10;")
+                return [r[0] for r in cur.fetchall()]
+            tables = await asyncio.to_thread(_peek_tables)
+            print(f"\n[check] 数据库连接正常，示例表：{tables or '（未发现表，可忽略）'}")
         except Exception as e:
-            print("[warn] 数据库简单查询失败，但连接已建立。错误：", repr(e))
+            print("\n[warn] 数据库简单查询失败，但连接已建立。错误：", repr(e))
 
-        # 3) 队列与运行状态（通过底层同步实例读取）
-        async def _peek_runtime():
-            def _run():
+        # 任务队列状态
+        try:
+            def _peek_runtime():
                 return tm.sync.task_queue.empty(), tm.sync.task_running
-            return await asyncio.to_thread(_run)
+            is_empty, running = await asyncio.to_thread(_peek_runtime)
+            print(f"[check] task_queue 为空：{is_empty}")
+            print(f"[check] task_running = {running}")
+        except Exception as e:
+            print("\n[warn] 读取运行状态失败：", repr(e))
 
-        is_empty, running = await _peek_runtime()
-        print(f"[check] task_queue 为空：{is_empty}")
-        print(f"[check] task_running = {running}")
-
-        print("\n[RESULT] 异步版本初始化路径、DB 连接、MCP 会话、工具加载均已完成。")
+        print("\n[RESULT] 工具描述拉取与展示完成（无 schema，面向 LLM 的完整说明）。")
 
     except Exception as e:
         print("\n[ERROR] 初始化失败：", repr(e))
