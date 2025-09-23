@@ -1200,6 +1200,99 @@ class TaskManager:
 
         return base
 
+# ========================= Async 外观：不改现有实现，异步友好 =========================
+class AsyncTaskManager:
+    """
+    轻量异步外观：
+    - astart()/aclose() 负责在后台初始化/关闭同步版 TaskManager
+    - 其余方法用 asyncio.to_thread 包装同步调用，避免阻塞事件循环
+    - 不改你现有主循环/日志/SQLite 连接等实现
+    """
+    def __init__(
+        self,
+        public_datasets_source_root: str | Path,
+        workspace_root: str | Path,
+        database_file: str | Path,
+        mcpserver_file: str | Path,
+    ) -> None:
+        self._cfg = (
+            Path(public_datasets_source_root),
+            Path(workspace_root),
+            Path(database_file),
+            Path(mcpserver_file),
+        )
+        self._tm: Optional[TaskManager] = None
+        self._started = False
+
+    # ---------- 生命周期 ----------
+    async def astart(self) -> None:
+        """异步初始化并启动内部 TaskManager（放到线程池执行，避免阻塞事件循环）。"""
+        if self._started:
+            return
+
+        def _init_and_start() -> TaskManager:
+            tm = TaskManager(
+                public_datasets_source_root=self._cfg[0],
+                workspace_root=self._cfg[1],
+                database_file=self._cfg[2],
+                mcpserver_file=self._cfg[3],
+            )
+            tm.start()  # 启动它自己的后台运行线程
+            return tm
+
+        self._tm = await asyncio.to_thread(_init_and_start)
+        self._started = True
+        log_info("ASYNC", "AsyncTaskManager started")
+
+    async def aclose(self) -> None:
+        """异步关闭内部 TaskManager。"""
+        if not self._started or self._tm is None:
+            return
+
+        def _close():
+            try:
+                self._tm.close()
+            except Exception as e:
+                log_exception("ASYNC", "close() failed", e)
+
+        await asyncio.to_thread(_close)
+        self._tm = None
+        self._started = False
+        log_info("ASYNC", "AsyncTaskManager closed")
+
+    # ---------- 代理方法（全部放到线程池执行） ----------
+    def _require_tm(self) -> TaskManager:
+        if not self._started or self._tm is None:
+            raise RuntimeError("AsyncTaskManager 未启动：请先调用 astart()")
+        return self._tm
+
+    async def list_tools(self) -> List[Dict[str, Any]]:
+        tm = self._require_tm()
+        return await asyncio.to_thread(tm.list_tools)
+
+    async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
+        tm = self._require_tm()
+        return await asyncio.to_thread(tm.call_tool, tool_name, arguments)
+
+    async def create_task(
+        self,
+        user_uid: str,
+        steps: List[Dict[str, Any]],
+        *,
+        check_tools: bool = True,
+    ) -> Dict[str, Any]:
+        tm = self._require_tm()
+        return await asyncio.to_thread(tm.create_task, user_uid, steps, check_tools=check_tools)
+
+    async def get_task_status(self, task_uid: str) -> Dict[str, Any]:
+        tm = self._require_tm()
+        return await asyncio.to_thread(tm.get_task_status, task_uid)
+
+    # 可选：暴露同步实例（少数需要直接访问底层对象的地方）
+    @property
+    def sync(self) -> TaskManager:
+        return self._require_tm()
+
 
 # 兼容：某些环境缺少 os 的情况下（上面日志初始化里用到了）
 import os  # 放在文件尾，确保已导入

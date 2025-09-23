@@ -11,9 +11,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .user_controller import router as user_router
 
+from mediagent.modules.task_manager import TaskManager
+from mediagent.paths import in_data
+from mediagent.paths import in_mediagent
+
 # 数据目录（保持你的逻辑）
 try:
-    from ..paths import DATA_DIR
+    from mediagent.paths import DATA_DIR
 except Exception:
     DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
@@ -21,6 +25,11 @@ class Settings(BaseSettings):
     MODEL_URL=os.getenv("MODEL_URL")
     MODEL_API_KEY=os.getenv("MODEL_API_KEY")
     MODEL=os.getenv("MODEL")
+
+    PUBLIC_DATASETS_ROOT = in_data("files", "public")  # 例如：r"D:\datasets\public"
+    WORKSPACE_ROOT = in_data("files", "private")  # 例如：r"D:\projects\MediAgent\workspace"
+    DATABASE_FILE = in_data("db", "app.sqlite3")  # 例如：r"D:\projects\MediAgent\data\app.sqlite3"  (必须已存在)
+    MCPSERVER_FILE = in_mediagent("mcp_server_tools","mcp_server.py")  # 例如：r"D:\projects\MediAgent\server\mcp_server.py"  (必须已存在)
 
 
 class Services:
@@ -36,12 +45,20 @@ class Services:
         self.llm = None
         self.bg_task = None
 
+        # 新增：唯一 TaskManager 实例占位
+        self.tm: TaskManager | None = None
+
     async def ainit(self):
         # 重/异步初始化
-        # self.db = await create_async_engine(self.settings.db_url)
-        # self.redis = await aioredis.from_url(self.settings.redis_url)
-        # self.llm = AsyncLLMClient(...)
-        # self.bg_task = asyncio.create_task(worker(...))
+
+        self.tm = TaskManager(
+            public_datasets_source_root=self.settings.PUBLIC_DATASETS_ROOT,
+            workspace_root=self.settings.WORKSPACE_ROOT,
+            database_file=self.settings.DATABASE_FILE,
+            mcpserver_file=self.settings.MCPSERVER_FILE
+        )
+        self.tm.start()#完成对任务管理器的初始化，而任务管理器会连带着把mcp服务器一起初始化
+
         pass
 
     async def aclose(self):
