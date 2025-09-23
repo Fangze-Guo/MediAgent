@@ -64,16 +64,16 @@ for patient_dir in tqdm(list(n4_dir.iterdir())):
     if not patient_dir.is_dir():
         continue
 
-    c2_path = patient_dir / "C2.nii.gz"
-    c2_mask_path = patient_dir / "C2_mask.nii.gz"
-    if not c2_path.exists() or not c2_mask_path.exists():
+    c0_path = patient_dir / "C0.nii.gz"
+    c0_mask_path = patient_dir / "C0_mask.nii.gz"
+    if not c0_path.exists() or not c0_mask_path.exists():
         continue
 
-    dst_c2_path = res_dir / patient_dir.name / "C2.nii.gz"
-    dst_c2_mask_path = res_dir / patient_dir.name / "C2_mask.nii.gz"
-    dst_c2_path.parent.mkdir(parents=True, exist_ok=True)
-    dst_c2_mask_path.parent.mkdir(parents=True, exist_ok=True)
+    dst_c0_path = res_dir / patient_dir.name / "C0.nii.gz"
+    dst_c0_mask_path = res_dir / patient_dir.name / "C0_mask.nii.gz"
+    dst_c0_path.parent.mkdir(parents=True, exist_ok=True)
+    dst_c0_mask_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if not dst_c2_path.exists():
-        resample(c2_path, dst_c2_path, out_spacing=[1.0, 1.0, 1.0], is_mask=False)
-        resample(c2_mask_path, dst_c2_mask_path, out_spacing=[1.0, 1.0, 1.0], is_mask=True)
+    if not dst_c0_path.exists():
+        resample(c0_path, dst_c0_path, out_spacing=[1.0, 1.0, 1.0], is_mask=False)
+        resample(c0_mask_path, dst_c0_mask_path, out_spacing=[1.0, 1.0, 1.0], is_mask=True)
