@@ -1131,6 +1131,75 @@ class TaskManager:
         log_warn("TASK", f"_get_step_def_from_request(): step_number={step_number} not found")
         return None
 
+    # =============== 新增：按任务ID查询任务运行情况（仅查状态，不查日志） ===============
+    def get_task_status(self, task_uid: str) -> Dict[str, Any]:
+        """
+        根据任务ID查询任务运行情况（只读数据库状态，不调用外部 get_status / 不查日志）：
+        - 若任务处于 running：额外返回当前步骤的简要信息（步骤号、step_uid、tool_name、run_id、步骤自身status）。
+        - 若任务为 queued/succeeded/failed/canceled/paused：仅返回任务总体信息。
+        """
+        log_info("QUERY", f"get_task_status(NO-LOGS): task_uid={task_uid}")
+        task = self._get_task(task_uid)
+        if task is None:
+            log_warn("QUERY", f"get_task_status(): task not found task_uid={task_uid}")
+            return {"ok": False, "error": "task_not_found", "task_uid": task_uid}
+
+        base: Dict[str, Any] = {
+            "ok": True,
+            "task_uid": task_uid,
+            "status": task["status"],
+            "user_uid": task["user_uid"],
+            "total_steps": int(task["total_steps"] or 0),
+            "last_completed_step": int(task["last_completed_step"] or 0),
+            "current_step_number": (
+                int(task["current_step_number"]) if task["current_step_number"] is not None else None),
+            "current_step_uid": task["current_step_uid"],
+            "failed_step_number": (int(task["failed_step_number"]) if task["failed_step_number"] is not None else None),
+            "failed_step_uid": task["failed_step_uid"],
+        }
+
+        # 仅在 running 时，返回当前步骤的数据库信息（不外部轮询）
+        if str(task["status"]) == "running":
+            step_row = None
+
+            # 优先用 current_step_uid 精确命中
+            if task["current_step_uid"]:
+                step_row = self.db.execute(
+                    "SELECT step_uid, step_number, tool_name, status, run_id "
+                    "FROM steps WHERE step_uid=? LIMIT 1",
+                    (task["current_step_uid"],),
+                ).fetchone()
+
+            # 兜底：找一条处于 running 的步骤
+            if step_row is None:
+                step_row = self.db.execute(
+                    "SELECT step_uid, step_number, tool_name, status, run_id "
+                    "FROM steps WHERE task_uid=? AND status='running' "
+                    "ORDER BY rowid DESC LIMIT 1",
+                    (task_uid,),
+                ).fetchone()
+
+            if step_row:
+                base["running_step"] = {
+                    "step_uid": step_row["step_uid"],
+                    "step_number": int(step_row["step_number"]),
+                    "tool_name": step_row["tool_name"],
+                    "status": step_row["status"],  # 仅数据库状态
+                    "run_id": step_row["run_id"],  # 仅作为引用，不外部查询
+                }
+            else:
+                base["running_step"] = None
+
+        # 简单进度（基于 last_completed_step / total_steps）
+        try:
+            total = base["total_steps"] or 0
+            done = base["last_completed_step"] or 0
+            base["progress"] = (done / total) if total > 0 else None
+        except Exception:
+            base["progress"] = None
+
+        return base
+
 
 # 兼容：某些环境缺少 os 的情况下（上面日志初始化里用到了）
 import os  # 放在文件尾，确保已导入
