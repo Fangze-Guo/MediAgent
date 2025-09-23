@@ -77,8 +77,14 @@ const startConversation = async () => {
 
   creating.value = true
   try {
-    // 创建新会话，使用用户输入作为初始消息
-    const conv = conversationsStore.createConversation(text)
+    // 创建新会话（自动生成会话ID）
+    const conv = conversationsStore.createConversation()
+    
+    // 将用户输入添加为初始消息
+    conversationsStore.appendMessage(conv.id, {
+      role: 'user',
+      content: text
+    })
 
     // 跳转到聊天页面
     await router.push(`/chat/${conv.id}`)
