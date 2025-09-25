@@ -7,19 +7,20 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Set
 
+# --------------------------- 依赖 ---------------------------
 try:
-    # OpenAI v1+ 异步客户端
+    # OpenAI v1 异步客户端（用于 OpenAI 兼容的 /v1/chat/completions）
     from openai import AsyncOpenAI
 except Exception:  # pragma: no cover
-    AsyncOpenAI = None  # 允许导入失败，直到真正调用时再报错
+    AsyncOpenAI = None  # 直到真正使用时再报错
 
 try:
     import jsonschema
-    from jsonschema import validate as jsonschema_validate, Draft202012Validator
+    from jsonschema import validate as jsonschema_validate
     HAS_JSONSCHEMA = True
 except Exception:  # pragma: no cover
     HAS_JSONSCHEMA = False
-    Draft202012Validator = None  # type: ignore
+    jsonschema_validate = None  # type: ignore
 
 
 # --------------------------- 常量与基础工具 ---------------------------
@@ -73,17 +74,13 @@ def _strip_json_fences(txt: str) -> str:
     if not txt:
         return txt
     txt = txt.strip()
-    # ```json\n...\n``` 或 ```\n...\n```
     fence = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.S | re.I)
     m = fence.match(txt)
     return m.group(1) if m else txt
 
 
 def _py_type_ok(value: Any, type_decl: Any) -> bool:
-    """
-    朴素类型检查：将 JSON Schema 的 type 映射为 Python 类型集合进行 isinstance 校验。
-    支持 union（list of types）。
-    """
+    """朴素类型检查：将 JSON Schema 的 type 映射为 Python 类型进行 isinstance 校验。"""
     def _one_ok(v: Any, t: str) -> bool:
         if t == "string":
             return isinstance(v, str)
@@ -99,13 +96,15 @@ def _py_type_ok(value: Any, type_decl: Any) -> bool:
             return isinstance(v, dict)
         if t == "null":
             return v is None
-        return True  # 未知类型放行
+        return True
     if isinstance(type_decl, list):
         return any(_one_ok(value, t) for t in type_decl)
     if isinstance(type_decl, str):
         return _one_ok(value, type_decl)
     return True
 
+
+# --------------------------- 配置 ---------------------------
 
 @dataclass
 class AgentBConfig:
@@ -115,9 +114,9 @@ class AgentBConfig:
     allowed_tools: Optional[Set[str]] = None
     # 可选：公共数据集编号白名单（如需）
     allowed_datasets: Optional[Set[str]] = None
-    # OpenAI 连接
+    # OpenAI 连接（必须把 base_url 指到 OpenAI 兼容网关（含 /v1））
     api_key: Optional[str] = None
-    base_url: Optional[str] = None
+    base_url: Optional[str] = None  # 例如 "http://127.0.0.1:1234/v1"
     # 额外的参数规则（当你仍希望对某些工具施加互斥/依赖/范围时）
     extra_param_rules: Optional[Dict[str, Dict[str, Any]]] = None
     # LLM 提示裁剪：最多在提示里列出多少工具（避免提示过长）
@@ -133,6 +132,7 @@ class TaskCreationAgentB:
     - 通过 LLM 产出“严格 JSON”
     - 进行两层校验（JSON Schema + 逻辑/参数（宽松））
     - 成功后调用 TaskManager.create_task()
+    - 使用 function calling 强制 LLM 调用自定义工具 emit_plan，以约束输出
     """
 
     def __init__(self, task_manager, config: AgentBConfig):
@@ -145,11 +145,15 @@ class TaskCreationAgentB:
 
         if AsyncOpenAI is None:
             raise RuntimeError("openai 库未安装或版本不兼容，请安装 `pip install openai` 并确保为 v1+")
-        self._client = AsyncOpenAI(api_key=self.cfg.api_key, base_url=self.cfg.base_url)
+        # 关键：base_url 必须指向 /v1；LM Studio、Ollama 等 OpenAI 兼容网关需要这一点
+        self._client = AsyncOpenAI(
+            api_key=(self.cfg.api_key or "lm-studio"),
+            base_url=(self.cfg.base_url or "http://127.0.0.1:1234/v1"),
+            timeout=30.0,
+        )
 
-        # 工具缓存：name -> {"description": "..."}（不再保存 inputSchema）
+        # 工具缓存：name -> {"description": "..."}（这里不保存 inputSchema）
         self._tool_index: Dict[str, Dict[str, Any]] = {}
-        # 兼容：若仍使用 extra_param_rules，这里只在 _validate_params 中使用
         self._tool_param_rules_cache: Dict[str, Dict[str, Any]] = {}
 
     # -------------------- 外部接口 --------------------
@@ -168,6 +172,17 @@ class TaskCreationAgentB:
         errors: List[Dict[str, Any]] = []
         attempts = 0
 
+        # 启动连通性冒烟测试（确保能打到 /v1/chat/completions）
+        try:
+            await self._llm_smoke_test()
+        except Exception as e:
+            return {
+                "ok": False,
+                "attempts": 1,
+                "errors": [{"stage": "network", "attempt": 1, "message": f"LLM 连接失败：{e!r}"}],
+                "message": "无法连接 LLM 网关，请检查 base_url（必须包含 /v1）与端口",
+            }
+
         await self._ensure_tool_cache()
 
         # 构建工具白名单：优先用传入；否则用 tm 返回的列表
@@ -181,8 +196,12 @@ class TaskCreationAgentB:
         while attempts < max(1, self.cfg.max_retries):
             attempts += 1
 
-            # === 1) 调 LLM 严格产出 JSON ===
-            raw = await self._call_llm(plan_text, errors_so_far=errors, allowed_tools=allowed_tools)
+            # === 1) 调 LLM 产出 JSON（强制 function 调用 emit_plan） ===
+            raw, fc_err = await self._call_llm_via_function(plan_text, allowed_tools=allowed_tools)
+            if fc_err:
+                errors.append({"stage": "json_schema", "attempt": attempts, "message": "LLM 返回错误", "details": fc_err})
+                continue
+
             plan_obj, parse_err = self._parse_json(raw)
             if parse_err:
                 errors.append({"stage": "json_schema", "attempt": attempts, "message": "JSON 解析失败", "details": parse_err})
@@ -233,13 +252,137 @@ class TaskCreationAgentB:
             errors.append({"stage": "manager", "attempt": attempts, "message": f"TaskManager 异常：{e!r}"})
             return {"ok": False, "attempts": attempts, "errors": errors, "message": "创建任务时出现未知错误，请重试"}
 
+    # -------------------- LLM 交互（function calling） --------------------
+
+    def _emit_plan_tool(self, allowed_tools: Set[str]) -> Dict[str, Any]:
+        """
+        返回 OpenAI function-calling 工具定义（用 JSON Schema 限制 arguments）。
+        """
+        allowed_tools_sorted = sorted(list(allowed_tools))
+        return {
+            "type": "function",
+            "function": {
+                "name": "emit_plan",
+                "description": (
+                    "输出最终的计划 JSON。严格遵守参数 schema；严禁在 additional_params 中包含 in_dir、out_dir。"
+                    "如果不确定，请将 additional_params 置为 {}。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["steps"],
+                    "properties": {
+                        "steps": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 50,
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "required": ["step_number", "tool_name", "source_kind", "source", "additional_params"],
+                                "properties": {
+                                    "step_number": {"type": "integer", "minimum": 1},
+                                    "tool_name": {"type": "string", "enum": allowed_tools_sorted},
+                                    "source_kind": {"type": "string", "enum": sorted(list(SOURCE_KINDS))},
+                                    "source": {
+                                        "oneOf": [
+                                            {"type": "string", "minLength": 1, "maxLength": 1024},
+                                            {"type": "integer", "minimum": 1}
+                                        ]
+                                    },
+                                    "relative": {"type": ["string", "null"], "maxLength": 1024},
+                                    "additional_params": {"type": "object"},
+                                },
+                            },
+                        }
+                    },
+                },
+            },
+        }
+
+    async def _call_llm_via_function(self, plan_text: str, allowed_tools: Set[str]) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+        """
+        通过 /v1/chat/completions + function calling，强制模型调用 emit_plan 并返回其 arguments(JSON 字符串)。
+        兼容“只支持 tool_choice=['none','auto','required']”的网关：只提供一个工具并设置 tool_choice='required'。
+        返回 (json_text, error_dict)
+        """
+        tools_summary = self._summarize_tools_for_prompt(allowed_tools)
+
+        system_prompt = f"""你是一个严格的“任务计划结构化器”。请将用户给出的不规范任务计划转换为**严格 JSON**。
+不要输出自然语言，也不要给出任何解释。你**必须**调用 function: emit_plan，并把最终 JSON 作为 emit_plan 的 arguments 返回。
+
+强制约束（重要）：
+1) steps[*].step_number 必须从 1 开始、连续（1,2,3,...）。
+2) steps[*].source_kind ∈ {sorted(list(SOURCE_KINDS))}。
+3) 若 source_kind == "step"，则 steps[*].source 必须是小于当前步骤号的整数（引用前置步骤）。
+4) tool_name 必须在白名单内（见下方列表）。
+5) steps[*].additional_params：若工具描述未要求业务参数，使用 {{}}；**禁止**包含 in_dir/out_dir（运行时注入）。
+
+可用工具及说明（仅供你理解，不必逐字复制）：
+{tools_summary}
+"""
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": plan_text},
+        ]
+
+        emit_plan_tool = self._emit_plan_tool(allowed_tools)
+
+        try:
+            # 关键：很多本地/代理网关不支持 tool_choice 对象形态，仅支持 "none" | "auto" | "required"
+            # 我们只提供一个工具 emit_plan，并将 tool_choice="required"，从而“强制”调用该工具。
+            resp = await self._client.chat.completions.create(
+                model=self.cfg.model,
+                messages=messages,
+                temperature=0,
+                tools=[emit_plan_tool],
+                tool_choice="required",
+            )
+        except Exception as e:
+            return None, {"error": f"chat.completions failed: {repr(e)}"}
+
+        # 从返回中提取 emit_plan 的 arguments
+        try:
+            choice0 = (resp.choices or [None])[0]
+            if not choice0 or not getattr(choice0, "message", None):
+                return None, {"error": "no choices/message in response"}
+
+            # 1) 新版字段：message.tool_calls[*].function.arguments
+            tool_calls = getattr(choice0.message, "tool_calls", None) or []
+            for tc in tool_calls:
+                fn = getattr(tc, "function", None)
+                if fn and getattr(fn, "name", None) == "emit_plan":
+                    arguments = getattr(fn, "arguments", None)
+                    if isinstance(arguments, str):
+                        return arguments, None
+                    if isinstance(arguments, dict):
+                        return json.dumps(arguments, ensure_ascii=False), None
+
+            # 2) 旧版字段：message.function_call
+            fc = getattr(choice0.message, "function_call", None)
+            if fc and getattr(fc, "name", None) == "emit_plan":
+                args = getattr(fc, "arguments", None)
+                if isinstance(args, str):
+                    return args, None
+                if isinstance(args, dict):
+                    return json.dumps(args, ensure_ascii=False), None
+
+            # 3) 某些实现把 JSON 直接塞进 content（不规范），做一次兜底
+            content = getattr(choice0.message, "content", None) or ""
+            if isinstance(content, str) and content.strip():
+                return content, None
+
+            return None, {"error": "emit_plan arguments not found"}
+        except Exception as e:
+            return None, {"error": f"extract tool_calls failed: {repr(e)}"}
+
     # -------------------- 工具能力缓存与提示构建 --------------------
 
     async def _ensure_tool_cache(self) -> None:
         if self._tool_index:
             return
         tools = await self.tm.list_tools()
-        # 统一成 name -> dict（仅保留 description，不再期望 inputSchema）
         for t in tools:
             name = t.get("name")
             if not name:
@@ -251,8 +394,7 @@ class TaskCreationAgentB:
     def _summarize_tools_for_prompt(self, allowed_tools: Set[str]) -> str:
         """
         将工具的描述摘要化给 LLM，用于指导 steps[*] 的生成。
-        说明：
-        - 不再展示参数 schema
+        - 不展示参数 schema
         - 强调 additional_params 默认 {}，且禁止 in_dir/out_dir
         """
         def _clip(s: str, n: int = 600) -> str:
@@ -266,9 +408,7 @@ class TaskCreationAgentB:
                 continue
             if count >= self.cfg.prompt_tools_limit:
                 break
-            desc = _clip(self._tool_index[name].get("description", ""))
-            if not desc:
-                desc = "(no description)"
+            desc = _clip(self._tool_index[name].get("description", "")) or "(no description)"
             lines.append(f"- {name} :: {desc}")
             count += 1
 
@@ -282,77 +422,33 @@ class TaskCreationAgentB:
         )
         return extra_rules + "\n" + ("\n".join(lines) if lines else "(no tools)")
 
-    # -------------------- LLM 交互 --------------------
-
-    async def _call_llm(self, plan_text: str, errors_so_far: List[Dict[str, Any]], allowed_tools: Set[str]) -> str:
-        """
-        给 LLM 的提示：system 里放硬性约束；如果前几轮有错误，将错误摘要附上要求仅修复。
-        """
-        tools_summary = self._summarize_tools_for_prompt(allowed_tools)
-
-        system_prompt = f"""你是一个严格的“任务计划结构化器”。请将用户给出的不规范任务计划转换为**严格 JSON**，且只返回 JSON，不要任何额外文本或 Markdown。
-
-JSON 结构如下（仅这些字段，禁止新增）：
-{json.dumps(PLAN_JSON_SCHEMA, ensure_ascii=False, indent=2)}
-
-强制约束：
-1) steps[*].step_number 必须从 1 开始、连续（1,2,3,...）。
-2) steps[*].source_kind ∈ {sorted(list(SOURCE_KINDS))}。
-3) 若 source_kind == "step"，则 steps[*].source 必须是小于当前步骤号的整数（引用前置步骤）。
-4) tool_name 必须在白名单内；若该工具描述未要求特定业务参数，则 steps[*].additional_params 使用 {{}}。
-   禁止在 additional_params 中出现 in_dir / out_dir（运行时由系统注入）。
-5) 只输出 JSON 对象（不能有 ```json 围栏、注释、说明文字）。
-
-可用工具与描述（节选）：
-{tools_summary}
-"""
-
-        # 将错误摘要（若有）拼到“developer”消息，要求只修复
-        dev_msg = None
-        if errors_so_far:
-            last = errors_so_far[-1]
-            dev_msg = f"你上一次的输出存在以下问题（仅修复这些问题并重新输出完整 JSON）：\n{json.dumps(last, ensure_ascii=False, indent=2)}"
-
-        messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
-        if dev_msg:
-            messages.append({"role": "developer", "content": dev_msg})
-        messages.append({"role": "user", "content": plan_text})
-
-        resp = await self._client.chat.completions.create(
-            model=self.cfg.model,
-            messages=messages,
-            temperature=0,
-            response_format={"type": "json_object"},  # OpenAI v1+ 强制 JSON
-        )
-        content = resp.choices[0].message.content or ""
-        return content
+    # -------------------- JSON 解析与校验 --------------------
 
     def _parse_json(self, raw: str) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
         try:
+            if not isinstance(raw, str):
+                return None, f"输出不是字符串类型：{type(raw).__name__}"
             text = _strip_json_fences(raw)
             obj = json.loads(text)
             if not isinstance(obj, dict):
-                return None, "顶层不是 JSON 对象"
+                return None, "顶层不是 JSON 对象(dict)"
             return obj, None
         except Exception as e:
             return None, f"JSON 解析异常：{e!r}"
 
-    # -------------------- 校验：JSON Schema / 逻辑 / 参数（宽松） --------------------
-
     def _validate_json_schema(self, plan_obj: Dict[str, Any]) -> Tuple[bool, Any]:
-        if HAS_JSONSCHEMA:
+        if HAS_JSONSCHEMA and jsonschema_validate:
             try:
                 jsonschema_validate(instance=plan_obj, schema=PLAN_JSON_SCHEMA)
                 return True, None
-            except jsonschema.ValidationError as ve:  # type: ignore
-                err = {
-                    "path": list(ve.path),
-                    "message": ve.message,
-                    "validator": ve.validator,
-                }
-                return False, err
-            except Exception as e:
-                return False, {"message": f"JsonSchema 校验异常：{e!r}"}
+            except Exception as ve:  # jsonschema.ValidationError 也在这里处理
+                try:
+                    path = list(getattr(ve, "path", []))
+                    message = getattr(ve, "message", str(ve))
+                    validator = getattr(ve, "validator", None)
+                    return False, {"path": path, "message": message, "validator": validator}
+                except Exception:
+                    return False, {"message": f"JsonSchema 校验失败：{ve!r}"}
         else:
             # 轻量兜底：只做最基本形状检查
             if not isinstance(plan_obj, dict) or "steps" not in plan_obj or not isinstance(plan_obj["steps"], list) or not plan_obj["steps"]:
@@ -404,7 +500,7 @@ JSON 结构如下（仅这些字段，禁止新增）：
 
     def _validate_params(self, plan_obj: Dict[str, Any]) -> Tuple[bool, List[Dict[str, Any]]]:
         """
-        宽松参数校验：不再依赖 inputSchema。
+        宽松参数校验：不依赖工具 inputSchema。
         仅做：
           - additional_params 必须是对象（或缺省视为 {}）
           - 禁止包含运行时键 in_dir/out_dir
@@ -464,19 +560,16 @@ JSON 结构如下（仅这些字段，禁止新增）：
                     return f"参数依赖：存在 {k} 时必须包含 {miss}"
         return None
 
+    # -------------------- 冒烟测试 --------------------
 
-# --------------------------- 辅助：提示中的类型摘要（保留以兼容旧代码） ---------------------------
-
-def _schema_type_repr(s: Any) -> str:
-    """将 JSON Schema 的 type/enum 信息简短展示（现已不使用，仅保留以兼容）。"""
-    if not isinstance(s, dict):
-        return "any"
-    typ = s.get("type")
-    enum = s.get("enum")
-    if enum and isinstance(enum, list):
-        return f"enum{tuple(enum[:5]) + (('…',) if len(enum) > 5 else tuple())}"
-    if isinstance(typ, list):
-        return "|".join(typ)
-    if isinstance(typ, str):
-        return typ
-    return "any"
+    async def _llm_smoke_test(self) -> None:
+        """
+        发送一个极简 /v1/chat/completions 请求，确保路由连通。
+        LM Studio 控制台应立刻看到一条 /v1/chat/completions 日志。
+        """
+        await self._client.chat.completions.create(
+            model=self.cfg.model,
+            messages=[{"role": "user", "content": "ping"}],
+            temperature=0,
+            max_tokens=1,
+        )
