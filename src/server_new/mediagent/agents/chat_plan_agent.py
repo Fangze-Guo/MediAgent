@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import json
+import sqlite3
+import asyncio
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple, List, Protocol
+from pathlib import Path
+from typing import Any, Dict, Optional, Tuple, List, Protocol, Union
 
 try:
     from openai import AsyncOpenAI
@@ -81,15 +84,8 @@ class TaskManagerAsyncLike(Protocol):
 class DialogueAgentA:
     """
     - 初始化需要：executor（执行器）、cm（对话管理器）、stream_id（内部信息流识别码）、
-                 task_manager（用于获取工具目录）、可选 default_user_uid。
-    - 对外仅保留一个接口：converse(conversation_uid, user_input) -> str（面向用户的文本）。
-    - I/O 流程：
-      * 收到用户输入 → 写入 main_chat 与内部信息流(target=stream_id)。
-      * 仅从内部信息流读取历史 + system_prefix → 送入 LLM（强制函数：emit_user_reply / emit_task_request）。
-      * 如启用 include_tool_catalog，则在 system 中注入一次精简工具目录（只读，真实调用仍由执行器完成）。
-      * LLM 输出无论如何先写入内部信息流。
-      * emit_user_reply → 写入主对话流并返回。
-      * emit_task_request → 调用执行器创建/推进任务，回执写入内部信息流，再让 LLM 继续判断；多轮至上限则总结并返回。
+                 task_manager（用于获取工具目录）、数据库文件 db_path、可选 default_user_uid。
+    - 在创建/推进任务时：根据 conversation_uid → 查 SQLite(conversations) → 取 owner_uid 作为 user_uid。
     """
 
     def __init__(
@@ -100,7 +96,8 @@ class DialogueAgentA:
         cm: ConversationManagerLike,
         stream_id: str,
         task_manager: TaskManagerAsyncLike,
-        default_user_uid: Optional[str] = None,
+        db_path: Union[str, Path],                 # 新增：SQLite 数据库文件路径
+        default_user_uid: Optional[str] = None,   # 查不到时的兜底
     ):
         if AsyncOpenAI is None:
             raise RuntimeError("请安装 openai v1：pip install openai")
@@ -110,6 +107,9 @@ class DialogueAgentA:
         self.stream_id = stream_id
         self.tm = task_manager
         self.default_user_uid = default_user_uid
+
+        self.db_path = Path(db_path).expanduser().resolve()
+
         self._client = AsyncOpenAI(
             api_key=(self.cfg.api_key or "lm-studio"),
             base_url=(self.cfg.base_url or "http://127.0.0.1:1234/v1"),
@@ -200,9 +200,21 @@ class DialogueAgentA:
                     # 未达上限：继续循环
                     continue
 
+                # ===== 在此处查询 user_uid（owner_uid） =====
+                owner_uid = await self._get_owner_uid(conversation_uid)
+                if not owner_uid:
+                    # 兜底：允许使用 default_user_uid；若也没有则报错并退出
+                    if self.default_user_uid:
+                        owner_uid = self.default_user_uid
+                    else:
+                        msg = "无法确定任务归属用户：未在数据库(conversations)中找到该对话的 owner_uid。"
+                        await self._append_internal(conversation_uid, role="assistant", text=msg)
+                        await self._append_main(conversation_uid, role="assistant", text=msg)
+                        return msg
+
                 # 调用执行器
                 try:
-                    res = await self.executor.create_task(self.default_user_uid, plan_text=description)
+                    res = await self.executor.create_task(owner_uid, plan_text=description)
                 except Exception as e:
                     res = {"ok": False, "error": f"执行器异常: {e!r}"}
                 # 执行器回执写入内部流（role=tool）
@@ -462,3 +474,29 @@ class DialogueAgentA:
 
     async def _append_internal(self, conversation_uid: str, role: str, text: str) -> None:
         await self.cm.add_message_to_stream(conversation_uid, target=self.stream_id, role=role, content=text)
+
+    # -------------------- DB 查询：根据对话ID拿 owner_uid --------------------
+
+    async def _get_owner_uid(self, conversation_uid: str) -> Optional[str]:
+        """
+        查询 conversations(conversation_uid, owner_uid)，返回 owner_uid。
+        - 使用线程池包装同步 sqlite3，避免阻塞事件循环。
+        """
+        return await asyncio.to_thread(self._lookup_owner_uid_sync, conversation_uid)
+
+    def _lookup_owner_uid_sync(self, conversation_uid: str) -> Optional[str]:
+        try:
+            conn = sqlite3.connect(self.db_path.as_posix(), check_same_thread=False)
+            try:
+                cur = conn.execute(
+                    "SELECT owner_uid FROM conversations WHERE conversation_uid = ? LIMIT 1",
+                    (conversation_uid,),
+                )
+                row = cur.fetchone()
+                if row and row[0]:
+                    return str(row[0])
+                return None
+            finally:
+                conn.close()
+        except Exception:
+            return None

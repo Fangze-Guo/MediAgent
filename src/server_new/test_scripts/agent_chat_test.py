@@ -38,7 +38,7 @@ from mediagent.modules.task_manager import AsyncTaskManager
 # Agent B（你的执行器 / 任务创建编排器）
 from mediagent.agents.task_create_agent import TaskCreationAgentB, AgentBConfig
 # Agent A（新版：仅暴露 converse，并需要 cm/stream_id/task_manager）
-from mediagent.agents.A_test import DialogueAgentA, AgentAConfig
+from mediagent.agents.chat_plan_agent import DialogueAgentA, AgentAConfig
 # 对话管理器
 from mediagent.modules.conversation_manager import ConversationManager
 
@@ -171,8 +171,8 @@ async def main():
         executor, cfg_a,
         cm=cm,
         stream_id=STREAM_ID,
-        task_manager=tm,              # ← 关键新增：用于注入工具目录
-        default_user_uid=OWNER_UID,
+        task_manager=tm, # ← 关键新增：用于注入工具目录
+        db_path=str(DATABASE_FILE),
     )
 
     # 5) 可选：完全离线时，打补丁模拟 LLM
