@@ -1,11 +1,11 @@
-# agent_b.py —— “Agent B”：将不规范计划→严格 JSON → 校验 → 调用任务管理器
+# agent_b.py —— “任务计划结构化器/执行器”：将不规范计划→严格 JSON → 校验/裁剪 → 调度
 from __future__ import annotations
 
 import asyncio
 import json
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Set
+from typing import Any, Dict, List, Optional, Tuple, Set, Literal
 
 # --------------------------- 依赖 ---------------------------
 try:
@@ -79,31 +79,6 @@ def _strip_json_fences(txt: str) -> str:
     return m.group(1) if m else txt
 
 
-def _py_type_ok(value: Any, type_decl: Any) -> bool:
-    """朴素类型检查：将 JSON Schema 的 type 映射为 Python 类型进行 isinstance 校验。"""
-    def _one_ok(v: Any, t: str) -> bool:
-        if t == "string":
-            return isinstance(v, str)
-        if t == "integer":
-            return isinstance(v, int) and not isinstance(v, bool)
-        if t == "number":
-            return (isinstance(v, int) or isinstance(v, float)) and not isinstance(v, bool)
-        if t == "boolean":
-            return isinstance(v, bool)
-        if t == "array":
-            return isinstance(v, list)
-        if t == "object":
-            return isinstance(v, dict)
-        if t == "null":
-            return v is None
-        return True
-    if isinstance(type_decl, list):
-        return any(_one_ok(value, t) for t in type_decl)
-    if isinstance(type_decl, str):
-        return _one_ok(value, type_decl)
-    return True
-
-
 # --------------------------- 配置 ---------------------------
 
 @dataclass
@@ -122,17 +97,24 @@ class AgentBConfig:
     # LLM 提示裁剪：最多在提示里列出多少工具（避免提示过长）
     prompt_tools_limit: int = 20
 
+    # ====== 新增：参数白名单与策略（核心防多余参数） ======
+    # 每个工具允许的 additional_params 键名白名单；不配置即默认不允许任何业务参数（会被清空）
+    allowed_param_whitelist: Optional[Dict[str, Set[str]]] = None
+    # 策略：drop=自动删除白名单外参数；error=出现白名单外参数则报错；allow=不启用白名单
+    param_policy: Literal["drop", "error", "allow"] = "drop"
+
 
 # --------------------------- Agent B 主类 ---------------------------
 
 class TaskCreationAgentB:
     """
-    Agent B：
     - 接收 A 的“不规范自然语言计划”
     - 通过 LLM 产出“严格 JSON”
-    - 进行两层校验（JSON Schema + 逻辑/参数（宽松））
-    - 成功后调用 TaskManager.create_task()
-    - 使用 function calling 强制 LLM 调用自定义工具 emit_plan，以约束输出
+    - 进行三层控制：
+        1) JSON Schema（结构）
+        2) 逻辑校验（步号、依赖、工具白名单、数据集白名单）
+        3) 参数控制（运行时键禁止 + 业务参数白名单策略）
+    - 通过后调用 TaskManager.create_task()
     """
 
     def __init__(self, task_manager, config: AgentBConfig):
@@ -145,34 +127,33 @@ class TaskCreationAgentB:
 
         if AsyncOpenAI is None:
             raise RuntimeError("openai 库未安装或版本不兼容，请安装 `pip install openai` 并确保为 v1+")
-        # 关键：base_url 必须指向 /v1；LM Studio、Ollama 等 OpenAI 兼容网关需要这一点
         self._client = AsyncOpenAI(
             api_key=(self.cfg.api_key or "lm-studio"),
             base_url=(self.cfg.base_url or "http://127.0.0.1:1234/v1"),
             timeout=30.0,
         )
 
-        # 工具缓存：name -> {"description": "..."}（这里不保存 inputSchema）
+        # 工具缓存：name -> {"description": "..."}（这里只保存 name/description）
         self._tool_index: Dict[str, Dict[str, Any]] = {}
-        self._tool_param_rules_cache: Dict[str, Dict[str, Any]] = {}
 
     # -------------------- 外部接口 --------------------
 
     async def create_task(self, user_uid: str, plan_text: str) -> Dict[str, Any]:
         """
-        入口：单一方法。
         返回形如：
         {
           "ok": true/false,
           "task_uid": "...",          # ok 时
           "attempts": int,
           "errors": [ {stage, attempt, message, details?}, ... ],
+          "sanitized_report": [{step, tool, removed: [...]}]  # 当 policy='drop' 且有删除时
         }
         """
         errors: List[Dict[str, Any]] = []
         attempts = 0
+        sanitized_report: List[Dict[str, Any]] = []
 
-        # 启动连通性冒烟测试（确保能打到 /v1/chat/completions）
+        # LLM 连通性冒烟
         try:
             await self._llm_smoke_test()
         except Exception as e:
@@ -185,13 +166,12 @@ class TaskCreationAgentB:
 
         await self._ensure_tool_cache()
 
-        # 构建工具白名单：优先用传入；否则用 tm 返回的列表
+        # 构建工具白名单
         if self.cfg.allowed_tools is not None:
             allowed_tools = set(self.cfg.allowed_tools)
         else:
             allowed_tools = set(self._tool_index.keys())
 
-        # 自纠循环
         plan_obj: Optional[Dict[str, Any]] = None
         while attempts < max(1, self.cfg.max_retries):
             attempts += 1
@@ -207,20 +187,20 @@ class TaskCreationAgentB:
                 errors.append({"stage": "json_schema", "attempt": attempts, "message": "JSON 解析失败", "details": parse_err})
                 continue
 
-            # === 2) 顶层 JSON Schema 校验 ===
+            # === 2) 顶层 JSON Schema ===
             schema_ok, schema_errs = self._validate_json_schema(plan_obj)
             if not schema_ok:
                 errors.append({"stage": "json_schema", "attempt": attempts, "message": "顶层 JSON Schema 校验失败", "details": schema_errs})
                 continue
 
-            # === 3) 逻辑校验（步号连续、依赖、source_kind 等） ===
+            # === 3) 逻辑校验 ===
             logic_ok, logic_errs = self._validate_logic(plan_obj, allowed_tools)
             if not logic_ok:
                 errors.append({"stage": "logic", "attempt": attempts, "message": "任务逻辑校验失败", "details": logic_errs})
                 continue
 
-            # === 4) 参数校验（宽松 + 黑名单） ===
-            param_ok, param_errs = self._validate_params(plan_obj)
+            # === 4) 运行时参数禁止 + 业务参数白名单策略 ===
+            param_ok, param_errs, sanitized_report = self._enforce_param_policy(plan_obj)
             if not param_ok:
                 errors.append({"stage": "param", "attempt": attempts, "message": "参数校验失败", "details": param_errs})
                 continue
@@ -229,7 +209,7 @@ class TaskCreationAgentB:
             break
 
         # 失败
-        if plan_obj is None or (errors and errors[-1]["stage"] in {"json_schema", "logic", "param"} and attempts >= self.cfg.max_retries):
+        if plan_obj is None or (errors and attempts >= self.cfg.max_retries):
             return {
                 "ok": False,
                 "attempts": attempts,
@@ -243,9 +223,11 @@ class TaskCreationAgentB:
             created = await self.tm.create_task(user_uid=user_uid, steps=steps, check_tools=True)
             task_uid = created.get("task_uid")
             if task_uid:
-                return {"ok": True, "task_uid": task_uid, "attempts": attempts, "errors": []}
+                out: Dict[str, Any] = {"ok": True, "task_uid": task_uid, "attempts": attempts, "errors": []}
+                if sanitized_report:
+                    out["sanitized_report"] = sanitized_report
+                return out
             else:
-                # 未返回 task_uid 视为未知错误
                 errors.append({"stage": "manager", "attempt": attempts, "message": "TaskManager 返回异常", "details": created})
                 return {"ok": False, "attempts": attempts, "errors": errors, "message": "创建任务时出现未知错误，请重试"}
         except Exception as e:
@@ -265,7 +247,7 @@ class TaskCreationAgentB:
                 "name": "emit_plan",
                 "description": (
                     "输出最终的计划 JSON。严格遵守参数 schema；严禁在 additional_params 中包含 in_dir、out_dir。"
-                    "如果不确定，请将 additional_params 置为 {}。"
+                    "如果不确定，请将 additional_params 置为 {}（不要编造键名）。"
                 ),
                 "parameters": {
                     "type": "object",
@@ -303,8 +285,6 @@ class TaskCreationAgentB:
     async def _call_llm_via_function(self, plan_text: str, allowed_tools: Set[str]) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
         """
         通过 /v1/chat/completions + function calling，强制模型调用 emit_plan 并返回其 arguments(JSON 字符串)。
-        兼容“只支持 tool_choice=['none','auto','required']”的网关：只提供一个工具并设置 tool_choice='required'。
-        返回 (json_text, error_dict)
         """
         tools_summary = self._summarize_tools_for_prompt(allowed_tools)
 
@@ -316,9 +296,9 @@ class TaskCreationAgentB:
 2) steps[*].source_kind ∈ {sorted(list(SOURCE_KINDS))}。
 3) 若 source_kind == "step"，则 steps[*].source 必须是小于当前步骤号的整数（引用前置步骤）。
 4) tool_name 必须在白名单内（见下方列表）。
-5) steps[*].additional_params：若工具描述未要求业务参数，使用 {{}}；**禁止**包含 in_dir/out_dir（运行时注入）。
+5) steps[*].additional_params：若工具描述未要求业务参数，使用 {{}}；**禁止**包含 in_dir/out_dir（运行时注入）。不得发明键名。
 
-可用工具及说明（仅供你理解，不必逐字复制）：
+可用工具及说明（仅供你理解，不必逐字复制，也不要据此发明参数键名）：
 {tools_summary}
 """
 
@@ -330,8 +310,6 @@ class TaskCreationAgentB:
         emit_plan_tool = self._emit_plan_tool(allowed_tools)
 
         try:
-            # 关键：很多本地/代理网关不支持 tool_choice 对象形态，仅支持 "none" | "auto" | "required"
-            # 我们只提供一个工具 emit_plan，并将 tool_choice="required"，从而“强制”调用该工具。
             resp = await self._client.chat.completions.create(
                 model=self.cfg.model,
                 messages=messages,
@@ -368,7 +346,7 @@ class TaskCreationAgentB:
                 if isinstance(args, dict):
                     return json.dumps(args, ensure_ascii=False), None
 
-            # 3) 某些实现把 JSON 直接塞进 content（不规范），做一次兜底
+            # 3) 兜底：content
             content = getattr(choice0.message, "content", None) or ""
             if isinstance(content, str) and content.strip():
                 return content, None
@@ -395,7 +373,7 @@ class TaskCreationAgentB:
         """
         将工具的描述摘要化给 LLM，用于指导 steps[*] 的生成。
         - 不展示参数 schema
-        - 强调 additional_params 默认 {}，且禁止 in_dir/out_dir
+        - 强调 additional_params 默认 {}，且禁止 in_dir/out_dir，禁止发明键名
         """
         def _clip(s: str, n: int = 600) -> str:
             s = (s or "").strip()
@@ -414,11 +392,10 @@ class TaskCreationAgentB:
 
         extra_rules = (
             "通用规则：\n"
-            "• 每个步骤对象必须包含 step_number / tool_name / source_kind / source / additional_params；relative 可选。\n"
-            "• tool_name 必须在上面列出的工具名中。\n"
+            "• 每个步骤必须含 step_number / tool_name / source_kind / source / additional_params；relative 可选。\n"
+            "• tool_name 只能取上述工具列表中的名称；不要凭描述‘猜’参数键名。\n"
             "• 若 source_kind=='step'，source=小于当前步骤号的整数（引用前置步骤）。\n"
-            "• additional_params：除工具描述中特别说明的业务参数外，默认填为空对象 {}。\n"
-            "• 绝对禁止在 additional_params 中包含 in_dir/out_dir（这些由运行时注入）。\n"
+            "• additional_params：除非业务上确有必要，否则使用空对象 {}；严禁包含 in_dir/out_dir。\n"
         )
         return extra_rules + "\n" + ("\n".join(lines) if lines else "(no tools)")
 
@@ -450,7 +427,7 @@ class TaskCreationAgentB:
                 except Exception:
                     return False, {"message": f"JsonSchema 校验失败：{ve!r}"}
         else:
-            # 轻量兜底：只做最基本形状检查
+            # 轻量兜底
             if not isinstance(plan_obj, dict) or "steps" not in plan_obj or not isinstance(plan_obj["steps"], list) or not plan_obj["steps"]:
                 return False, {"message": "缺少 steps 或 steps 不是非空数组"}
             for i, s in enumerate(plan_obj["steps"], 1):
@@ -468,7 +445,7 @@ class TaskCreationAgentB:
         if sorted(numbers) != list(range(1, len(numbers) + 1)):
             errors.append({"type": "step_number", "message": f"step_number 必须从 1 连续：{numbers}"})
 
-        # 2) 工具白名单、source_kind 枚举（顶层 schema 已做，但再兜一层）
+        # 2) 工具白名单、source_kind 枚举
         for s in steps:
             k = int(s["step_number"])
             tool = str(s["tool_name"])
@@ -498,75 +475,73 @@ class TaskCreationAgentB:
 
         return (len(errors) == 0), errors
 
-    def _validate_params(self, plan_obj: Dict[str, Any]) -> Tuple[bool, List[Dict[str, Any]]]:
-        """
-        宽松参数校验：不依赖工具 inputSchema。
-        仅做：
-          - additional_params 必须是对象（或缺省视为 {}）
-          - 禁止包含运行时键 in_dir/out_dir
-          - 可选：应用 self.cfg.extra_param_rules（若你仍希望对个别工具做互斥/依赖）
-        """
-        errors: List[Dict[str, Any]] = []
-        steps: List[Dict[str, Any]] = plan_obj["steps"]
+    # -------------------- 参数策略（核心） --------------------
 
-        for s in steps:
+    def _enforce_param_policy(self, plan_obj: Dict[str, Any]) -> Tuple[bool, List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """
+        应用运行时参数禁止 + 业务参数白名单策略。
+        返回 (ok, errors, sanitized_report)
+        """
+        policy = self.cfg.param_policy
+        whitelist = self.cfg.allowed_param_whitelist or {}
+
+        errors: List[Dict[str, Any]] = []
+        sanitized_report: List[Dict[str, Any]] = []
+
+        for s in plan_obj["steps"]:
             step_no = int(s["step_number"])
             tool = str(s["tool_name"])
             add = s.get("additional_params")
-            if add is None:
-                add = {}
-            if not isinstance(add, dict):
-                errors.append({"type": "params", "step": step_no, "message": "additional_params 必须是对象或省略"})
+            if add is None or not isinstance(add, dict):
+                s["additional_params"] = {}
                 continue
 
-            # 禁止运行时键
+            # 1) 运行时参数一律禁止
             rt_hit = set(add.keys()) & RUNTIME_PARAMS_FORBID
             if rt_hit:
+                # 统一删除（比直接报错更稳健），并记录
+                for k in list(rt_hit):
+                    add.pop(k, None)
+                sanitized_report.append({"step": step_no, "tool": tool, "removed": sorted(list(rt_hit)), "reason": "runtime_forbidden"})
+
+            # 2) 白名单策略
+            if policy == "allow":
+                continue  # 不做白名单限制
+
+            allowed_keys = whitelist.get(tool, set())
+            if not allowed_keys:
+                # 未配置白名单 → 默认不允许任何业务参数
+                extra_keys = list(add.keys())
+            else:
+                extra_keys = [k for k in add.keys() if k not in allowed_keys]
+
+            if not extra_keys:
+                continue
+
+            if policy == "error":
                 errors.append({
-                    "type": "runtime_param_forbidden",
+                    "type": "param_whitelist",
                     "step": step_no,
                     "tool": tool,
-                    "message": f"禁止传入运行时参数：{sorted(list(rt_hit))}"
+                    "message": f"出现白名单外参数：{sorted(extra_keys)}；允许的参数：{sorted(list(allowed_keys)) if allowed_keys else []}"
+                })
+            else:
+                # drop（默认）：删除多余参数
+                for k in extra_keys:
+                    add.pop(k, None)
+                sanitized_report.append({
+                    "step": step_no,
+                    "tool": tool,
+                    "removed": sorted(extra_keys),
+                    "reason": "whitelist_drop" if allowed_keys else "default_drop_no_whitelist"
                 })
 
-            # 可选：额外复杂规则（若在 cfg.extra_param_rules 中配置了）
-            if self.cfg.extra_param_rules and tool in self.cfg.extra_param_rules:
-                err = self._apply_extra_rules(tool, add, self.cfg.extra_param_rules[tool])
-                if err:
-                    errors.append({"type": "extra_rules", "step": step_no, "tool": tool, "message": err})
-
-        return (len(errors) == 0), errors
-
-    def _apply_extra_rules(self, tool: str, add: Dict[str, Any], rules: Dict[str, Any]) -> Optional[str]:
-        """
-        可选：对某些工具施加手工规则（如互斥、范围、依赖等）。
-        规则格式示意：
-        {
-          "xor": [["a","b"]],        # a 与 b 互斥
-          "requires": {"a": ["b"]}   # 有 a 必须有 b
-        }
-        """
-        # 互斥
-        for group in rules.get("xor", []):
-            hit = [k for k in group if k in add]
-            if len(hit) > 1:
-                return f"参数互斥：{hit}"
-        # 依赖
-        reqs = rules.get("requires", {})
-        for k, deps in reqs.items():
-            if k in add:
-                miss = [d for d in deps if d not in add]
-                if miss:
-                    return f"参数依赖：存在 {k} 时必须包含 {miss}"
-        return None
+        ok = len(errors) == 0
+        return ok, errors, sanitized_report
 
     # -------------------- 冒烟测试 --------------------
 
     async def _llm_smoke_test(self) -> None:
-        """
-        发送一个极简 /v1/chat/completions 请求，确保路由连通。
-        LM Studio 控制台应立刻看到一条 /v1/chat/completions 日志。
-        """
         await self._client.chat.completions.create(
             model=self.cfg.model,
             messages=[{"role": "user", "content": "ping"}],

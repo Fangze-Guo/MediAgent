@@ -6,7 +6,7 @@ import json
 import secrets
 import string
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import aiosqlite
 
@@ -16,9 +16,9 @@ class ConversationManager:
     最小可用对话管理器（异步）：
     - __init__(database_path, conversation_root)
     - create_conversation(owner_uid)
-    - add_message_to_main(conversation_uid, content)
+    - add_message_to_main(conversation_uid, role, content)         ← 改：需要 role + content
     - get_messages(conversation_uid, target)
-    - add_message_to_stream(conversation_uid, target, content)  ← 新增（不存在即创建）
+    - add_message_to_stream(conversation_uid, target, role, content)  ← 改：需要 role + content
     """
 
     def __init__(self, database_path: str, conversation_root: str):
@@ -105,9 +105,10 @@ class ConversationManager:
 
         return {"ok": True, "message": "对话创建成功", "conversation_uid": conversation_uid}
 
-    async def add_message_to_main(self, conversation_uid: str, content: str) -> Dict[str, Any]:
+    async def add_message_to_main(self, conversation_uid: str, role: str, content: str) -> Dict[str, Any]:
         """
         向主对话流（main_chat.json）追加一条消息。
+        现在写入格式为：{"role": <role>, "content": <content>}
         返回：
           - {"ok": True, "message": "添加消息成功"} 或错误信息
         """
@@ -131,7 +132,11 @@ class ConversationManager:
                 if not isinstance(messages, list):
                     return {"ok": False, "message": "未知错误"}
 
-                messages.append({"content": content})
+                msg = self._make_message(role, content)
+                if msg is None:
+                    return {"ok": False, "message": "无效的 role 或 content"}
+
+                messages.append(msg)
                 data["messages"] = messages
 
                 new_text = json.dumps(data, ensure_ascii=False, indent=2)
@@ -149,6 +154,9 @@ class ConversationManager:
           - 对话不存在：{"ok": False, "message": "该对话UID不存在"}
           - 目标文件不存在：{"ok": False, "message": "该对话不存在该目标消息流"}
           - 成功：{"ok": True, "message": "查询成功", "messages": [...]}
+        说明：
+          - 本函数只读取 <conversation_root>/<uid>/<target>.json
+          - main_chat 可通过 target="main_chat" 读取（若需要）
         """
         if not await self._conversation_uid_exists(conversation_uid):
             return {"ok": False, "message": "该对话UID不存在"}
@@ -168,14 +176,21 @@ class ConversationManager:
                 if not isinstance(messages, list):
                     return {"ok": False, "message": "该对话不存在该目标消息流"}
 
-                return {"ok": True, "message": "查询成功", "messages": messages}
+                # 兼容：若历史消息只有 {"content": "..."}，则补一个 role="assistant"
+                fixed: list[dict] = []
+                for m in messages:
+                    if isinstance(m, dict) and "content" in m:
+                        role = m.get("role") or "assistant"
+                        fixed.append({"role": str(role), "content": str(m.get("content") or "")})
+                return {"ok": True, "message": "查询成功", "messages": fixed}
 
             except Exception:
                 return {"ok": False, "message": "该对话不存在该目标消息流"}
 
-    async def add_message_to_stream(self, conversation_uid: str, target: str, content: str) -> Dict[str, Any]:
+    async def add_message_to_stream(self, conversation_uid: str, target: str, role: str, content: str) -> Dict[str, Any]:
         """
         向目标消息流（<target>.json）追加一条消息；若该流不存在则新建。
+        现在写入格式为：{"role": <role>, "content": <content>}
         逻辑：
           1) 校验对话UID是否存在，不存在 → "该对话ID不存在"
           2) 寻找 <conversation_root>/<uid>/<target>.json
@@ -216,8 +231,12 @@ class ConversationManager:
                 if not isinstance(messages, list):
                     return {"ok": False, "message": "未知错误"}
 
-                # 追加消息（最小字段需求）
-                messages.append({"content": content})
+                msg = self._make_message(role, content)
+                if msg is None:
+                    return {"ok": False, "message": "无效的 role 或 content"}
+
+                # 追加消息
+                messages.append(msg)
                 data["messages"] = messages
 
                 new_text = json.dumps(data, ensure_ascii=False, indent=2)
@@ -227,3 +246,19 @@ class ConversationManager:
 
             except Exception:
                 return {"ok": False, "message": "未知错误"}
+
+    # ---------------------- 私有辅助 ----------------------
+
+    @staticmethod
+    def _make_message(role: Optional[str], content: Optional[str]) -> Optional[Dict[str, str]]:
+        """
+        规范化一条消息：需要非空字符串 role / content。
+        role 建议使用：system / user / assistant；但此处不强制枚举（由上层把控）。
+        """
+        if role is None or content is None:
+            return None
+        r = str(role).strip()
+        c = str(content)
+        if not r:
+            return None
+        return {"role": r, "content": c}
