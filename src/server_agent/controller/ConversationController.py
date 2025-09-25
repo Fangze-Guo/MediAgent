@@ -2,8 +2,7 @@ from typing import List, Dict, Any
 
 from common import ResultUtils, BaseResponse
 from model.entity.ConversationInfo import ConversationInfo
-from src.server_agent.exceptions import ErrorCode
-from src.server_new.mediagent.modules.conversation_manager import ConversationManager
+from src.server_agent.service import ConversationService
 from .base import BaseController
 
 
@@ -12,7 +11,7 @@ class ConversationController(BaseController):
 
     def __init__(self):
         super().__init__(prefix="/conversation", tags=["会话"])
-        self.conversationService = ConversationManager(
+        self.conversationService = ConversationService(
             database_path="src/server_new/data/db/app.sqlite3",
             conversation_root="src/server_agent/conversations"
         )
@@ -26,54 +25,22 @@ class ConversationController(BaseController):
             """
             根据用户 id 创建对话
             """
-            result = await self.conversationService.create_conversation(user_id)
-            ok = result["ok"]
-            message = result["message"]
-            conversation_uid = result["conversation_uid"]
-
-            messageInfo = ConversationInfo(conversation_id=conversation_uid, message=message)
-
-            if ok:
-                return ResultUtils.success(messageInfo)
-            else:
-                return ResultUtils.error(ErrorCode.USER_NOT_FOUND)
+            conversation_uid = await self.conversationService.create_conversation(user_id)
+            messageInfo = ConversationInfo(conversation_uid=conversation_uid, owner_uid=user_id)
+            return ResultUtils.success(messageInfo)
 
         @self.router.post("/add")
-        async def addMessageToMain(conversation_id: str, content: str) -> BaseResponse[None]:
+        async def addMessageToAgent(conversation_id: str, content: str) -> BaseResponse[str]:
             """
-            向主对话添加消息
+            向AgentA添加消息并获取响应
             """
-            result = await self.conversationService.add_message_to_main(conversation_id, content)
-            ok = result["ok"]
-            message = result["message"]
-            if ok:
-                return ResultUtils.success(None)
-            else:
-                return ResultUtils.error(ErrorCode.UNKNOWN_ERROR)
+            response = await self.conversationService.add_message_to_agentA(conversation_id, content)
+            return ResultUtils.success(response)
 
         @self.router.get("")
         async def getMessages(conversation_id: str, target: str) -> BaseResponse[List[Dict[str, Any]]]:
             """
             获取对话消息，从 '消息根路径/conversationId/target'
             """
-            result = await self.conversationService.get_messages(conversation_id, target)
-            ok = result["ok"]
-            message = result["message"]
-            if ok:
-                data: List[Dict[str, Any]] = result["messages"]
-                return ResultUtils.success(data)
-            else:
-                return ResultUtils.error(ErrorCode.UNKNOWN_ERROR)
-
-        @self.router.post("/add_stream")
-        async def addMessageToStream(conversation_id: str, target: str, content: str) -> BaseResponse[None]:
-            """
-            向流对话添加消息
-            """
-            result = await self.conversationService.add_message_to_stream(conversation_id, target, content)
-            ok = result["ok"]
-            message = result["message"]
-            if ok:
-                return ResultUtils.success(None)
-            else:
-                return ResultUtils.error(ErrorCode.UNKNOWN_ERROR)
+            messages = await self.conversationService.get_messages(conversation_id, target)
+            return ResultUtils.success(messages)

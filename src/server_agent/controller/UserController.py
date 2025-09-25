@@ -8,19 +8,16 @@ from typing import Optional, Dict, Any
 from fastapi import Depends, Header
 from pydantic import BaseModel, Field
 
-from .base import BaseController
+from model.dto.user.UserRegisterRequest import UserRegisterRequest
 from src.server_agent.exceptions import (
     ValidationError, AuthenticationError, ConflictError,
     NotFoundError, ServiceError
 )
-from src.server_agent.service.user_service import register_user, login_user, get_user_by_token, update_user_info
+from src.server_agent.service import UserService
+from .base import BaseController
 
 
 # ==================== 数据模型 ====================
-
-class RegisterIn(BaseModel):
-    user_name: str = Field(min_length=1, max_length=64)
-    password: str = Field(min_length=1, max_length=256)
 
 
 class RegisterOut(BaseModel):
@@ -60,26 +57,27 @@ class UserController(BaseController):
 
     def __init__(self):
         super().__init__(prefix="/user", tags=["用户管理"])
+        self.userService = UserService()
         self._register_routes()
 
     def _register_routes(self):
         """注册所有路由"""
 
-        @self.router.post("/register", response_model=RegisterOut, status_code=201)
-        async def register(payload: RegisterIn):
+        @self.router.post("/register")
+        async def register(request: UserRegisterRequest):
             """用户注册接口"""
-            res = await register_user(payload.user_name, payload.password)
+            res = await self.userService.register_user(request.user_name, request.password)
 
             if not res["ok"]:
                 if res["code"] == "USERNAME_EXISTS":
                     raise ConflictError(
                         detail="username already exists",
-                        context={"username": payload.user_name}
+                        context={"username": request.user_name}
                     )
                 if res["code"] == "INVALID_INPUT":
                     raise ValidationError(
                         detail="invalid input",
-                        context={"username": payload.user_name}
+                        context={"username": request.user_name}
                     )
                 # 其他错误
                 raise ServiceError(
@@ -92,7 +90,7 @@ class UserController(BaseController):
         @self.router.post("/login", response_model=LoginOut)
         async def login(payload: LoginIn):
             """用户登录接口"""
-            res = await login_user(payload.user_name, payload.password)
+            res = await self.userService.login_user(payload.user_name, payload.password)
 
             if not res["ok"]:
                 if res["code"] == "USERNAME_NOT_FOUND":
@@ -135,7 +133,7 @@ class UserController(BaseController):
                 )
 
             # 调用服务层更新用户信息
-            success = await update_user_info(
+            success = await self.userService.update_user_info(
                 current_user["uid"],
                 payload.user_name,
                 payload.password
@@ -165,7 +163,7 @@ class UserController(BaseController):
         else:
             token = authorization  # 直接使用 token
 
-        user = await get_user_by_token(token)
+        user = await self.userService.get_user_by_token(token)
         if not user:
             raise AuthenticationError(
                 detail="Invalid token",

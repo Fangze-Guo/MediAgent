@@ -280,7 +280,3 @@ class UserMapper(BaseMapper):
     async def verify_password(self, user: User, password: str) -> bool:
         """验证密码"""
         return user.password == self._hash_password(password)
-
-
-# 全局实例
-user_mapper = UserMapper()

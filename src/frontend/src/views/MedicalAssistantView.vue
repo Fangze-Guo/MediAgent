@@ -328,6 +328,7 @@ const startNewTask = () => {
 
 const viewDetails = (tool: MedicalTool) => {
   selectTool(tool)
+  detailModalVisible.value = true
 }
 
 // 对话相关方法

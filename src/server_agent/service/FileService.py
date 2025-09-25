@@ -59,7 +59,7 @@ class FileService:
             文件信息列表
         """
         uploaded_files: List[FileInfo] = []
-        
+
         for file in files:
             try:
                 file_info: FileInfo = await self.uploadFile(self.UPLOAD_FILES_DIR, file, target_dir)
@@ -68,7 +68,7 @@ class FileService:
                 # 记录单个文件上传失败，但继续处理其他文件
                 logging.error(f"文件 {file.filename} 上传失败: {e}")
                 continue
-        
+
         return uploaded_files
 
     @handle_service_exception
@@ -99,7 +99,7 @@ class FileService:
             文件信息列表
         """
         uploaded_files: List[FileInfo] = []
-        
+
         for file in files:
             try:
                 file_info: FileInfo = await self.uploadFile(self.LOCAL_FILES_DIR, file, target_dir)
@@ -108,7 +108,7 @@ class FileService:
                 # 记录单个文件上传失败，但继续处理其他文件
                 logging.error(f"文件 {file.filename} 上传失败: {e}")
                 continue
-        
+
         return uploaded_files
 
     @handle_service_exception
@@ -139,7 +139,7 @@ class FileService:
             文件信息列表
         """
         uploaded_files: List[FileInfo] = []
-        
+
         for file in files:
             try:
                 file_info: FileInfo = await self.uploadFile(self.OUTPUT_FILES_DIR, file, target_dir)
@@ -148,7 +148,7 @@ class FileService:
                 # 记录单个文件上传失败，但继续处理其他文件
                 logging.error(f"文件 {file.filename} 上传失败: {e}")
                 continue
-        
+
         return uploaded_files
 
     async def uploadFile(self, files_dir: pathlib.Path, file: UploadFile, target_dir: str = ".") -> FileInfo:

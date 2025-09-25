@@ -1,20 +1,18 @@
 # src/server_new/mediagent/controller/__init__.py
 from __future__ import annotations
+
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import os
-
-
-from pydantic_settings import BaseSettings, SettingsConfigDict
-
-from .user_controller import router as user_router
-from .test_controller import router as test_router
 
 from mediagent.modules.task_manager import AsyncTaskManager
 from mediagent.paths import in_data
 from mediagent.paths import in_mediagent
+from .test_controller import router as test_router
+from .user_controller import router as user_router
 
 # 数据目录（保持你的逻辑）
 try:
@@ -22,11 +20,13 @@ try:
 except Exception:
     DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
+
 class Settings:
     """最简单的配置容器：不做校验、不自动读取 .env，仅存放数值。"""
+
     def __init__(self):
         # 环境相关（可选：保留 None）
-        self.MODEL_URL = os.getenv("MODEL_URL")       # 或者写死: None
+        self.MODEL_URL = os.getenv("MODEL_URL")  # 或者写死: None
         self.MODEL_API_KEY = os.getenv("MODEL_API_KEY")
         self.MODEL = os.getenv("MODEL")
 
@@ -75,17 +75,18 @@ class Services:
             await self.tm.aclose()
             self.tm = None
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = Settings()
     services = Services(settings)
     app.state.settings = settings
     app.state.services = services
-    await services.ainit()          # ✅ 重/异步初始化放这里
+    await services.ainit()  # ✅ 重/异步初始化放这里
     try:
         yield
     finally:
-        await services.aclose()     # ✅ 对应释放
+        await services.aclose()  # ✅ 对应释放
 
 
 def create_app() -> FastAPI:
@@ -106,7 +107,7 @@ def create_app() -> FastAPI:
     app.include_router(user_router)
     app.include_router(test_router)
 
-
     return app
+
 
 __all__ = ["create_app", "Settings", "Services"]
