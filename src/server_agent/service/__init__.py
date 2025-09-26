@@ -9,11 +9,9 @@ from mediagent.agents.task_create_agent import AgentBConfig, TaskCreationAgentB
 from mediagent.modules.conversation_manager import ConversationManager
 from mediagent.modules.task_manager import AsyncTaskManager
 from mediagent.paths import in_data, in_mediagent
-from .ChatService import ChatService
 from .ConversationService import ConversationService
 from .FileService import FileService
 from .UserService import UserService
-from .system_service import SystemService
 
 PUBLIC_DATASETS_ROOT = in_data("files", "public")
 WORKSPACE_ROOT = in_data("files", "private")
@@ -76,8 +74,6 @@ cfg_a = AgentAConfig(
 )
 
 __all__ = [
-    'ChatService',
-    'SystemService',
     'FileService',
     'ConversationService',
     'UserService',

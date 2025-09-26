@@ -10,12 +10,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from mediagent.modules.task_manager import AsyncTaskManager
 from src.server_agent.exceptions import setup_exception_handlers
-from .ChatController import ChatController
 from .ConversationController import ConversationController
 from .FileController import FileController
 from .UserController import UserController
 from .progress_controller import router as progress_router
-from .system_controller import SystemController
 
 # 数据目录（保持你的逻辑）
 try:
@@ -110,16 +108,12 @@ def create_app() -> FastAPI:
     )
 
     # 创建控制器实例
-    chat_controller = ChatController()
     file_controller = FileController()
-    system_controller = SystemController()
     user_controller = UserController()
     conversation_controller = ConversationController()
 
     # 注册路由
-    app.include_router(chat_controller.router)
     app.include_router(file_controller.router)
-    app.include_router(system_controller.router)
     app.include_router(user_controller.router)
     app.include_router(progress_router)
     app.include_router(conversation_controller.router)
@@ -133,9 +127,7 @@ def create_app() -> FastAPI:
 # 导出主要接口
 __all__ = [
     'create_app',
-    'ChatController',
     'FileController',
-    'SystemController',
     'UserController',
     'ConversationController'
 ]

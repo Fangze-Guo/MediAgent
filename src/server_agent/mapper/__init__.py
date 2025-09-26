@@ -2,9 +2,7 @@
 数据访问层 - 处理数据库操作
 """
 from .UserMapper import UserMapper
-from .base_mapper import BaseMapper
-from .config import DatabaseConfig, default_config
-from .migrations import DatabaseMigrator, Migration, run_migrations
+from .BaseMapper import BaseMapper
 from .paths import in_data, ensure_data_dirs, DATA_DIR
 
 __all__ = [
@@ -18,13 +16,4 @@ __all__ = [
     'in_data',
     'ensure_data_dirs',
     'DATA_DIR',
-
-    # 配置
-    'DatabaseConfig',
-    'default_config',
-
-    # 迁移
-    'DatabaseMigrator',
-    'Migration',
-    'run_migrations'
 ]
