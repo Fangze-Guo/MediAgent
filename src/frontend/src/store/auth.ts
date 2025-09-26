@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { login, register, getUserInfo, updateUserInfo } from '@/apis/auth'
+import { login, register, getUserInfo } from '@/apis/auth'
 
 // 类型定义
 export interface LoginRequest {
@@ -40,12 +40,13 @@ export const useAuthStore = defineStore('auth', {
     async userLogin(credentials: LoginRequest) {
       try {
         const response = await login(credentials)
-        // 检查是否成功：ok为true或者message包含success
-        if (response.ok === true || (response.message && response.message.includes('success'))) {
-          this.token = response.token || null
+        if (response.code === 200) {
+          // 从data中获取token
+          const token = response.data?.token || response.token || null
+          this.token = token
           this.isAuthenticated = true
-          if (response.token) {
-            localStorage.setItem('mediagent_token', response.token)
+          if (token) {
+            localStorage.setItem('mediagent_token', token)
           }
           
           // 登录成功后获取用户信息
@@ -67,10 +68,9 @@ export const useAuthStore = defineStore('auth', {
     async userRegister(userData: RegisterRequest) {
       try {
         const response = await register(userData)
-        console.log('Register response:', response) // 调试信息
-        console.log('response.ok type:', typeof response.ok, 'value:', response.ok) // 调试信息
-        // 检查是否成功：ok为true或者message包含success
-        if (response.ok === true || (response.message && response.message.includes('success'))) {
+        
+        // 检查是否成功：code为200或者message包含success
+        if (response.code === 200 || (response.message && response.message.includes('success'))) {
           return { success: true, message: response.message }
         } else {
           return { success: false, message: response.message || '注册失败' }
@@ -90,10 +90,12 @@ export const useAuthStore = defineStore('auth', {
       
       try {
         const response = await getUserInfo()
-        if (response.uid) {
+        // 检查响应格式并获取用户数据
+        const userData = response.data
+        if (userData && userData.uid) {
           this.user = {
-            uid: response.uid,
-            user_name: response.user_name
+            uid: userData.uid,
+            user_name: userData.user_name
           }
           // 将用户信息保存到localStorage
           localStorage.setItem('mediagent_user', JSON.stringify(this.user))
@@ -105,28 +107,6 @@ export const useAuthStore = defineStore('auth', {
         this.logout()
       }
       return null
-    },
-
-    // 更新用户信息
-    async updateUser(userData: { user_name?: string; password?: string }) {
-      try {
-        const response = await updateUserInfo(userData)
-        if (response.message) {
-          // 如果更新了用户名，更新本地状态
-          if (userData.user_name && this.user) {
-            this.user.user_name = userData.user_name
-          }
-          return { success: true, message: response.message }
-        } else {
-          return { success: false, message: '更新失败' }
-        }
-      } catch (error: any) {
-        console.error('Update user error:', error)
-        return { 
-          success: false, 
-          message: error.response?.data?.message || '更新失败，请检查网络连接' 
-        }
-      }
     },
 
     // 登出
@@ -169,19 +149,3 @@ export const useAuthStore = defineStore('auth', {
     }
   }
 })
-
-// 类型定义
-export interface LoginRequest {
-  user_name: string
-  password: string
-}
-
-export interface RegisterRequest {
-  user_name: string
-  password: string
-}
-
-export interface UserInfo {
-  uid: number
-  user_name: string
-}

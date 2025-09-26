@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, Tuple, List
 from dataclasses import dataclass
 
-from src.server_agent.mapper.base_mapper import BaseMapper
+from src.server_agent.mapper.BaseMapper import BaseMapper
 from src.server_agent.mapper.paths import in_data
 
 logger = logging.getLogger(__name__)

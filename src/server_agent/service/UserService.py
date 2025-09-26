@@ -3,8 +3,9 @@
 """
 from __future__ import annotations
 
-from typing import TypedDict, Optional, Dict, Any
+from typing import TypedDict, Optional, Dict
 
+from model.vo import UserVO
 from src.server_agent.exceptions import (
     ValidationError, ConflictError, NotFoundError,
     AuthenticationError, DatabaseError, handle_service_exception
@@ -28,19 +29,14 @@ class RegisterResult(TypedDict):
     uid: Optional[int]
 
 
-class UserInfo(TypedDict):
-    uid: int
-    user_name: str
-    token: Optional[str]
-
-
 class UserService:
     """用户服务类"""
+
     def __init__(self):
         self.userMapper = UserMapper()
 
     @handle_service_exception
-    async def register_user(self, user_name: str, password: str) -> RegisterResult:
+    async def register_user(self, user_name: str, password: str) -> int:
         """
         用户注册服务
 
@@ -49,7 +45,7 @@ class UserService:
             password: 密码
 
         Returns:
-            RegisterResult: 注册结果
+            用户 id
         """
         if not user_name or not password:
             raise ValidationError(
@@ -73,10 +69,10 @@ class UserService:
                 context={"username": user_name}
             )
 
-        return {"ok": True, "code": "REGISTERED", "message": "registered successfully", "uid": user.uid}
+        return user.uid
 
     @handle_service_exception
-    async def login_user(self, user_name: str, password: str) -> LoginResult:
+    async def login_user(self, user_name: str, password: str) -> str:
         """
         用户登录服务
 
@@ -85,7 +81,7 @@ class UserService:
             password: 密码
 
         Returns:
-            LoginResult: 登录结果
+            token
         """
         if not user_name or not password:
             raise ValidationError(
@@ -118,11 +114,10 @@ class UserService:
                 operation="update_user_token",
                 context={"uid": user_row.uid}
             )
-
-        return {"ok": True, "code": "LOGGED_IN", "message": "login successful", "token": token}
+        return token
 
     @handle_service_exception
-    async def get_user_by_token(self, token: str) -> Optional[Dict[str, Any]]:
+    async def get_user_by_token(self, token: str) -> UserVO:
         """
         根据token获取用户信息
 
@@ -130,7 +125,7 @@ class UserService:
             token: 用户token
 
         Returns:
-            Optional[Dict[str, Any]]: 用户信息字典，如果token无效则返回None
+            UserVO: 封装的用户
         """
         if not token:
             return None
