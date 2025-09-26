@@ -219,7 +219,7 @@ class DialogueAgentA:
                     res = {"ok": False, "error": f"执行器异常: {e!r}"}
                 # 执行器回执写入内部流（role=tool）
                 await self._append_internal(
-                    conversation_uid, role="tool",
+                    conversation_uid, role="tool_result",
                     text=json.dumps(res, ensure_ascii=False)
                 )
 
