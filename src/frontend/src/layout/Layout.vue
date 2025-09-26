@@ -16,7 +16,15 @@
         <menu-fold-outlined v-else class="trigger" @click="toggle()" />
       </a-layout-header>
       <a-layout-content class="app-content">
-        <router-view />
+        <Suspense>
+          <router-view />
+          <template #fallback>
+            <div class="loading-container">
+              <a-spin size="large" />
+              <p>加载中...</p>
+            </div>
+          </template>
+        </Suspense>
       </a-layout-content>
     </a-layout>
   </a-layout>
@@ -61,6 +69,20 @@ const toggle = () => (collapsed.value = !collapsed.value)
   min-height: 0;
   overflow: auto;
   background: #f5f5f5;
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: #666;
+}
+
+.loading-container p {
+  margin-top: 16px;
+  margin-bottom: 0;
 }
 </style>
   

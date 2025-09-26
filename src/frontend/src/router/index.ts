@@ -30,11 +30,11 @@ const routes: RouteRecordRaw[] = [
         }
     },
     {
-        path: '/chat/:id',
-        name: 'Chat',
+        path: '/conversation/:id',
+        name: 'Conversation',
         component: () => import('@/views/ChatView.vue'),
         meta: {
-            title: 'MediAgent - 聊天',
+            title: 'MediAgent - 对话',
             requiresAuth: true
         }
     },

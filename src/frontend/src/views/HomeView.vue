@@ -77,17 +77,17 @@ const startConversation = async () => {
 
   creating.value = true
   try {
-    // 创建新会话（自动生成会话ID）
-    const conv = conversationsStore.createConversation()
+    // 创建新会话（调用后端API）
+    const conv = await conversationsStore.createConversation()
     
-    // 将用户输入添加为初始消息
-    conversationsStore.appendMessage(conv.id, {
-      role: 'user',
-      content: text
-    })
+    // 发送初始消息到Agent
+    await conversationsStore.sendMessageToAgent(conv.id, text)
+    
+    // 注意：不需要再次加载会话内容，因为sendMessageToAgent已经处理了消息
+    // await conversationsStore.loadConversationMessages(conv.id)
 
-    // 跳转到聊天页面
-    await router.push(`/chat/${conv.id}`)
+    // 跳转到对话页面
+    await router.push(`/conversation/${conv.id}`)
   } catch (error) {
     console.error('创建会话失败:', error)
   } finally {

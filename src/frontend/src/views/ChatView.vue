@@ -208,10 +208,9 @@
  * 聊天视图组件
  * 提供完整的聊天界面，包括消息显示、输入、发送和会话管理功能
  */
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { chatStream } from '@/apis/chat'
 import { useConversationsStore } from '@/store/conversations'
 import FileUpload from '@/components/file/FileUpload.vue'
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
@@ -479,59 +478,118 @@ const currentMessages = computed(() => {
 
 /**
  * 创建新会话
- * 生成新的会话ID并跳转到聊天页面
+ * 生成新的会话ID并跳转到对话页面
  */
-const createNewConversation = () => {
-  const conv = conversationsStore.createConversation()
-  activeId.value = conv.id
-  router.replace({name: 'Chat', params: {id: conv.id}})
+const createNewConversation = async () => {
+  try {
+    const conv = await conversationsStore.createConversation()
+    activeId.value = conv.id
+    conversationsStore.setCurrentConversation(conv.id)
+    router.replace({name: 'Conversation', params: {id: conv.id}})
+  } catch (error) {
+    console.error('创建会话失败:', error)
+    message.error('创建会话失败，请稍后再试')
+  }
 }
 
 // 初始化：根据路由参数加载或创建会话
 const routeId = (route.params.id as string | undefined) || ''
-if (routeId && conversationsStore.getConversation(routeId)) {
-  // 如果路由ID存在且对应会话存在，则加载该会话
-  activeId.value = routeId
-} else {
-  // 否则创建新会话
-  createNewConversation()
+
+// 异步初始化函数
+const initializeConversation = async () => {
+  if (routeId) {
+    // 如果路由ID存在，尝试加载该会话
+    activeId.value = routeId
+    conversationsStore.setCurrentConversation(routeId)
+    
+    // 检查会话是否已存在，如果不存在则从后端加载
+    const existingConversation = conversationsStore.getConversation(routeId)
+    
+    if (!existingConversation) {
+      try {
+        // 从后端加载会话消息
+        await conversationsStore.loadConversationMessages(routeId)
+      } catch (error) {
+        console.error('ChatView: 加载会话失败:', error)
+        // 如果加载失败，创建新会话
+        await createNewConversation()
+      }
+    } else {
+      // 如果会话已存在，检查是否需要刷新消息
+      // 只有在消息为空时才从后端加载
+      if (existingConversation.messages.length === 0) {
+        try {
+          await conversationsStore.loadConversationMessages(routeId)
+        } catch (error) {
+          console.warn('ChatView: 刷新会话消息失败:', error)
+        }
+      }
+    }
+  } else {
+    // 否则创建新会话
+    await createNewConversation()
+  }
 }
 
+// 在组件挂载时执行初始化
+onMounted(() => {
+  // 使用nextTick确保DOM已渲染
+  nextTick(() => {
+    initializeConversation()
+    
+    // 初始化滚动到底部
+    try {
+      scrollToBottom()
+    } catch (error) {
+      console.warn('初始化滚动失败:', error)
+    }
+  })
+})
+
 // 监听路由变化，切换会话
-watch(() => route.params.id, (val) => {
+watch(() => route.params.id, async (val) => {
   const id = String(val || '')
   if (id && id !== activeId.value) {
     activeId.value = id
+    conversationsStore.setCurrentConversation(id)
+    
     // 切换会话时清空当前会话的文件列表
     currentSessionFiles.value = []
+    
+    // 尝试从后端加载会话消息
+    try {
+      await conversationsStore.loadConversationMessages(id)
+    } catch (error) {
+      console.error('加载会话消息失败:', error)
+    }
   }
 })
 
-// 监听当前会话变化，检查是否需要自动发送消息
+// 监听当前会话变化
 watch(currentConversation, (newConv) => {
-  if (newConv && newConv.messages.length > 0) {
-    // 检查最后一条消息是否是用户消息且没有对应的AI回复
-    const lastMessage = newConv.messages[newConv.messages.length - 1]
-    if (lastMessage.role === 'user') {
-      // 检查是否有对应的AI回复（下一条消息应该是assistant）
-      const nextMessage = newConv.messages[newConv.messages.length]
-      if (!nextMessage || nextMessage.role !== 'assistant') {
-        // 自动发送消息获取AI回复
-        setTimeout(() => {
-          sendMessageToAI(lastMessage.content)
-        }, 100)
+  if (newConv) {
+    // 会话切换时，确保滚动到底部
+    nextTick(() => {
+      try {
+        scrollToBottom()
+      } catch (error) {
+        console.warn('滚动到底部失败:', error)
       }
-    }
+    })
   }
 }, {immediate: true})
 
 // 监听消息变化，自动滚动到底部
 watch(currentMessages, async () => {
   if (autoScrollEnabled.value) {
-    await nextTick()
-    const el = messagesEl.value
-    if (el) {
-      el.scrollTop = el.scrollHeight
+    try {
+      await nextTick()
+      const el = messagesEl.value
+      if (el) {
+        el.scrollTop = el.scrollHeight
+      }
+    } catch (error) {
+      console.warn('自动滚动失败:', error)
     }
   }
 }, {deep: true})
@@ -545,6 +603,11 @@ watch(sending, (newSending) => {
   }
 })
 
+// 组件销毁时清理
+onUnmounted(() => {
+  // 清理定时器等资源
+  // 注意：这里可以添加其他需要清理的资源
+})
 
 /**
  * 发送消息给AI（内部函数）
@@ -555,79 +618,13 @@ const sendMessageToAI = async (messageText: string) => {
 
   sending.value = true
 
-  // 创建AI消息占位符
-  const aiMessage = {
-    role: 'assistant' as const,
-    content: '',
-    assistantType: (currentConversation.value?.id?.startsWith('medical-') ? 'medical' : 'general') as 'medical' | 'general'
-  }
-  conversationsStore.appendMessage(currentConversation.value.id, aiMessage)
-
   try {
-    // 使用流式聊天API，包含文件信息
-    await chatStream({
-      conversation_id: currentConversation.value.id,
-      message: messageText,
-      history: currentMessages.value.map(m => ({
-        role: m.role,
-        content: m.content
-      })),
-      files: currentSessionFiles.value, // 添加文件信息
-      assistant_type: currentConversation.value?.id?.startsWith('medical-') ? 'medical' : 'general'
-    }, {
-      onStart: (_conversationId) => {
-      },
-      onContent: (content) => {
-        // 逐步更新AI消息内容
-        const conversation = conversationsStore.getConversation(currentConversation.value!.id)
-        if (conversation && conversation.messages.length > 0) {
-          const lastMessage = conversation.messages[conversation.messages.length - 1]
-          if (lastMessage.role === 'assistant') {
-            lastMessage.content += content
-            // 滚动由watch监听器处理
-          }
-        }
-      },
-      onToolCall: (_tool) => {
-        // 可以在这里显示工具调用状态
-      },
-      onComplete: (_toolCalls) => {
-        // 对话完成，移除打字机效果
-        const conversation = conversationsStore.getConversation(currentConversation.value!.id)
-        if (conversation && conversation.messages.length > 0) {
-          const lastMessage = conversation.messages[conversation.messages.length - 1]
-          if (lastMessage.role === 'assistant') {
-          }
-        }
-        // 确保滚动到底部
-        scrollToBottom()
-      },
-      onError: (error) => {
-        console.error('流式聊天错误:', error)
-        // 更新最后一条消息为错误信息
-        const conversation = conversationsStore.getConversation(currentConversation.value!.id)
-        if (conversation && conversation.messages.length > 0) {
-          const lastMessage = conversation.messages[conversation.messages.length - 1]
-          if (lastMessage.role === 'assistant') {
-            lastMessage.content = `抱歉，请求失败：${error}`
-          }
-        }
-        scrollToBottom()
-      }
-    })
+    // 使用新的conversation API发送消息
+    await conversationsStore.sendMessageToAgent(currentConversation.value.id, messageText)
   } catch (error) {
-    // 处理错误，显示错误消息
     console.error('发送消息失败:', error)
-    const conversation = conversationsStore.getConversation(currentConversation.value!.id)
-    if (conversation && conversation.messages.length > 0) {
-      const lastMessage = conversation.messages[conversation.messages.length - 1]
-      if (lastMessage.role === 'assistant') {
-        lastMessage.content = '抱歉，请求失败，请稍后再试。'
-      }
-    }
-    await scrollToBottom()
+    message.error('发送消息失败，请稍后再试')
   } finally {
-    // 重置发送状态
     sending.value = false
   }
 }
@@ -702,12 +699,6 @@ const sendMessage = async () => {
     createNewConversation()
   }
 
-  // 添加用户消息到会话
-  conversationsStore.appendMessage(currentConversation.value!.id, {
-    role: 'user',
-    content: text
-  })
-
   // 重置滚动状态，确保新消息能正常滚动
   userScrolled.value = false
   autoScrollEnabled.value = true
@@ -715,7 +706,7 @@ const sendMessage = async () => {
   // 滚动到底部显示用户消息
   await scrollToBottom()
 
-  // 发送消息给AI
+  // 发送消息给AI（sendMessageToAgent内部会处理用户消息的添加）
   await sendMessageToAI(text)
 }
 
