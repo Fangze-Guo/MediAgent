@@ -42,6 +42,65 @@
       </div>
     </div>
 
+    <!-- 待上传文件列表 -->
+    <div v-if="pendingFiles.length > 0" class="pending-files">
+      <div class="files-header">
+        <h4 class="files-title">
+          <FileOutlined />
+          待上传文件 ({{ pendingFiles.length }})
+        </h4>
+        <div class="batch-actions">
+          <a-button 
+            type="primary" 
+            size="small"
+            @click="startUploadPendingFiles"
+            :disabled="pendingFiles.length === 0 || uploading"
+            :loading="uploading"
+          >
+            开始上传
+          </a-button>
+          <a-button 
+            type="link" 
+            size="small"
+            danger
+            @click="clearPendingFiles"
+            :disabled="pendingFiles.length === 0"
+          >
+            清空列表
+          </a-button>
+        </div>
+      </div>
+      <div class="files-list">
+        <div 
+          v-for="(file, index) in pendingFiles" 
+          :key="`pending-${index}`"
+          class="file-item"
+        >
+          <div class="file-info">
+            <FileOutlined class="file-icon" />
+            <div class="file-details">
+              <div class="file-name" :title="file.name">
+                {{ file.name }}
+              </div>
+              <div class="file-meta">
+                {{ formatFileSize(file.size) }} • {{ formatTime(file.lastModified.toString()) }}
+              </div>
+            </div>
+          </div>
+          <div class="file-actions">
+            <a-button 
+              type="link" 
+              size="small"
+              danger
+              @click="removePendingFile(index)"
+            >
+              移除
+            </a-button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 已上传文件列表 -->
     <div v-if="uploadedFiles.length > 0" class="uploaded-files">
       <div class="files-header">
@@ -132,7 +191,7 @@ import {
   uploadFile, 
   formatFileSize, 
   isSupportedFileType, 
-  type FileUploadResponse 
+  type FileInfo
 } from '@/apis/files.ts'
 
 // Props
@@ -154,11 +213,11 @@ const props = withDefaults(defineProps<Props>(), {
 // Emits
 const emit = defineEmits<{
   /** 文件上传成功事件 */
-  uploadSuccess: [file: FileUploadResponse['data']]
+  uploadSuccess: [file: FileInfo]
   /** 文件上传失败事件 */
   uploadError: [error: string]
   /** 使用文件事件 */
-  useFile: [file: FileUploadResponse['data']]
+  useFile: [file: FileInfo]
   /** 批量使用完成事件 */
   batchUseComplete: []
 }>()
@@ -169,7 +228,8 @@ const uploading = ref(false)
 const uploadProgress = ref(0)
 const uploadError = ref('')
 const dragOver = ref(false)
-const uploadedFiles = ref<FileUploadResponse['data'][]>([])
+const uploadedFiles = ref<FileInfo[]>([])
+const pendingFiles = ref<File[]>([])
 
 // 计算属性
 const acceptedTypes = computed(() => props.accept)
@@ -190,8 +250,11 @@ const handleFileSelect = (event: Event) => {
   const target = event.target as HTMLInputElement
   const files = target.files
   if (files && files.length > 0) {
-    handleFiles(Array.from(files))
+    // 先添加到待上传列表，不立即上传
+    addFilesToUploadList(Array.from(files))
   }
+  // 清空input，允许重复选择同一文件
+  target.value = ''
 }
 
 /**
@@ -219,7 +282,37 @@ const handleDrop = (event: DragEvent) => {
   
   const files = event.dataTransfer?.files
   if (files && files.length > 0) {
-    handleFiles(Array.from(files))
+    // 先添加到待上传列表，不立即上传
+    addFilesToUploadList(Array.from(files))
+  }
+}
+
+/**
+ * 添加文件到待上传列表
+ */
+const addFilesToUploadList = (files: File[]) => {
+  const validFiles: File[] = []
+  
+  // 验证文件
+  for (const file of files) {
+    if (!isSupportedFileType(file)) {
+      message.error(`不支持的文件类型: ${file.name}`)
+      continue
+    }
+    
+    if (file.size > props.maxSize * 1024 * 1024) {
+      message.error(`文件 ${file.name} 超过大小限制 (${props.maxSize}MB)`)
+      continue
+    }
+    
+    validFiles.push(file)
+  }
+  
+  // 添加到待上传列表
+  pendingFiles.value.push(...validFiles)
+  
+  if (validFiles.length > 0) {
+    message.success(`已添加 ${validFiles.length} 个文件到上传列表`)
   }
 }
 
@@ -257,7 +350,7 @@ const uploadSingleFile = async (file: File) => {
     uploadProgress.value = 0
     uploadError.value = ''
 
-    const response = await uploadFile(file, (progress) => {
+    const response = await uploadFile(file, '.', (progress) => {
       uploadProgress.value = progress
     })
 
@@ -281,7 +374,7 @@ const uploadSingleFile = async (file: File) => {
 /**
  * 使用文件
  */
-const handleUseFile = (file: FileUploadResponse['data']) => {
+const handleUseFile = (file: FileInfo) => {
   emit('useFile', file)
 }
 
@@ -328,11 +421,61 @@ const handleRemoveAllFiles = () => {
 }
 
 /**
+ * 开始上传待上传列表中的文件
+ */
+const startUploadPendingFiles = async () => {
+  if (pendingFiles.value.length === 0) {
+    message.warning('没有待上传的文件')
+    return
+  }
+  
+  const filesToUpload = [...pendingFiles.value]
+  pendingFiles.value = [] // 清空待上传列表
+  
+  await handleFiles(filesToUpload)
+}
+
+/**
+ * 删除待上传文件
+ */
+const removePendingFile = (index: number) => {
+  pendingFiles.value.splice(index, 1)
+  message.success('文件已从上传列表移除')
+}
+
+/**
+ * 清空待上传列表
+ */
+const clearPendingFiles = () => {
+  const count = pendingFiles.value.length
+  pendingFiles.value = []
+  if (count > 0) {
+    message.success(`已清空 ${count} 个待上传文件`)
+  }
+}
+
+/**
  * 格式化时间
  */
 const formatTime = (timeString: string): string => {
   return new Date(timeString).toLocaleString('zh-CN')
 }
+
+/**
+ * 重置上传状态（供父组件调用）
+ */
+const resetUploadState = () => {
+  uploading.value = false
+  uploadProgress.value = 0
+  uploadError.value = ''
+  pendingFiles.value = []
+  uploadedFiles.value = []
+}
+
+// 暴露方法给父组件
+defineExpose({
+  resetUploadState
+})
 
 </script>
 
@@ -418,6 +561,10 @@ const formatTime = (timeString: string): string => {
   font-size: 16px;
   color: #1890ff;
   margin: 0;
+}
+
+.pending-files {
+  margin-top: 24px;
 }
 
 .uploaded-files {

@@ -4,18 +4,9 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { getFileList, deleteFile, batchDeleteFiles, downloadFile, createFolderAPI, type FileListResponse } from '@/apis/files'
+import { getDataSetFiles, deleteFile, batchDeleteFiles, createFolder, type FileListResponse, type FileInfo } from '@/apis/files'
 
-// 文件信息类型
-type FileInfo = {
-  id: string
-  name: string
-  size: number
-  type: string
-  path: string
-  modifiedTime: string
-  isDirectory: boolean
-}
+// 文件信息类型已从 @/apis/files 导入
 
 export const useFileStore = defineStore('files', () => {
   // 状态
@@ -101,12 +92,12 @@ export const useFileStore = defineStore('files', () => {
     selectedFileIds.value = []
   }
 
-  // 获取文件列表
+  // 获取数据集文件列表
   const fetchFileList = async (path: string = '.') => {
     try {
       setLoading(true)
       setError(null)
-      const response = await getFileList(path)
+      const response = await getDataSetFiles(path)
       fileList.value = response.data.files
       // 更新路径信息
       if (response.data.currentPath !== undefined) {
@@ -179,18 +170,12 @@ export const useFileStore = defineStore('files', () => {
     }
   }
 
-  // 下载文件
-  const downloadFileById = async (fileId: string) => {
+  // 下载文件（暂时移除，因为后端没有实现）
+  const downloadFileById = async (_fileId: string) => {
     try {
       setError(null)
-      const result = await downloadFile(fileId)
-      
-      if (result.success && result.downloadUrl) {
-        return { success: true, downloadUrl: result.downloadUrl }
-      } else {
-        setError(result.error || '下载文件失败')
-        return { success: false, downloadUrl: null }
-      }
+      setError('文件下载功能暂未实现')
+      return { success: false, downloadUrl: null }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '下载文件失败'
       setError(errorMessage)
@@ -225,11 +210,11 @@ export const useFileStore = defineStore('files', () => {
   }
 
   // 创建文件夹
-  const createFolder = async (folderName: string, currentPath: string = '.') => {
+  const createFolderAction = async (folderName: string, currentPath: string = '.') => {
     try {
       setLoading(true)
       setError(null)
-      const result = await createFolderAPI(folderName, currentPath)
+      const result = await createFolder(folderName, currentPath)
       if (result.code === 200) {
         // 刷新文件列表
         await fetchFileList(currentPath)
@@ -285,7 +270,7 @@ export const useFileStore = defineStore('files', () => {
     addFile,
     updateFile,
     getFileById,
-    createFolder,
+    createFolder: createFolderAction,
     reset,
     currentPath,
     parentPath

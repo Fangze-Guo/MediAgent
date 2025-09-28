@@ -4,7 +4,7 @@
       <a-layout-content class="content">
         <!-- 上栏工具栏 -->
         <div class="top-toolbar">
-          <h2 class="title">管理我的数据</h2>
+          <h2 class="title">数据集文件管理</h2>
           <div class="top-actions">
             <a-input-search
                 v-model:value="fileStore.searchText"
@@ -32,17 +32,7 @@
 
         <!-- 文件列表容器 -->
         <div class="file-list-container">
-          <a-tabs v-model:activeKey="activeTab" type="card">
-            <a-tab-pane key="uploaded" tab="已上传文件">
-              <UploadFileBrowser />
-            </a-tab-pane>
-            <a-tab-pane key="local" tab="本地文件">
-              <LocalFileBrowser />
-            </a-tab-pane>
-            <a-tab-pane key="output" tab="输出文件">
-              <OutputFileBrowser />
-            </a-tab-pane>
-          </a-tabs>
+          <DatasetFileBrowser />
         </div>
       </a-layout-content>
     </a-layout>
@@ -50,18 +40,14 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import { message } from 'ant-design-vue'
 import { ReloadOutlined, UploadOutlined } from '@ant-design/icons-vue'
 import { useFileStore } from '@/store/files'
-import LocalFileBrowser from '@/components/file/LocalFileBrowser.vue'
-import OutputFileBrowser from '@/components/file/OutputFileBrowser.vue'
-import UploadFileBrowser from "@/components/file/UploadFileBrowser.vue";
+import DatasetFileBrowser from '@/components/file/DatasetFileBrowser.vue'
 
 // 使用文件状态管理
 const fileStore = useFileStore()
-// 响应式数据
-const activeTab = ref('uploaded')
 
 const fetchFileList = async () => {
   try {
@@ -74,16 +60,8 @@ const fetchFileList = async () => {
 
 // 处理上传按钮点击
 const handleUploadClick = () => {
-  if (activeTab.value === 'uploaded') {
-    // 在已上传文件选项卡中，触发全局上传事件（上传到服务器存储）
-    window.dispatchEvent(new CustomEvent('open-file-upload'))
-  } else if (activeTab.value === 'local') {
-    // 在本地文件选项卡中，触发本地文件上传事件（上传到当前目录）
-    window.dispatchEvent(new CustomEvent('open-local-file-upload'))
-  } else if (activeTab.value === 'output') {
-    // 在输出文件选项卡中，触发输出文件上传事件（上传到当前目录）
-    window.dispatchEvent(new CustomEvent('open-output-file-upload'))
-  }
+  // 触发数据集文件上传事件
+  window.dispatchEvent(new CustomEvent('open-dataset-file-upload'))
 }
 
 // 搜索
@@ -93,15 +71,7 @@ const handleSearch = () => {
 
 // 刷新文件列表
 const handleRefresh = () => {
-  if (activeTab.value === 'uploaded') {
-    fetchFileList()
-  } else if (activeTab.value === 'local') {
-    // 刷新本地文件浏览器到根目录
-    window.dispatchEvent(new CustomEvent('refresh-local-files-to-root'))
-  } else if (activeTab.value === 'output') {
-    // 刷新输出文件浏览器到根目录
-    window.dispatchEvent(new CustomEvent('refresh-output-files-to-root'))
-  }
+  fetchFileList()
 }
 
 // 监听文件列表刷新事件

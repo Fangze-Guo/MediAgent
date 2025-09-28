@@ -1,6 +1,5 @@
 /**
- * 文件上传相关API接口
- * 提供文件上传、管理和工具调用功能
+ * 文件管理API接口 - 简化版，只管理数据集文件
  */
 import { get, post } from '@/utils/request'
 
@@ -17,30 +16,23 @@ export interface BaseResponse<T = any> {
 }
 
 /**
- * 文件上传响应接口
+ * 文件信息接口
  */
-export interface FileUploadResponse {
-    /** 响应码 */
-    code: number
-    /** 文件信息 */
-    data: {
-        /** 文件ID */
-        id: string
-        /** 文件名 */
-        name: string
-        /** 文件大小（字节） */
-        size: number
-        /** 文件类型 */
-        type: string
-        /** 文件路径 */
-        path: string
-        /** 修改时间 */
-        modifiedTime: string
-        /** 是否为目录 */
-        isDirectory: boolean
-    }
-    /** 响应消息 */
-    message: string
+export interface FileInfo {
+    /** 文件ID */
+    id: string
+    /** 文件名 */
+    name: string
+    /** 文件大小（字节） */
+    size: number
+    /** 文件类型 */
+    type: string
+    /** 文件路径 */
+    path: string
+    /** 修改时间 */
+    modifiedTime: string
+    /** 是否为目录 */
+    isDirectory: boolean
 }
 
 /**
@@ -52,15 +44,7 @@ export interface FileListResponse {
     /** 文件列表数据 */
     data: {
         /** 文件列表 */
-        files: Array<{
-            id: string
-            name: string
-            size: number
-            type: string
-            path: string
-            modifiedTime: string
-            isDirectory: boolean
-        }>
+        files: FileInfo[]
         /** 当前路径 */
         currentPath: string
         /** 父路径 */
@@ -71,28 +55,53 @@ export interface FileListResponse {
 }
 
 /**
- * 上传文件到服务器
+ * 获取数据集文件列表
+ * @param path 要浏览的路径，默认为当前目录
+ * @returns Promise<FileListResponse> 返回文件列表
+ * @throws {Error} 当请求失败时抛出错误
+ *
+ * @example
+ * ```typescript
+ * const files = await getDataSetFiles('.')
+ * console.log('数据集文件:', files.data.files)
+ * ```
+ */
+export async function getDataSetFiles(path: string = '.'): Promise<FileListResponse> {
+    try {
+        const response = await get<FileListResponse>(`/files/dataset?target_path=${encodeURIComponent(path)}`)
+        return response.data
+    } catch (error) {
+        console.error('获取数据集文件列表失败:', error)
+        throw new Error('获取数据集文件列表失败，请稍后再试')
+    }
+}
+
+/**
+ * 上传文件到数据集
  * @param file 要上传的文件
+ * @param targetDir 目标目录，默认为当前目录
  * @param onProgress 上传进度回调函数
- * @returns Promise<FileUploadResponse> 返回上传结果
+ * @returns Promise<BaseResponse<FileInfo>> 返回上传结果
  * @throws {Error} 当上传失败时抛出错误
  *
  * @example
  * ```typescript
  * const file = document.getElementById('fileInput').files[0]
- * const result = await uploadFile(file, (progress) => {
+ * const result = await uploadFile(file, '.', (progress) => {
  *   console.log(`上传进度: ${progress}%`)
  * })
- * console.log('文件上传成功:', result.file)
+ * console.log('文件上传成功:', result.data)
  * ```
  */
 export async function uploadFile(
     file: File,
+    targetDir: string = '.',
     onProgress?: (progress: number) => void
-): Promise<FileUploadResponse> {
+): Promise<BaseResponse<FileInfo>> {
     try {
         const formData = new FormData()
         formData.append('file', file)
+        formData.append('target_dir', targetDir)
 
         // 使用XMLHttpRequest来支持上传进度
         return new Promise((resolve, reject) => {
@@ -110,7 +119,7 @@ export async function uploadFile(
             xhr.addEventListener('load', () => {
                 if (xhr.status === 200) {
                     try {
-                        const response = JSON.parse(xhr.responseText) as FileUploadResponse
+                        const response = JSON.parse(xhr.responseText) as BaseResponse<FileInfo>
                         resolve(response)
                     } catch (error) {
                         reject(new Error('解析响应失败'))
@@ -145,23 +154,112 @@ export async function uploadFile(
 }
 
 /**
- * 获取已上传的文件列表
- * @returns Promise<FileListResponse> 返回文件列表
- * @throws {Error} 当请求失败时抛出错误
- *
- * @example
- * ```typescript
- * const files = await getFileList()
- * console.log('已上传文件:', files.files)
- * ```
+ * 批量上传文件到数据集
+ * @param files 要上传的文件列表
+ * @param targetDir 目标目录，默认为当前目录
+ * @returns Promise<BaseResponse<FileInfo[]>> 返回上传结果
+ * @throws {Error} 当上传失败时抛出错误
  */
-export async function getFileList(path: string = '.'): Promise<FileListResponse> {
+export async function uploadMultipleFiles(
+    files: File[],
+    targetDir: string = '.'
+): Promise<BaseResponse<FileInfo[]>> {
     try {
-        const response = await get<FileListResponse>(`/files?path=${encodeURIComponent(path)}`)
+        const formData = new FormData()
+        files.forEach(file => {
+            formData.append('files', file)
+        })
+        formData.append('target_dir', targetDir)
+
+        const response = await post<BaseResponse<FileInfo[]>>('/files/upload-multiple', formData)
         return response.data
     } catch (error) {
-        console.error('获取文件列表失败:', error)
-        throw new Error('获取文件列表失败，请稍后再试')
+        console.error('批量上传文件失败:', error)
+        throw new Error('批量上传文件失败，请稍后再试')
+    }
+}
+
+/**
+ * 删除文件
+ * @param fileId 文件ID
+ * @returns Promise<BaseResponse<null>> 返回删除结果
+ * @throws {Error} 当请求失败时抛出错误
+ */
+export async function deleteFile(fileId: string): Promise<BaseResponse<null>> {
+    try {
+        const response = await post<BaseResponse<null>>('/files/delete', {fileId})
+        return response.data
+    } catch (error) {
+        console.error('删除文件失败:', error)
+        throw new Error('删除文件失败，请稍后再试')
+    }
+}
+
+/**
+ * 根据路径删除文件
+ * @param filePath 文件路径
+ * @returns Promise<BaseResponse<null>> 返回删除结果
+ * @throws {Error} 当请求失败时抛出错误
+ */
+export async function deleteFileByPath(filePath: string): Promise<BaseResponse<null>> {
+    try {
+        const response = await post<BaseResponse<null>>('/files/delete-by-path', {file_path: filePath})
+        return response.data
+    } catch (error) {
+        console.error('删除文件失败:', error)
+        throw new Error('删除文件失败，请稍后再试')
+    }
+}
+
+/**
+ * 批量删除文件响应数据
+ */
+export interface BatchDeleteFilesData {
+    /** 删除是否成功 */
+    success: boolean
+    /** 成功删除的文件数量 */
+    deletedCount: number
+    /** 失败的文件数量 */
+    failedCount: number
+    /** 失败的文件列表 */
+    failedFiles: Array<{
+        fileId: string
+        error: string
+    }>
+}
+
+/**
+ * 批量删除文件
+ * @param fileIds 文件ID列表
+ * @returns Promise<BaseResponse<BatchDeleteFilesData>> 返回批量删除结果
+ * @throws {Error} 当请求失败时抛出错误
+ */
+export async function batchDeleteFiles(fileIds: string[]): Promise<BaseResponse<BatchDeleteFilesData>> {
+    try {
+        const response = await post<BaseResponse<BatchDeleteFilesData>>('/files/batch-delete', {fileIds})
+        return response.data
+    } catch (error) {
+        console.error('批量删除文件失败:', error)
+        throw new Error('批量删除文件失败，请稍后再试')
+    }
+}
+
+/**
+ * 创建文件夹
+ * @param folderName 文件夹名称
+ * @param currentPath 当前路径
+ * @returns Promise<BaseResponse<null>> 创建结果
+ */
+export async function createFolder(folderName: string, currentPath: string = '.'): Promise<BaseResponse<null>> {
+    try {
+        const response = await post<BaseResponse<null>>('/files/create-folder', {
+            folderName,
+            currentPath
+        })
+        return response.data
+    } catch (error) {
+        console.error('创建文件夹失败:', error)
+        throw new Error('创建文件夹失败，请稍后再试')
     }
 }
 
@@ -201,264 +299,4 @@ export function isSupportedFileType(file: File): boolean {
         file.name.toLowerCase().endsWith('.csv') ||
         file.name.toLowerCase().endsWith('.dcm') ||
         !!file.name.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp|dcm)$/i)
-}
-
-/**
- * 删除文件响应接口 - 与后端BaseResponse同步
- */
-export type DeleteFileResponse = BaseResponse<null>
-
-/**
- * 批量删除文件响应数据
- */
-export interface BatchDeleteFilesData {
-    /** 删除是否成功 */
-    success: boolean
-    /** 成功删除的文件数量 */
-    deletedCount: number
-    /** 失败的文件数量 */
-    failedCount: number
-    /** 失败的文件列表 */
-    failedFiles: Array<{
-        fileId: string
-        error: string
-    }>
-}
-
-/**
- * 批量删除文件响应接口 - 与后端BaseResponse同步
- */
-export type BatchDeleteFilesResponse = BaseResponse<BatchDeleteFilesData>
-
-/**
- * 下载文件响应接口
- */
-export interface DownloadFileResponse {
-    /** 下载是否成功 */
-    success: boolean
-    /** 文件下载URL */
-    downloadUrl?: string
-    /** 错误信息（如果下载失败） */
-    error?: string
-}
-
-/**
- * 删除单个文件
- * @param fileId 文件ID
- * @returns Promise<DeleteFileResponse> 返回删除结果
- * @throws {Error} 当请求失败时抛出错误
- *
- * @example
- * ```typescript
- * const result = await deleteFile('upload_1234567890')
- * if (result.success) {
- *   console.log('文件删除成功')
- * }
- * ```
- */
-export async function deleteFile(fileId: string): Promise<DeleteFileResponse> {
-    try {
-        const response = await post<DeleteFileResponse>('/files/delete', {fileId})
-        return response.data
-    } catch (error) {
-        console.error('删除文件失败:', error)
-        throw new Error('删除文件失败，请稍后再试')
-    }
-}
-
-/**
- * 批量删除文件
- * @param fileIds 文件ID列表
- * @returns Promise<BatchDeleteFilesResponse> 返回批量删除结果
- * @throws {Error} 当请求失败时抛出错误
- *
- * @example
- * ```typescript
- * const result = await batchDeleteFiles(['file-id-1', 'file-id-2'])
- * console.log(`成功删除 ${result.deletedCount} 个文件`)
- * ```
- */
-export async function batchDeleteFiles(fileIds: string[]): Promise<BatchDeleteFilesResponse> {
-    try {
-        const response = await post<BatchDeleteFilesResponse>('/files/batch-delete', {fileIds})
-        return response.data
-    } catch (error) {
-        console.error('批量删除文件失败:', error)
-        throw new Error('批量删除文件失败，请稍后再试')
-    }
-}
-
-/**
- * 下载文件
- * @param fileId 文件ID
- * @returns Promise<DownloadFileResponse> 返回下载结果
- * @throws {Error} 当请求失败时抛出错误
- *
- * @example
- * ```typescript
- * const result = await downloadFile('file-id-123')
- * if (result.success && result.downloadUrl) {
- *   window.open(result.downloadUrl, '_blank')
- * }
- * ```
- */
-export async function downloadFile(fileId: string): Promise<DownloadFileResponse> {
-    try {
-        const response = await post<DownloadFileResponse>('/files/download', {fileId})
-        return response.data
-    } catch (error) {
-        console.error('下载文件失败:', error)
-        throw new Error('下载文件失败，请稍后再试')
-    }
-}
-
-/**
- * 本地文件信息接口
- */
-export interface LocalFileInfo {
-    id: string
-    name: string
-    size: number
-    type: string
-    path: string
-    modifiedTime: string
-    isDirectory: boolean
-}
-
-/**
- * 本地文件列表响应接口
- */
-export interface LocalFileListResponse {
-    files: LocalFileInfo[]
-    currentPath: string
-    parentPath: string | null
-}
-
-/**
- * 获取本地文件列表
- * @param path 要浏览的路径，默认为当前目录
- * @returns Promise<LocalFileListResponse> 返回本地文件列表
- * @throws {Error} 当请求失败时抛出错误
- *
- * @example
- * ```typescript
- * const files = await getLocalFiles('.')
- * console.log('当前目录文件:', files.files)
- * ```
- */
-export async function getLocalFiles(path: string = '.'): Promise<LocalFileListResponse> {
-    try {
-        const response = await get<{ code: number; data: LocalFileListResponse; message: string }>(`/files/local?path=${encodeURIComponent(path)}`)
-        return response.data.data
-    } catch (error) {
-        console.error('获取本地文件列表失败:', error)
-        throw new Error('获取本地文件列表失败，请稍后再试')
-    }
-}
-
-/**
- * 获取本地文件下载URL
- * @param filePath 文件路径
- * @returns 本地文件下载URL
- */
-export function getLocalFileDownloadUrl(filePath: string): string {
-    const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
-    return `${baseURL}/files/local/serve?path=${encodeURIComponent(filePath)}`
-}
-
-/**
- * 输出文件信息接口
- */
-export interface OutputFileInfo {
-    id: string
-    name: string
-    size: number
-    type: string
-    path: string
-    modifiedTime: string
-    isDirectory: boolean
-}
-
-/**
- * 输出文件列表响应接口
- */
-export interface OutputFileListResponse {
-    files: OutputFileInfo[]
-    currentPath: string
-    parentPath: string | null
-}
-
-/**
- * 获取输出文件列表
- * @param path 要浏览的路径，默认为当前目录
- * @returns Promise<OutputFileListResponse> 返回输出文件列表
- * @throws {Error} 当请求失败时抛出错误
- *
- * @example
- * ```typescript
- * const files = await getOutputFiles('.')
- * console.log('当前输出目录文件:', files.files)
- * ```
- */
-export async function getOutputFiles(path: string = '.'): Promise<OutputFileListResponse> {
-    try {
-        const response = await get<{ code: number; data: OutputFileListResponse; message: string }>(`/files/output?path=${encodeURIComponent(path)}`)
-        return response.data.data
-    } catch (error) {
-        console.error('获取输出文件列表失败:', error)
-        throw new Error('获取输出文件列表失败，请稍后再试')
-    }
-}
-
-/**
- * 创建文件夹
- * @param folderName 文件夹名称
- * @param currentPath 当前路径
- * @returns 创建结果
- */
-export async function createFolderAPI(folderName: string, currentPath: string = '.'): Promise<BaseResponse<null>> {
-    try {
-        const response = await post<BaseResponse<null>>('/files/create-folder', {
-            folderName,
-            currentPath
-        })
-        return response.data
-    } catch (error) {
-        console.error('创建文件夹失败:', error)
-        throw new Error('创建文件夹失败，请稍后再试')
-    }
-}
-
-/**
- * 删除本地文件
- * @param filePath 文件路径
- * @returns 删除结果
- */
-export async function deleteLocalFile(filePath: string): Promise<BaseResponse<null>> {
-    try {
-        const response = await post<BaseResponse<null>>('/files/local/delete', {
-            file_path: filePath
-        })
-        return response.data
-    } catch (error) {
-        console.error('删除本地文件失败:', error)
-        throw new Error('删除本地文件失败，请稍后再试')
-    }
-}
-
-/**
- * 删除输出文件
- * @param filePath 文件路径
- * @returns 删除结果
- */
-export async function deleteOutputFile(filePath: string): Promise<BaseResponse<null>> {
-    try {
-        const response = await post<BaseResponse<null>>('/files/output/delete', {
-            file_path: filePath
-        })
-        return response.data
-    } catch (error) {
-        console.error('删除输出文件失败:', error)
-        throw new Error('删除输出文件失败，请稍后再试')
-    }
 }

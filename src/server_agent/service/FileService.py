@@ -10,6 +10,7 @@ from typing import List, Optional, Dict, Any
 
 from fastapi import UploadFile
 
+from constants.CommonConstants import DATASET_PATH
 from src.server_agent.exceptions import ValidationError, NotFoundError, ServiceError, handle_service_exception
 from src.server_agent.model import FileInfo, FileListVO
 
@@ -22,12 +23,21 @@ class FileService:
     def __init__(self):
         self.MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB（DICOM文件可能较大）
         self.ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.csv', '.dcm', '.DCM', '.nii', '.nii.gz'}
-        # 文件上传配置 - 指向server_agent目录下的data文件夹
-        self.UPLOAD_FILES_DIR: pathlib.Path = pathlib.Path(__file__).parent.parent / "data"
-        # 本地文件浏览配置 - 指向server_agent目录
-        self.LOCAL_FILES_DIR: pathlib.Path = pathlib.Path(__file__).parent.parent.resolve()
-        # 输出文件浏览配置 - 指向server_agent目录下的output文件夹
-        self.OUTPUT_FILES_DIR: pathlib.Path = pathlib.Path(__file__).parent.parent / "output"
+
+    async def getDataSetFiles(self, target_path: str) -> FileListVO:
+        """
+           获取数据集文件列表
+
+           Args:
+               target_path: 目标路径，相对于 DATASET_PATH 的路径
+
+           Returns:
+               FileListVO: 文件列表信息
+           """
+        # 将DATASET_PATH转换为pathlib.Path对象
+        dataset_root = pathlib.Path(DATASET_PATH)
+        fileListVO: FileListVO = await self.getFileListVO(dataset_root, target_path)
+        return fileListVO
 
     # ==================== 上传文件 ====================
 
@@ -43,7 +53,9 @@ class FileService:
         Returns:
             文件信息
         """
-        fileInfo: FileInfo = await self.uploadFile(self.UPLOAD_FILES_DIR, file, target_dir)
+        # 将DATASET_PATH转换为pathlib.Path对象
+        dataset_root = pathlib.Path(DATASET_PATH)
+        fileInfo: FileInfo = await self.uploadFile(dataset_root, file, target_dir)
         return fileInfo
 
     @handle_service_exception
@@ -58,91 +70,13 @@ class FileService:
         Returns:
             文件信息列表
         """
+        # 将DATASET_PATH转换为pathlib.Path对象
+        dataset_root = pathlib.Path(DATASET_PATH)
         uploaded_files: List[FileInfo] = []
 
         for file in files:
             try:
-                file_info: FileInfo = await self.uploadFile(self.UPLOAD_FILES_DIR, file, target_dir)
-                uploaded_files.append(file_info)
-            except Exception as e:
-                # 记录单个文件上传失败，但继续处理其他文件
-                logging.error(f"文件 {file.filename} 上传失败: {e}")
-                continue
-
-        return uploaded_files
-
-    @handle_service_exception
-    async def uploadFileToLocal(self, file: UploadFile, target_dir: str = ".") -> FileInfo:
-        """
-        上传文件到本地目录
-
-        Args:
-            file: 上传的文件
-            target_dir: 目标目录
-
-        Returns:
-            上传结果
-        """
-        fileInfo: FileInfo = await self.uploadFile(self.LOCAL_FILES_DIR, file, target_dir)
-        return fileInfo
-
-    @handle_service_exception
-    async def uploadMultipleFilesToLocal(self, files: List[UploadFile], target_dir: str = ".") -> List[FileInfo]:
-        """
-        批量上传文件到本地目录
-
-        Args:
-            files: 上传的文件列表
-            target_dir: 目标目录
-
-        Returns:
-            文件信息列表
-        """
-        uploaded_files: List[FileInfo] = []
-
-        for file in files:
-            try:
-                file_info: FileInfo = await self.uploadFile(self.LOCAL_FILES_DIR, file, target_dir)
-                uploaded_files.append(file_info)
-            except Exception as e:
-                # 记录单个文件上传失败，但继续处理其他文件
-                logging.error(f"文件 {file.filename} 上传失败: {e}")
-                continue
-
-        return uploaded_files
-
-    @handle_service_exception
-    async def uploadFileToOutput(self, file: UploadFile, target_dir: str = ".") -> FileInfo:
-        """
-        上传文件到输出目录
-
-        Args:
-            file: 上传的文件
-            target_dir: 目标目录
-
-        Returns:
-            上传结果
-        """
-        fileInfo: FileInfo = await self.uploadFile(self.OUTPUT_FILES_DIR, file, target_dir)
-        return fileInfo
-
-    @handle_service_exception
-    async def uploadMultipleFilesToOutput(self, files: List[UploadFile], target_dir: str = ".") -> List[FileInfo]:
-        """
-        批量上传文件到输出目录
-
-        Args:
-            files: 上传的文件列表
-            target_dir: 目标目录
-
-        Returns:
-            文件信息列表
-        """
-        uploaded_files: List[FileInfo] = []
-
-        for file in files:
-            try:
-                file_info: FileInfo = await self.uploadFile(self.OUTPUT_FILES_DIR, file, target_dir)
+                file_info: FileInfo = await self.uploadFile(dataset_root, file, target_dir)
                 uploaded_files.append(file_info)
             except Exception as e:
                 # 记录单个文件上传失败，但继续处理其他文件
@@ -198,8 +132,7 @@ class FileService:
             original_name = new_name
 
         # 生成文件ID - 使用路径哈希确保唯一性，与文件列表保持一致
-        prefix = self._get_prefix_by_dir(files_dir)
-        file_id = f"{prefix}_{abs(hash(str(file_path)))}"
+        file_id = f"{abs(hash(str(file_path)))}"
 
         # 保存文件
         with open(file_path, "wb") as buffer:
@@ -217,50 +150,6 @@ class FileService:
         )
         return file_info
 
-    # ==================== 获取文件列表 ====================
-
-    @handle_service_exception
-    async def getUploadFils(self, path: str = ".") -> FileListVO:
-        """
-        获取上传文件目录
-
-        Args:
-            path: 要浏览的路径，默认为data目录根路径
-
-        Returns:
-            文件和目录列表
-        """
-        uploadFileListVO: FileListVO = await self.getFileListVO(self.UPLOAD_FILES_DIR, path)
-        return uploadFileListVO
-
-    @handle_service_exception
-    async def getLocalFiles(self, path: str = ".") -> FileListVO:
-        """
-        获取本地文件目录
-
-        Args:
-            path: 目录路径
-
-        Returns:
-            文件列表信息
-        """
-        localFileListVO: FileListVO = await self.getFileListVO(self.LOCAL_FILES_DIR, path)
-        return localFileListVO
-
-    @handle_service_exception
-    async def getOutputFiles(self, path: str = ".") -> FileListVO:
-        """
-        获取输出文件目录
-
-        Args:
-            path: 目录路径
-
-        Returns:
-            文件列表信息
-        """
-        outputFileListVO: FileListVO = await self.getFileListVO(self.OUTPUT_FILES_DIR, path)
-        return outputFileListVO
-
     async def getFileListVO(self, files_dir: pathlib.Path, path: str) -> FileListVO:
         """
         获取文件列表信息
@@ -272,14 +161,6 @@ class FileService:
         Returns:
             文件列表信息
         """
-
-        if files_dir == self.UPLOAD_FILES_DIR:
-            prefix = "upload"
-        elif files_dir == self.OUTPUT_FILES_DIR:
-            prefix = "output"
-        else:
-            prefix = "local"
-
         try:
             target_path = self._get_safe_path(files_dir, path)
 
@@ -289,7 +170,7 @@ class FileService:
                     stat = item.stat()
                     is_directory = item.is_dir()
 
-                    file_id = f"{prefix}_{abs(hash(str(item)))}"
+                    file_id = f"{abs(hash(str(item)))}"
                     file_type = "directory" if is_directory else self._get_content_type(item.suffix)
                     relative_path = str(item.relative_to(files_dir)).replace('\\', '/')
 
@@ -331,15 +212,6 @@ class FileService:
 
     # ==================== 删除文件 ====================
 
-    async def deleteUploadFile(self, file_path: str) -> None:
-        """
-        删除文件
-
-        Args:
-            file_path: 文件路径
-        """
-        await self.deleteFile(self.UPLOAD_FILES_DIR, file_path)
-
     @handle_service_exception
     async def deleteUploadFileById(self, file_id: str) -> None:
         """
@@ -348,14 +220,16 @@ class FileService:
         Args:
             file_id: 文件ID
         """
-        file_path = self._get_file_path_by_id(file_id, self.UPLOAD_FILES_DIR)
+        # 将DATASET_PATH转换为pathlib.Path对象
+        dataset_root = pathlib.Path(DATASET_PATH)
+        file_path = self._get_file_path_by_id(file_id, dataset_root)
         if file_path is None:
             raise NotFoundError(
                 resource_type="file",
                 resource_id=file_id,
                 detail="文件不存在"
             )
-        await self.deleteFile(self.UPLOAD_FILES_DIR, file_path)
+        await self.deleteFile(dataset_root, file_path)
 
     @handle_service_exception
     async def batchDeleteUploadFilesById(self, file_ids: List[str]) -> Dict[str, Any]:
@@ -390,26 +264,6 @@ class FileService:
             "failedCount": failed_count,
             "failedFiles": failed_files
         }
-
-    @handle_service_exception
-    async def deleteLocalFile(self, file_path: str) -> None:
-        """
-        删除本地文件
-
-        Args:
-            file_path: 文件路径
-        """
-        await self.deleteFile(self.LOCAL_FILES_DIR, file_path)
-
-    @handle_service_exception
-    async def deleteOutputFile(self, file_path: str) -> None:
-        """
-        删除输出文件
-
-        Args:
-            file_path: 文件路径
-        """
-        await self.deleteFile(self.OUTPUT_FILES_DIR, file_path)
 
     async def deleteFile(self, files_dir: pathlib.Path, file_path: str) -> bool:
         """
@@ -462,7 +316,9 @@ class FileService:
                 context={"folderName": folder_name, "invalidChars": invalid_chars}
             )
 
-        target_path = self._get_safe_path(self.UPLOAD_FILES_DIR, current_path)
+        # 将DATASET_PATH转换为pathlib.Path对象
+        dataset_root = pathlib.Path(DATASET_PATH)
+        target_path = self._get_safe_path(dataset_root, current_path)
         new_folder_path = target_path / folder_name
 
         if new_folder_path.exists():
@@ -476,16 +332,8 @@ class FileService:
 
     # ==================== 🛠️工具方法 ====================
 
-    def _get_prefix_by_dir(self, files_dir: pathlib.Path) -> str:
-        """根据目录获取前缀"""
-        if files_dir == self.UPLOAD_FILES_DIR:
-            return "upload"
-        elif files_dir == self.OUTPUT_FILES_DIR:
-            return "output"
-        else:
-            return "local"
-
-    def _get_file_path_by_id(self, file_id: str, files_dir: pathlib.Path) -> Optional[str]:
+    @staticmethod
+    def _get_file_path_by_id(file_id: str, files_dir: pathlib.Path) -> Optional[str]:
         """
         根据文件ID查找文件路径
         
@@ -500,8 +348,7 @@ class FileService:
             # 遍历目录查找匹配的文件和目录
             for item in files_dir.rglob('*'):
                 # 生成ID并比较（包括文件和目录）
-                prefix = self._get_prefix_by_dir(files_dir)
-                generated_id = f"{prefix}_{abs(hash(str(item)))}"
+                generated_id = f"{abs(hash(str(item)))}"
                 if generated_id == file_id:
                     return str(item.relative_to(files_dir)).replace('\\', '/')
             return None
@@ -509,7 +356,8 @@ class FileService:
             logger.error(f"查找文件路径失败: {e}")
             return None
 
-    def _get_content_type(self, ext: str) -> str:
+    @staticmethod
+    def _get_content_type(ext: str) -> str:
         """根据文件扩展名获取内容类型"""
         content_types = {
             '.jpg': 'image/jpeg',
@@ -528,7 +376,8 @@ class FileService:
         }
         return content_types.get(ext.lower(), 'application/octet-stream')
 
-    def _get_safe_path(self, root_dir: pathlib.Path, path: str) -> pathlib.Path:
+    @staticmethod
+    def _get_safe_path(root_dir: pathlib.Path, path: str) -> pathlib.Path:
         """获取安全的路径，防止目录遍历攻击"""
         if path == ".":
             return root_dir
@@ -556,7 +405,8 @@ class FileService:
 
         return target_path
 
-    def _get_relative_path(self, target_path: pathlib.Path, root_dir: pathlib.Path) -> str:
+    @staticmethod
+    def _get_relative_path(target_path: pathlib.Path, root_dir: pathlib.Path) -> str:
         """获取相对路径"""
         try:
             current_path = str(target_path.relative_to(root_dir))
@@ -564,7 +414,8 @@ class FileService:
         except ValueError:
             return "."
 
-    def _get_parent_path(self, target_path: pathlib.Path, root_dir: pathlib.Path) -> Optional[str]:
+    @staticmethod
+    def _get_parent_path(target_path: pathlib.Path, root_dir: pathlib.Path) -> Optional[str]:
         """获取父目录路径"""
         try:
             parent_path = str(target_path.parent.relative_to(root_dir))

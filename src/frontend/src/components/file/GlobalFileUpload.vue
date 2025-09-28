@@ -5,8 +5,10 @@
     width="600px"
     :footer="null"
     @cancel="handleClose"
+    @after-close="handleAfterClose"
   >
     <FileUpload
+      ref="fileUploadRef"
       @upload-success="handleUploadSuccess"
       @upload-error="handleUploadError"
     />
@@ -20,6 +22,7 @@ import FileUpload from './FileUpload.vue'
 
 // 响应式数据
 const visible = ref(false)
+const fileUploadRef = ref()
 
 // 监听全局上传事件
 const handleOpenUpload = () => {
@@ -31,9 +34,17 @@ const handleClose = () => {
   visible.value = false
 }
 
+// 处理模态框完全关闭后
+const handleAfterClose = () => {
+  // 重置FileUpload组件的状态
+  if (fileUploadRef.value) {
+    fileUploadRef.value.resetUploadState()
+  }
+}
+
 // 文件上传成功回调
 const handleUploadSuccess = (file: any) => {
-  message.success(`文件 ${file.originalName} 上传成功`)
+  message.success(`文件 ${file.name} 上传成功`)
   // 触发文件列表刷新事件
   window.dispatchEvent(new CustomEvent('refresh-file-list'))
   handleClose()
@@ -46,12 +57,12 @@ const handleUploadError = (error: string) => {
 
 // 组件挂载时添加事件监听
 onMounted(() => {
-  window.addEventListener('open-file-upload', handleOpenUpload)
+  window.addEventListener('open-dataset-file-upload', handleOpenUpload)
 })
 
 // 组件卸载时移除事件监听
 onUnmounted(() => {
-  window.removeEventListener('open-file-upload', handleOpenUpload)
+  window.removeEventListener('open-dataset-file-upload', handleOpenUpload)
 })
 </script>
 
