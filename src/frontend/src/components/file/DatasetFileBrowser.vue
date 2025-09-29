@@ -1,0 +1,590 @@
+<template>
+  <div class="dataset-file-browser">
+    <!-- 路径导航 -->
+    <div class="path-navigation">
+      <a-breadcrumb>
+        <a-breadcrumb-item>
+          <a @click="navigateToPath('.')">
+            <HomeOutlined style="margin-right: 4px;" />
+            数据集目录
+          </a>
+        </a-breadcrumb-item>
+        <a-breadcrumb-item v-for="(part, index) in pathParts" :key="index">
+          <a @click="navigateToPath(getPathUpTo(index))">{{ part }}</a>
+        </a-breadcrumb-item>
+      </a-breadcrumb>
+    </div>
+
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <a-button @click="goUp" :disabled="!canGoUp">
+          <template #icon>
+            <ArrowUpOutlined />
+          </template>
+          上级目录
+        </a-button>
+        <a-button @click="refresh" :loading="fileStore.loading">
+          <template #icon>
+            <ReloadOutlined />
+          </template>
+          刷新
+        </a-button>
+        <a-button type="primary" @click="handleUploadClick">
+          <template #icon>
+            <UploadOutlined />
+          </template>
+          上传到当前目录
+        </a-button>
+        <a-button @click="showCreateFolderModal">
+          <template #icon>
+            <FolderAddOutlined />
+          </template>
+          创建文件夹
+        </a-button>
+      </div>
+      <div class="toolbar-right">
+        <span class="file-count">共 {{ fileStore.fileList.length }} 个文件</span>
+        <a-button
+            v-if="fileStore.selectedCount > 0"
+            danger
+            @click="handleBatchDelete"
+        >
+          <template #icon>
+            <DeleteOutlined />
+          </template>
+          批量删除 ({{ fileStore.selectedCount }})
+        </a-button>
+      </div>
+    </div>
+
+    <div class="file-list" @drop="handleDrop" @dragover="handleDragOver" @dragenter="handleDragEnter"
+         @dragleave="handleDragLeave" :class="{ 'drag-over': isDragOver }">
+      <a-table
+          :data-source="dataSource"
+          :columns="columns"
+          :pagination="false"
+          :loading="fileStore.loading"
+          :row-selection="{ selectedRowKeys: fileStore.selectedFileIds, onChange: onSelectChange }"
+          size="middle"
+          class="file-table"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.dataIndex === 'name'">
+            <div class="file-name-cell" :class="{ 'clickable': record.isDirectory }" @click="handleItemClick(record)">
+              <component
+                  :is="getFileIcon(record.type)"
+                  class="file-icon" :class="{ 'directory-icon': record.isDirectory }" />
+              <span class="file-name" :title="record.name">{{ record.name }}</span>
+            </div>
+          </template>
+          <template v-else-if="column.dataIndex === 'type'">
+            <a-tag :color="getTypeColor(record.type)">
+              {{ getTypeName(record.type) }}
+            </a-tag>
+          </template>
+          <template v-else-if="column.dataIndex === 'size'">
+            <span v-if="record.isDirectory">-</span>
+            <span v-else>{{ formatFileSize(record.size) }}</span>
+          </template>
+          <template v-else-if="column.dataIndex === 'modifiedTime'">
+            {{ new Date(record.modifiedTime).toLocaleString('zh-CN') }}
+          </template>
+          <template v-else-if="column.dataIndex === 'actions'">
+            <div class="actions">
+              <a-button 
+                v-if="!record.isDirectory"
+                type="text" 
+                size="small" 
+                title="预览"
+                @click="previewFileHandler(record)"
+              >
+                <EyeOutlined />
+              </a-button>
+              <a-button 
+                type="text" 
+                size="small" 
+                title="删除"
+                danger
+                @click="deleteFileHandler(record)"
+              >
+                <DeleteOutlined />
+              </a-button>
+            </div>
+          </template>
+        </template>
+      </a-table>
+    </div>
+
+    <a-modal v-model:open="previewVisible" title="文件预览" width="800px" :footer="null">
+      <div v-if="previewFile" class="file-preview">
+        <div v-if="isImageFile(previewFile)" class="image-preview">
+          <img 
+            :src="getImageUrl(previewFile)" 
+            :alt="previewFile.name"
+            style="max-width: 100%; max-height: 500px; object-fit: contain;"
+          />
+        </div>
+        <div v-else class="file-info">
+          <FileOutlined style="font-size: 48px; color: #1890ff; margin-bottom: 16px;" />
+          <h3>{{ previewFile.name }}</h3>
+          <p>文件大小: {{ formatFileSize(previewFile.size) }}</p>
+          <p>文件类型: {{ previewFile.type }}</p>
+          <p>修改时间: {{ new Date(previewFile.modifiedTime).toLocaleString('zh-CN') }}</p>
+        </div>
+      </div>
+    </a-modal>
+
+    <!-- 创建文件夹模态框 -->
+    <a-modal
+        v-model:open="createFolderVisible"
+        title="创建文件夹"
+        @ok="handleCreateFolder"
+        :confirm-loading="createFolderLoading"
+    >
+      <a-form :model="createFolderForm" :rules="createFolderRules" ref="createFolderFormRef">
+        <a-form-item label="文件夹名称" name="folderName">
+          <a-input v-model:value="createFolderForm.folderName" placeholder="请输入文件夹名称" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { message, Modal } from 'ant-design-vue'
+import {
+  ArrowUpOutlined,
+  DeleteOutlined,
+  EyeOutlined,
+  FileExcelOutlined,
+  FileOutlined,
+  FolderAddOutlined,
+  FolderOutlined,
+  HomeOutlined,
+  PictureOutlined,
+  ReloadOutlined,
+  UploadOutlined,
+} from '@ant-design/icons-vue'
+import { formatFileSize, uploadFile, createFolder } from '@/apis/files'
+import { useFileStore } from '@/store/files'
+
+const fileStore = useFileStore()
+
+const previewVisible = ref(false)
+const previewFile = ref<any>(null)
+const isDragOver = ref(false)
+const currentPath = ref('.')
+const parentPath = ref<string | null>(null)
+
+// 创建文件夹相关状态
+const createFolderVisible = ref(false)
+const createFolderLoading = ref(false)
+const createFolderForm = ref({
+  folderName: ''
+})
+const createFolderFormRef = ref()
+const createFolderRules = {
+  folderName: [
+    { required: true, message: '请输入文件夹名称', trigger: 'blur' },
+    { min: 1, max: 50, message: '文件夹名称长度应在1-50个字符之间', trigger: 'blur' },
+    { pattern: /^[^<>:"/\\|?*]+$/, message: '文件夹名称不能包含特殊字符', trigger: 'blur' }
+  ]
+}
+
+// 列定义
+const columns = [
+  {
+    title: '名称',
+    dataIndex: 'name',
+    key: 'name',
+    sorter: (a: any, b: any) => a.name.localeCompare(b.name),
+  },
+  {
+    title: '类型',
+    dataIndex: 'type',
+    key: 'type',
+    width: 120,
+  },
+  {
+    title: '大小',
+    dataIndex: 'size',
+    key: 'size',
+    width: 120,
+    sorter: (a: any, b: any) => a.size - b.size,
+  },
+  {
+    title: '修改时间',
+    dataIndex: 'modifiedTime',
+    key: 'modifiedTime',
+    width: 180,
+    sorter: (a: any, b: any) => new Date(a.modifiedTime).getTime() - new Date(b.modifiedTime).getTime(),
+  },
+  {title: '操作', dataIndex: 'actions', key: 'actions', width: 150},
+]
+
+// 数据源
+const dataSource = computed(() => fileStore.filteredFiles.map(f => ({
+  key: f.id,
+  id: f.id,
+  name: f.name,
+  size: f.size,
+  type: f.type,
+  modifiedTime: f.modifiedTime,
+  isDirectory: f.isDirectory,
+  path: f.path,
+})))
+
+// 路径导航相关
+const pathParts = computed(() => {
+  if (!currentPath.value || currentPath.value === '.') return []
+  return currentPath.value.split('/').filter(part => part)
+})
+
+const canGoUp = computed(() => {
+  return parentPath.value !== null && parentPath.value !== undefined
+})
+
+const getPathUpTo = (index: number) => {
+  const parts = pathParts.value.slice(0, index + 1)
+  return parts.length > 0 ? parts.join('/') : '.'
+}
+
+const navigateToPath = (path: string) => {
+  fetchFiles(path)
+}
+
+const goUp = () => {
+  if (!canGoUp.value || !parentPath.value) return
+  fetchFiles(parentPath.value)
+}
+
+const onSelectChange = (keys: string[]) => {
+  fileStore.setSelectedFileIds(keys)
+}
+
+const fetchFiles = async (path: string = '.') => {
+  try {
+    await fileStore.fetchFileList(path)
+    // 更新路径信息
+    if (fileStore.currentPath !== undefined) {
+      currentPath.value = fileStore.currentPath
+    }
+    if (fileStore.parentPath !== undefined) {
+      parentPath.value = fileStore.parentPath
+    }
+  } catch (e) {
+    message.error('获取文件列表失败')
+  }
+}
+
+const refresh = async () => {
+  await fetchFiles(currentPath.value)
+}
+
+// 显示创建文件夹模态框
+const showCreateFolderModal = () => {
+  createFolderForm.value.folderName = ''
+  createFolderVisible.value = true
+}
+
+// 创建文件夹
+const handleCreateFolder = async () => {
+  try {
+    await createFolderFormRef.value?.validate()
+    createFolderLoading.value = true
+    
+    const result = await createFolder(createFolderForm.value.folderName, currentPath.value)
+    if (result.code === 200) {
+      message.success('文件夹创建成功')
+      createFolderVisible.value = false
+      await refresh()
+    } else {
+      message.error(result.message || '创建文件夹失败')
+    }
+  } catch (error) {
+    console.error('创建文件夹失败:', error)
+    message.error('创建文件夹失败')
+  } finally {
+    createFolderLoading.value = false
+  }
+}
+
+// 处理文件/目录点击
+const handleItemClick = (item: any) => {
+  if (item.isDirectory) {
+    // 进入目录
+    const newPath = currentPath.value === '.' ? item.name : `${currentPath.value}/${item.name}`
+    fetchFiles(newPath)
+  } else {
+    // 预览文件
+    previewFileHandler(item)
+  }
+}
+
+// 获取文件图标
+const getFileIcon = (fileType: string) => {
+  if (fileType === 'directory') {
+    return FolderOutlined
+  } else if (fileType.startsWith('image/')) {
+    return PictureOutlined
+  } else if (fileType.includes('csv') || fileType.includes('excel')) {
+    return FileExcelOutlined
+  } else if (fileType.includes('dicom') || fileType.includes('application/dicom')) {
+    return PictureOutlined // 使用图片图标表示DICOM医学图像
+  } else {
+    return FileOutlined
+  }
+}
+
+// 获取类型颜色
+const getTypeColor = (fileType: string) => {
+  if (fileType === 'directory') return 'blue'
+  if (fileType.startsWith('image/')) return 'blue'
+  if (fileType.includes('csv') || fileType.includes('excel')) return 'green'
+  if (fileType.includes('dicom') || fileType.includes('application/dicom')) return 'purple'
+  if (fileType.includes('text')) return 'orange'
+  return 'default'
+}
+
+// 获取类型名称
+const getTypeName = (fileType: string) => {
+  if (fileType === 'directory') return '目录'
+  if (fileType.startsWith('image/')) return '图片'
+  if (fileType.includes('csv')) return 'CSV'
+  if (fileType.includes('excel')) return 'Excel'
+  if (fileType.includes('dicom') || fileType.includes('application/dicom')) return 'DICOM'
+  if (fileType.includes('text')) return '文本'
+  return '其他'
+}
+
+const deleteFileHandler = (file: any) => {
+  Modal.confirm({
+    title: '确认删除',
+    content: `确定要删除${file.isDirectory ? '目录' : '文件'} "${file.name}" 吗？`,
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: async () => {
+      const ok = await fileStore.removeFile(file.id)
+      if (ok) message.success(`${file.isDirectory ? '目录' : '文件'}删除成功`)
+      else message.error(fileStore.error || '删除失败')
+    }
+  })
+}
+
+const handleBatchDelete = () => {
+  if (fileStore.selectedCount === 0) {
+    message.warning('请选择要删除的文件')
+    return
+  }
+  Modal.confirm({
+    title: '确认批量删除',
+    content: `确定要删除选中的 ${fileStore.selectedCount} 个文件吗？`,
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: async () => {
+      const result = await fileStore.removeFiles(fileStore.selectedFileIds)
+      if (result.success) message.success(`成功删除 ${result.deletedCount} 个文件`)
+      else message.error(fileStore.error || '批量删除失败')
+    }
+  })
+}
+
+const previewFileHandler = (file: any) => {
+  previewFile.value = file
+  previewVisible.value = true
+}
+
+const isImageFile = (file: any) => {
+  return file ? file.type.startsWith('image/') : false
+}
+
+const getImageUrl = (file: any) => {
+  const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
+  return `${baseURL}/files/serve/${file.id}`
+}
+
+const handleUploadClick = () => {
+  // 触发全局文件上传事件，使用FileUpload组件
+  window.dispatchEvent(new CustomEvent('open-dataset-file-upload'))
+}
+
+const uploadSelectedFiles = async (files: File[]) => {
+  try {
+    for (const file of files) {
+      const result = await uploadFile(file, currentPath.value)
+      if (result.code === 200) {
+        await refresh()
+      } else {
+        throw new Error(result.message || '上传失败')
+      }
+    }
+    message.success(`成功上传 ${files.length} 个文件`)
+  } catch (error) {
+    message.error(`上传失败: ${error instanceof Error ? error.message : '未知错误'}`)
+  }
+}
+
+const handleDragOver = (e: DragEvent) => {
+  e.preventDefault();
+  e.stopPropagation()
+}
+const handleDragEnter = (e: DragEvent) => {
+  e.preventDefault();
+  e.stopPropagation();
+  isDragOver.value = true
+}
+const handleDragLeave = (e: DragEvent) => {
+  e.preventDefault();
+  e.stopPropagation();
+  isDragOver.value = false
+}
+const handleDrop = async (e: DragEvent) => {
+  e.preventDefault();
+  e.stopPropagation();
+  isDragOver.value = false
+  const files = Array.from(e.dataTransfer?.files || [])
+  if (files.length > 0) await uploadSelectedFiles(files)
+}
+
+const handleRefreshEvent = () => {
+  refresh()
+}
+
+onMounted(() => {
+  fetchFiles('.')
+  window.addEventListener('refresh-file-list', handleRefreshEvent)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('refresh-file-list', handleRefreshEvent)
+})
+</script>
+
+<style scoped>
+.dataset-file-browser {
+  padding: 16px;
+}
+
+.path-navigation {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #f5f5f5;
+  border-radius: 6px;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #fafafa;
+  border-radius: 6px;
+}
+
+.toolbar-left {
+  display: flex;
+  gap: 8px;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.file-count {
+  font-size: 14px;
+  color: #666;
+}
+
+.file-list {
+  background: white;
+  border-radius: 6px;
+  transition: all 0.3s ease;
+}
+
+.file-list.drag-over {
+  background: #f0f9ff;
+  border: 2px dashed #1890ff;
+  box-shadow: 0 0 10px rgba(24, 144, 255, 0.3);
+}
+
+.file-table {
+  border: 1px solid #f0f0f0;
+}
+
+.file-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-icon {
+  font-size: 16px;
+  color: #1890ff;
+}
+
+.file-name {
+  font-weight: 500;
+  color: #333;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.file-preview {
+  text-align: center;
+  padding: 20px;
+}
+
+.image-preview {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 300px;
+}
+
+.file-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-info h3 {
+  margin: 0;
+  color: #333;
+}
+
+.file-info p {
+  margin: 0;
+  color: #666;
+  font-size: 14px;
+}
+
+.file-name-cell.clickable {
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.file-name-cell.clickable:hover {
+  background-color: #f5f5f5;
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin: -4px -8px;
+}
+
+.directory-icon {
+  color: #faad14;
+}
+</style>
