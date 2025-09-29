@@ -300,3 +300,75 @@ export function isSupportedFileType(file: File): boolean {
         file.name.toLowerCase().endsWith('.dcm') ||
         !!file.name.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp|dcm)$/i)
 }
+
+/**
+ * 上传文件到沙盒目录
+ * @param file 要上传的文件
+ * @param targetDir 目标目录（dicom 或 input）
+ * @param onProgress 上传进度回调函数
+ * @returns Promise<BaseResponse<FileInfo>> 返回上传结果
+ * @throws {Error} 当上传失败时抛出错误
+ */
+export async function uploadFileToSandbox(
+    file: File,
+    targetDir: string = 'dicom',
+    onProgress?: (progress: number) => void
+): Promise<BaseResponse<FileInfo>> {
+    try {
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('target_dir', targetDir)
+
+        // 使用XMLHttpRequest来支持上传进度
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest()
+
+            // 监听上传进度
+            xhr.upload.addEventListener('progress', (event) => {
+                if (event.lengthComputable && onProgress) {
+                    const progress = Math.round((event.loaded / event.total) * 100)
+                    onProgress(progress)
+                }
+            })
+
+            // 监听请求完成
+            xhr.addEventListener('load', () => {
+                if (xhr.status === 200) {
+                    try {
+                        const response = JSON.parse(xhr.responseText) as BaseResponse<FileInfo>
+                        resolve(response)
+                    } catch (error) {
+                        reject(new Error('解析响应失败'))
+                    }
+                } else {
+                    reject(new Error(`上传失败: ${xhr.status}`))
+                }
+            })
+
+            // 监听请求错误
+            xhr.addEventListener('error', () => {
+                reject(new Error('网络错误'))
+            })
+
+            // 监听请求超时
+            xhr.addEventListener('timeout', () => {
+                reject(new Error('上传超时'))
+            })
+
+            // 获取API基础URL
+            const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
+
+            // 获取token
+            const token = localStorage.getItem('mediagent_token') || ''
+
+            // 发送请求
+            xhr.open('POST', `${baseURL}/files/sandbox/upload`)
+            xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+            xhr.timeout = 60000 // 60秒超时
+            xhr.send(formData)
+        })
+    } catch (error) {
+        console.error('沙盒文件上传失败:', error)
+        throw new Error('沙盒文件上传失败，请稍后再试')
+    }
+}

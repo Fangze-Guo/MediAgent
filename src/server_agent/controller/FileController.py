@@ -65,3 +65,12 @@ class FileController(BaseController):
             """创建文件夹"""
             await self.fileService.createFolder(request.folderName, request.currentPath)
             return ResultUtils.success(None)
+
+        @self.router.post("/sandbox/upload")
+        async def uploadFileToSandbox(
+                file: UploadFile = File(...),
+                target_dir: str = Form(".")
+        ) -> BaseResponse[FileInfo]:
+            """上传文件到沙盒"""
+            fileInfo: FileInfo = await self.fileService.uploadFileToSandbox(file, target_dir)
+            return ResultUtils.success(fileInfo)

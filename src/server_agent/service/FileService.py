@@ -10,7 +10,7 @@ from typing import List, Optional, Dict, Any
 
 from fastapi import UploadFile
 
-from constants.CommonConstants import DATASET_PATH
+from constants.CommonConstants import DATASET_PATH, SANDBOX_PATH
 from src.server_agent.exceptions import ValidationError, NotFoundError, ServiceError, handle_service_exception
 from src.server_agent.model import FileInfo, FileListVO
 
@@ -56,6 +56,29 @@ class FileService:
         # 将DATASET_PATH转换为pathlib.Path对象
         dataset_root = pathlib.Path(DATASET_PATH)
         fileInfo: FileInfo = await self.uploadFile(dataset_root, file, target_dir)
+        return fileInfo
+
+    @handle_service_exception
+    async def uploadFileToSandbox(self, file: UploadFile, target_dir: str = ".") -> FileInfo:
+        """
+        上传文件到沙盒
+
+        Args:
+            file: 上传的文件
+            target_dir: 目标目录 (dicom 或 input)
+
+        Returns:
+            文件信息
+        """
+        # 确保沙盒根目录存在
+        sandbox_root = pathlib.Path(SANDBOX_PATH)
+        sandbox_root.mkdir(parents=True, exist_ok=True)
+        
+        # 确保目标子目录存在
+        target_path = sandbox_root / target_dir
+        target_path.mkdir(parents=True, exist_ok=True)
+        
+        fileInfo: FileInfo = await self.uploadFile(sandbox_root, file, target_dir)
         return fileInfo
 
     @handle_service_exception
@@ -121,7 +144,7 @@ class FileService:
 
         # 处理文件名冲突
         original_name = file.filename
-        file_path = files_dir / original_name
+        file_path = target_path / original_name
 
         # 如果文件已存在，添加时间戳避免冲突
         if file_path.exists():
@@ -139,12 +162,15 @@ class FileService:
             shutil.copyfileobj(file.file, buffer)
 
         # 创建文件信息
+        # 计算相对于根目录的路径用于前端显示
+        relative_path = str(file_path.relative_to(files_dir)).replace('\\', '/')
+        
         file_info: FileInfo = FileInfo(
             id=file_id,
             name=original_name,
             size=file.size,
             type=file.content_type,
-            path=str(file_path.resolve()),
+            path=relative_path,
             modifiedTime=datetime.now().isoformat(),
             isDirectory=False
         )

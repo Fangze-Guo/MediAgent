@@ -26,7 +26,7 @@
         <UploadOutlined class="upload-icon" />
         <div class="upload-text">
           <p class="upload-title">点击或拖拽文件到此处上传</p>
-          <p class="upload-hint">支持多文件上传：图片文件 (JPG, PNG, GIF, WebP)、CSV 文件和 DICOM 文件 (.dcm)</p>
+          <p class="upload-hint">{{ uploadHintText }}</p>
           <p class="upload-hint-small">可同时选择多个文件进行批量上传</p>
         </div>
       </div>
@@ -109,14 +109,27 @@
           已上传文件 ({{ uploadedFiles.length }})
         </h4>
         <div class="batch-actions">
-          <a-button 
-            type="primary" 
-            size="small"
-            @click="handleUseAllFiles"
-            :disabled="uploadedFiles.length === 0"
-          >
-            全部使用
-          </a-button>
+          <!-- 沙盒模式下不显示"使用文件"相关按钮 -->
+          <template v-if="uploadMode === 'sandbox'">
+            <a-button 
+              type="link" 
+              size="small"
+              @click="handleCloseAndRefresh"
+              :disabled="uploadedFiles.length === 0"
+            >
+              完成上传
+            </a-button>
+          </template>
+          <template v-else>
+            <a-button 
+              type="primary" 
+              size="small"
+              @click="handleUseAllFiles"
+              :disabled="uploadedFiles.length === 0"
+            >
+              全部使用
+            </a-button>
+          </template>
           <a-button 
             type="link" 
             size="small"
@@ -146,7 +159,9 @@
             </div>
           </div>
           <div class="file-actions">
+            <!-- 沙盒模式下不显示"使用"按钮 -->
             <a-button 
+              v-if="uploadMode !== 'sandbox'"
               type="link" 
               size="small"
               @click="handleUseFile(file)"
@@ -189,6 +204,7 @@ import { message } from 'ant-design-vue'
 import { UploadOutlined, FileOutlined } from '@ant-design/icons-vue'
 import { 
   uploadFile, 
+  uploadFileToSandbox,
   formatFileSize, 
   isSupportedFileType, 
   type FileInfo
@@ -202,12 +218,18 @@ interface Props {
   accept?: string
   /** 最大文件大小（MB） */
   maxSize?: number
+  /** 上传模式：dataset（数据集）或 sandbox（沙盒） */
+  uploadMode?: 'dataset' | 'sandbox'
+  /** 沙盒上传类型：dicom 或 nii，仅在 uploadMode='sandbox' 时有效 */
+  sandboxType?: 'dicom' | 'nii'
 }
 
 const props = withDefaults(defineProps<Props>(), {
   multiple: true,
   accept: 'image/*,.csv,.dcm,.DCM',
-  maxSize: 10
+  maxSize: 10,
+  uploadMode: 'dataset',
+  sandboxType: 'dicom'
 })
 
 // Emits
@@ -232,7 +254,21 @@ const uploadedFiles = ref<FileInfo[]>([])
 const pendingFiles = ref<File[]>([])
 
 // 计算属性
-const acceptedTypes = computed(() => props.accept)
+const acceptedTypes = computed(() => {
+  if (props.uploadMode === 'sandbox') {
+    return props.sandboxType === 'dicom' ? '.dcm,.DCM' : '.nii,.nii.gz'
+  }
+  return props.accept
+})
+
+const uploadHintText = computed(() => {
+  if (props.uploadMode === 'sandbox') {
+    return props.sandboxType === 'dicom' 
+      ? '沙盒模式：仅支持 .dcm .DCM 文件（DICOM格式）'
+      : '沙盒模式：仅支持 .nii .nii.gz 文件（NII格式）'
+  }
+  return '支持多文件上传：图片文件 (JPG, PNG, GIF, WebP)、CSV 文件和 DICOM 文件 (.dcm)'
+})
 
 /**
  * 触发文件选择
@@ -350,9 +386,20 @@ const uploadSingleFile = async (file: File) => {
     uploadProgress.value = 0
     uploadError.value = ''
 
-    const response = await uploadFile(file, '.', (progress) => {
-      uploadProgress.value = progress
-    })
+    let response
+    
+    if (props.uploadMode === 'sandbox') {
+      // 沙盒上传
+      const targetDir = props.sandboxType === 'dicom' ? 'dicom' : 'input'
+      response = await uploadFileToSandbox(file, targetDir, (progress) => {
+        uploadProgress.value = progress
+      })
+    } else {
+      // 数据集上传（默认行为）
+      response = await uploadFile(file, '.', (progress) => {
+        uploadProgress.value = progress
+      })
+    }
 
     if (response.code === 200) {
       uploadedFiles.value.push(response.data)
@@ -418,6 +465,13 @@ const handleRemoveAllFiles = () => {
   const fileCount = uploadedFiles.value.length
   uploadedFiles.value = []
   message.success(`已删除 ${fileCount} 个文件`)
+}
+
+/**
+ * 沙盒模式：完成上传并关闭模态框
+ */
+const handleCloseAndRefresh = () => {
+  emit('batchUseComplete')
 }
 
 /**

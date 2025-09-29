@@ -57,11 +57,11 @@ const routes: RouteRecordRaw[] = [
         }
     },
     {
-        path: '/medical-assistant',
-        name: 'MedicalAssistant',
-        component: () => import('@/views/MedicalAssistantView.vue'),
+        path: '/sandbox-manage',
+        name: 'SandboxManage',
+        component: () => import('@/views/SandboxManageView.vue'),
         meta: {
-            title: 'MediAgent - 医学图像处理助手',
+            title: 'MediAgent - 沙盒文件管理',
             requiresAuth: true
         }
     },
