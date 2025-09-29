@@ -82,7 +82,7 @@ import { useAuthStore } from '@/store/auth'
 import { useRoute, useRouter } from 'vue-router'
 import { computed, h, ref } from 'vue'
 import { MenuProps, message, Modal } from 'ant-design-vue'
-import { CommentOutlined, FolderOutlined, UploadOutlined, LogoutOutlined, MedicineBoxOutlined, RobotOutlined, BarChartOutlined, FileTextOutlined } from '@ant-design/icons-vue'
+import { CommentOutlined, FolderOutlined, LogoutOutlined, RobotOutlined, BarChartOutlined, FileTextOutlined, ExperimentOutlined } from '@ant-design/icons-vue'
 
 // 路由相关
 const router = useRouter()
@@ -105,27 +105,18 @@ const openKeys = ref(['sub1']);
 const items = ref([
   {
     key: '1',
-    icon: h(CommentOutlined),
+    icon: () => h(CommentOutlined),
     label: '新建对话',
-    title: '新建对话',
-  },
-  {
-    key: '2',
-    icon: h(UploadOutlined),
-    label: '上传文件',
-    title: '上传文件',
   },
   {
     key: '3',
-    icon: h(FolderOutlined),
+    icon: () => h(FolderOutlined),
     label: '文件管理',
-    title: '文件管理',
   },
   {
-    key: '4',
-    icon: h(MedicineBoxOutlined),
-    label: '医学图像助手',
-    title: '医学图像助手',
+    key: '5',
+    icon: () => h(ExperimentOutlined),
+    label: '沙盒管理',
   },
 ]);
 
@@ -136,15 +127,12 @@ const handleMenuClick: MenuProps['onClick'] = ({key}) => {
   if (key === '1') {
     // 跳转到主页（新建对话）
     router.push('/')
-  } else if (key === '2') {
-    // 触发文件上传弹窗
-    window.dispatchEvent(new CustomEvent('open-file-upload'))
   } else if (key === '3') {
     // 跳转到文件管理页面
     router.push('/files')
-  } else if (key === '4') {
-    // 跳转到医学图像助手页面
-    router.push('/medical-assistant')
+  } else if (key === '5') {
+    // 跳转到沙盒文件管理页面
+    router.push('/sandbox-manage')
   }
 };
 
@@ -232,14 +220,8 @@ const getConversationIcon = (conversation: any) => {
     return conversation.toolInfo.toolIcon
   }
   
-  // 根据会话ID前缀判断助手类型
-  if (conversation.id?.startsWith('medical-')) {
-    return MedicineBoxOutlined
-  }
   if (conversation.assistantType) {
     switch (conversation.assistantType) {
-      case 'medical':
-        return MedicineBoxOutlined
       case 'data':
         return BarChartOutlined
       case 'document':
@@ -261,14 +243,8 @@ const getConversationAvatarClass = (conversation: any) => {
     return `tool-avatar tool-${conversation.toolInfo.toolId}`
   }
   
-  // 根据会话ID前缀判断助手类型
-  if (conversation.id?.startsWith('medical-')) {
-    return 'medical-avatar'
-  }
   if (conversation.assistantType) {
     switch (conversation.assistantType) {
-      case 'medical':
-        return 'medical-avatar'
       case 'data':
         return 'data-avatar'
       case 'document':
@@ -455,10 +431,6 @@ const getConversationAvatarStyle = (conversation: any) => {
   position: relative;
 }
 
-/* 不同助手类型的头像样式 - 与医学助手页面保持一致 */
-.medical-avatar {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
 
 .data-avatar {
   background: linear-gradient(135deg, #fa8c16, #ffa940);

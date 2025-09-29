@@ -4,6 +4,8 @@
     <LoginView v-if="isLoginPage" />
     <!-- 其他页面使用主布局 -->
     <Layout v-else />
+    
+    <!-- 全局组件 -->
     <GlobalFileUpload />
   </div>
 </template>
