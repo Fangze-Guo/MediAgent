@@ -134,7 +134,7 @@ const items = ref([
  */
 const handleMenuClick: MenuProps['onClick'] = ({key}) => {
   if (key === '1') {
-    // 跳转到主页
+    // 跳转到主页（新建对话）
     router.push('/')
   } else if (key === '2') {
     // 触发文件上传弹窗
@@ -154,7 +154,7 @@ const handleMenuClick: MenuProps['onClick'] = ({key}) => {
  */
 const openConversation = (id: string) => {
   if (id && id !== currentId.value) {
-    router.push(`/chat/${id}`)
+    router.push(`/conversation/${id}`)
   }
 }
 
@@ -177,8 +177,8 @@ const handleDeleteConversation = (id: string) => {
         const deletedTitle = conversation.title || '未命名会话'
         console.log('准备删除会话:', id, deletedTitle)
 
-        // 从本地store删除会话（纯本地实现，不调用后端API）
-        conversationsStore.deleteConversation(id)
+        // 调用后端API删除会话（同时从本地store删除）
+        await conversationsStore.deleteConversation(id)
 
         console.log('会话删除完成，当前会话列表:', conversationsStore.conversations)
         message.success(`会话"${deletedTitle}"已删除`)
@@ -189,7 +189,7 @@ const handleDeleteConversation = (id: string) => {
           if (conversationsStore.conversations.length > 0) {
             // 如果有其他会话，跳转到第一个会话
             const firstConversation = conversationsStore.conversations[0]
-            await router.push(`/chat/${firstConversation.id}`)
+            await router.push(`/conversation/${firstConversation.id}`)
           } else {
             // 如果没有其他会话了，跳转到首页让用户选择
             await router.push('/')

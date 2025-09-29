@@ -188,3 +188,93 @@ class ConversationService:
                     service_name="conversation_service",
                     context={"conversation_uid": conversation_uid, "target": target, "error": str(e)}
                 )
+
+    @handle_service_exception
+    async def get_user_conversation_uids(self, user_id: str) -> List[str]:
+        """
+        获取用户的所有会话ID列表
+        
+        Args:
+            user_id: 用户ID
+            
+        Returns:
+            List[str]: 会话ID列表
+        """
+        # 验证用户是否存在
+        if not await self._user_exists(user_id):
+            raise NotFoundError(
+                resource_type="user",
+                resource_id=user_id,
+                detail="用户不存在"
+            )
+
+        try:
+            async with aiosqlite.connect(self.database_path) as db:
+                async with db.execute(
+                    "SELECT conversation_uid FROM conversations WHERE owner_uid=? ORDER BY conversation_uid",
+                    (user_id,)
+                ) as cur:
+                    rows = await cur.fetchall()
+                    conversation_uids = [row[0] for row in rows]
+                    return conversation_uids
+        except Exception as e:
+            raise ServiceError(
+                detail="获取用户会话列表失败",
+                service_name="conversation_service",
+                context={"user_id": user_id, "error": str(e)}
+            )
+
+    @handle_service_exception
+    async def delete_conversation(self, conversation_uid: str) -> bool:
+        """
+        删除会话：
+          1) 验证会话是否存在
+          2) 删除会话文件目录
+          3) 删除数据库记录
+        
+        Args:
+            conversation_uid: 会话ID
+            
+        Returns:
+            bool: 删除成功返回True
+        """
+        # 验证会话是否存在
+        if not await self._conversation_uid_exists(conversation_uid):
+            raise NotFoundError(
+                resource_type="conversation",
+                resource_id=conversation_uid,
+                detail="该会话不存在"
+            )
+
+        try:
+            # 1) 删除文件目录
+            conv_dir = self.conversation_root / conversation_uid
+            if conv_dir.exists():
+                import shutil
+                await asyncio.to_thread(shutil.rmtree, conv_dir)
+                logger.info(f"已删除会话文件目录: {conv_dir}")
+
+            # 2) 删除数据库记录
+            async with aiosqlite.connect(self.database_path) as db:
+                cursor = await db.execute(
+                    "DELETE FROM conversations WHERE conversation_uid=?",
+                    (conversation_uid,)
+                )
+                await db.commit()
+                
+                if cursor.rowcount == 0:
+                    raise NotFoundError(
+                        resource_type="conversation",
+                        resource_id=conversation_uid,
+                        detail="会话记录不存在"
+                    )
+
+            logger.info(f"会话删除成功: {conversation_uid}")
+            return True
+
+        except Exception as e:
+            raise ServiceError(
+                detail="删除会话失败",
+                service_name="conversation_service",
+                context={"conversation_uid": conversation_uid, "error": str(e)}
+            )

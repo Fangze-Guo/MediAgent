@@ -44,3 +44,19 @@ class ConversationController(BaseController):
             """
             messages = await self.conversationService.get_messages(conversation_id, target)
             return ResultUtils.success(messages)
+
+        @self.router.get("/user/{user_id}")
+        async def getUserConversations(user_id: str) -> BaseResponse[List[str]]:
+            """
+            根据用户ID获取其所有会话ID列表
+            """
+            conversation_uids = await self.conversationService.get_user_conversation_uids(user_id)
+            return ResultUtils.success(conversation_uids)
+
+        @self.router.delete("/{conversation_id}")
+        async def deleteConversation(conversation_id: str) -> BaseResponse[bool]:
+            """
+            根据会话ID删除会话
+            """
+            result = await self.conversationService.delete_conversation(conversation_id)
+            return ResultUtils.success(result)

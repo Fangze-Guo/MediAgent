@@ -332,14 +332,14 @@ const viewDetails = (tool: MedicalTool) => {
 }
 
 // 对话相关方法
-const startChatWithTool = (tool: MedicalTool) => {
+const startChatWithTool = async (tool: MedicalTool) => {
   currentTool.value = tool
   
   // 创建医学助手专用会话
   const conversationId = `medical-${tool.id}-${Date.now()}`
   
   // 创建会话，传递工具信息
-  conversationsStore.createConversation(conversationId, 'medical', {
+  await conversationsStore.createConversation(conversationId, 'medical', {
     toolId: tool.id,
     toolName: tool.name,
     toolIcon: tool.icon,
@@ -352,7 +352,7 @@ const startChatWithTool = (tool: MedicalTool) => {
   conversationsStore.appendMessage(conversationId, welcomeMessage)
   
   // 跳转到聊天页面
-  window.location.href = `/chat/${conversationId}`
+  window.location.href = `/conversation/${conversationId}`
 }
 
 // 根据工具生成欢迎消息

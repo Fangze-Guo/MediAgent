@@ -5,7 +5,7 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { createConversation as createConversationAPI, addMessageToAgent, getMessages } from '@/apis/conversation'
+import { createConversation as createConversationAPI, addMessageToAgent, getMessages, getUserConversations as getUserConversationsAPI, deleteConversation as deleteConversationAPI } from '@/apis/conversation'
 import { useAuthStore } from '@/store/auth'
 
 /**
@@ -79,11 +79,13 @@ export const useConversationsStore = defineStore('conversations', () => {
 
   /**
    * 创建新会话
+   * @param conversationId 可选的会话ID，如果提供则不会调用后端API创建新会话
    * @param assistantType 可选的助手类型
    * @param toolInfo 可选的工具信息（仅医学助手会话使用）
    * @returns Promise<Conversation> 返回新创建的会话对象
    */
   async function createConversation(
+    conversationId?: string,
     assistantType?: 'general' | 'medical' | 'data' | 'document',
     toolInfo?: ToolInfo
   ): Promise<Conversation> {
@@ -94,8 +96,18 @@ export const useConversationsStore = defineStore('conversations', () => {
         throw new Error('用户未登录，无法创建会话')
       }
       
-      // 调用后端API创建对话，使用当前登录用户的ID
-      const conversationInfo = await createConversationAPI(authStore.user.uid.toString())
+      let conversationInfo: { conversation_uid: string; owner_uid: string }
+      
+      if (conversationId) {
+        // 如果提供了会话ID，使用它而不是调用后端API
+        conversationInfo = {
+          conversation_uid: conversationId,
+          owner_uid: authStore.user.uid.toString()
+        }
+      } else {
+        // 调用后端API创建对话，使用当前登录用户的ID
+        conversationInfo = await createConversationAPI(authStore.user.uid.toString())
+      }
       
       // 生成会话标题
       let title = '新对话'
@@ -292,25 +304,114 @@ export const useConversationsStore = defineStore('conversations', () => {
   }
 
   /**
-   * 删除指定会话（本地删除，后端暂不支持）
+   * 删除指定会话（同步到后端）
    * @param id 要删除的会话ID
    */
-  function deleteConversation(id: string) {
+  async function deleteConversation(id: string): Promise<void> {
     console.log('开始删除会话:', id)
     
-    const index = conversations.value.findIndex(c => c.id === id)
-    if (index !== -1) {
-      const deletedConversation = conversations.value[index]
-      conversations.value.splice(index, 1)
+    try {
+      // 调用后端API删除会话
+      await deleteConversationAPI(id)
       
-      // 如果删除的是当前会话，清空当前会话ID
-      if (currentConversationId.value === id) {
-        currentConversationId.value = ''
+      // 成功删除后，从本地store中移除
+      const index = conversations.value.findIndex(c => c.id === id)
+      if (index !== -1) {
+        const deletedConversation = conversations.value[index]
+        conversations.value.splice(index, 1)
+        
+        // 如果删除的是当前会话，清空当前会话ID
+        if (currentConversationId.value === id) {
+          currentConversationId.value = ''
+        }
+
+        console.log('成功删除会话:', deletedConversation.title)
+      } else {
+        console.warn(`会话 ${id} 在本地不存在`)
+      }
+    } catch (error) {
+      console.error('删除会话失败:', error)
+      throw error
+    }
+  }
+
+  /**
+   * 获取用户的所有会话ID列表（从后端获取）
+   * @returns Promise<string[]> 会话ID列表
+   */
+  async function loadUserConversationList(): Promise<string[]> {
+    try {
+      const authStore = useAuthStore()
+      if (!authStore.user) {
+        throw new Error('用户未登录，无法获取会话列表')
       }
       
-      console.log('成功删除会话:', deletedConversation.title)
-    } else {
-      console.warn(`会话 ${id} 不存在，无法删除`)
+      const conversationIds = await getUserConversationsAPI(authStore.user.uid.toString())
+      console.log('从后端获取到会话ID列表:', conversationIds)
+      return conversationIds
+    } catch (error) {
+      console.error('获取用户会话列表失败:', error)
+      throw error
+    }
+  }
+
+  /**
+   * 加载用户所有会话的详细信息（从后端同步）
+   * 这个方法会获取用户的所有会话ID，然后为每个会话创建Conversation对象
+   * @returns Promise<void>
+   */
+  async function loadUserConversationsDetails(): Promise<void> {
+    try {
+      console.log('开始加载用户会话详情...')
+      
+      // 清空现有会话列表
+      conversations.value = []
+      
+      // 获取用户的所有会话ID
+      const conversationIds = await loadUserConversationList()
+      
+      // 为每个会话ID创建Conversation对象
+      for (const id of conversationIds) {
+        try {
+          // 获取会话消息来提取标题
+          const messages = await getMessages(id)
+          let title = '新对话'
+          
+          // 从消息中提取会话标题
+          const firstUserMessage = messages.find(m => m.role === 'user')
+          if (firstUserMessage) {
+            title = firstUserMessage.content.length > 20 
+              ? firstUserMessage.content.slice(0, 20) + '…' 
+              : firstUserMessage.content
+          }
+          
+          // 创建会话对象
+          const conversation: Conversation = {
+            id,
+            title,
+            messages: messages.map(msg => ({
+              role: msg.role as 'user' | 'assistant',
+              content: msg.content || '',
+              typingComplete: true
+            })),
+            assistantType: 'general', // 默认为通用助手
+            loading: false
+          }
+          
+          // 添加到会话列表
+          conversations.value.push(conversation)
+          
+          console.log(`加载会话详情: ${id} - ${title}`)
+        } catch (error) {
+          console.error(`加载会话 ${id} 详情失败:`, error)
+          // 即使单个会话加载失败，也继续加载其他会话
+        }
+      }
+      
+      console.log(`用户会话详情加载完成，共 ${conversations.value.length} 个会话`)
+    } catch (error) {
+      console.error('加载用户会话详情失败:', error)
+      throw error
     }
   }
 
@@ -360,6 +461,10 @@ export const useConversationsStore = defineStore('conversations', () => {
     /** 清空所有会话 */
     clearAllConversations,
     /** 更新会话助手类型 */
-    updateConversationAssistantType
+    updateConversationAssistantType,
+    /** 获取用户会话列表 */
+    loadUserConversationList,
+    /** 加载用户会话详情 */
+    loadUserConversationsDetails
   }
 })
