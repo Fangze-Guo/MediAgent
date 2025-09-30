@@ -36,21 +36,31 @@ class ConversationService:
         # 同一对话的文件级锁：conversation_uid -> asyncio.Lock
         self._locks: Dict[str, asyncio.Lock] = {}
     
-    def _get_dialogue_agent(self):
-        """延迟初始化DialogueAgentA以避免循环导入"""
-        if self._dialogueAgentA is None:
-            from mediagent.agents.chat_plan_agent import DialogueAgentA
-            from src.server_agent.service import executor, cfg_a, cm, STREAM_ID, tm, OWNER_UID
-            
-            self._dialogueAgentA = DialogueAgentA(
-                executor, cfg_a,
-                cm=cm,
-                stream_id=STREAM_ID,
-                task_manager=tm,
-                db_path=str(self.database_path),
-                default_user_uid=OWNER_UID
-            )
-        return self._dialogueAgentA
+    def _get_dialogue_agent(self, request=None):
+        """返回当前运行态的 DialogueAgentA（由 RuntimeRegistry 维护）。"""
+        # 优先从 FastAPI 的 app.state.runtime_registry 获取
+        if request is not None:
+            try:
+                registry = request.app.state.runtime_registry
+                agent = registry.get_agent()
+                if agent is None:
+                    # 若尚未构建，尝试用最新快照刷新一次
+                    provider = request.app.state.config_provider
+                    registry.refresh_runtime(provider.get_snapshot())
+                    agent = registry.get_agent()
+                if agent is not None:
+                    # 缓存一份，作为无 request 时的兜底
+                    self._dialogueAgentA = agent
+                    return agent
+            except Exception:
+                pass
+
+        # 次选：返回已缓存的实例（仅当之前通过 request 获取过时才存在）
+        if self._dialogueAgentA is not None:
+            return self._dialogueAgentA
+
+        # 无法获取运行态时抛错，提示调用方在有 request 的上下文中使用
+        raise RuntimeError("Runtime agent is not available. Ensure to call within a FastAPI request context.")
 
     # ---------------------- 基础工具 ----------------------
 
@@ -131,9 +141,9 @@ class ConversationService:
         return conversation_uid
 
     @handle_service_exception
-    async def add_message_to_agentA(self, conversation_uid: str, content: str) -> str:
+    async def add_message_to_agentA(self, request, conversation_uid: str, content: str) -> str:
         """向AgentA添加消息并获取响应"""
-        dialogue_agent = self._get_dialogue_agent()
+        dialogue_agent = self._get_dialogue_agent(request)
         return await dialogue_agent.converse(conversation_uid, content)
 
     @handle_service_exception

@@ -224,6 +224,25 @@ export const postJson = async <T = any, B = any>(
 }
 
 /**
+ * 发送JSON数据的PUT请求
+ * @param url 请求URL
+ * @param data 请求数据
+ * @param signal 取消信号
+ * @returns Promise<T>
+ */
+export const putJson = async <T = any, B = any>(
+  url: string, 
+  data: B, 
+  signal?: AbortSignal
+): Promise<T> => {
+  const response = await put<T>(url, data, { 
+    headers: { 'Content-Type': 'application/json' },
+    signal 
+  })
+  return response.data
+}
+
+/**
  * 导出axios实例，供特殊需求使用
  */
 export { api }

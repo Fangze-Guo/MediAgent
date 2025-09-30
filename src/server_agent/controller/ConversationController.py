@@ -29,12 +29,13 @@ class ConversationController(BaseController):
             messageInfo = ConversationInfo(conversation_uid=conversation_uid, owner_uid=user_id)
             return ResultUtils.success(messageInfo)
 
+        from fastapi import Request as _FastRequest
         @self.router.post("/add")
-        async def addMessageToAgent(conversation_id: str, content: str) -> BaseResponse[str]:
+        async def addMessageToAgent(request: _FastRequest, conversation_id: str, content: str) -> BaseResponse[str]:
             """
             向AgentA添加消息并获取响应
             """
-            response = await self.conversationService.add_message_to_agentA(conversation_id, content)
+            response = await self.conversationService.add_message_to_agentA(request, conversation_id, content)
             return ResultUtils.success(response)
 
         @self.router.get("")

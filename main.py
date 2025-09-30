@@ -3,8 +3,14 @@
 使用绝对导入启动 MediAgent 后端服务
 """
 
-# 使用绝对导入
+import logging
+
 from src.server_agent.controller import create_app
+
+logging.basicConfig(
+    level=logging.INFO,  # 显示 INFO 及以上
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+)
 
 # 创建应用实例
 app = create_app()

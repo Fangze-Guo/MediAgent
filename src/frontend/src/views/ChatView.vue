@@ -120,12 +120,11 @@
               <div class="input-toolbar">
                 <div class="toolbar-left">
                   <!-- 模型选择器 -->
-                  <div class="model-selector">
-                    <div class="model-icon">
-                      <RobotOutlined />
-                    </div>
-                    <span class="model-name">{{ selectedModel }}</span>
-                  </div>
+                  <ModelSelector 
+                    :value="selectedModel"
+                    @update:value="selectedModel = $event"
+                    @model-change="handleModelChange"
+                  />
                   <!-- 功能图标 -->
                   <div class="toolbar-icons">
                     <a-button type="text" class="toolbar-icon" @click="handleUploadClick"
@@ -214,7 +213,8 @@ import { message } from 'ant-design-vue'
 import { useConversationsStore } from '@/store/conversations'
 import FileUpload from '@/components/file/FileUpload.vue'
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
-import { type FileUploadResponse } from '@/apis/files'
+import ModelSelector from '@/components/ModelSelector.vue'
+import { type FileInfo } from '@/apis/files'
 import {
   AppstoreOutlined,
   AudioOutlined,
@@ -251,7 +251,7 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null)
 /** 是否显示文件上传区域 */
 const showFileUpload = ref(false)
 /** 当前会话关联的文件信息 */
-const currentSessionFiles = ref<FileUploadResponse['data'][]>([])
+const currentSessionFiles = ref<FileInfo[]>([])
 /** 当前选择的模型 */
 const selectedModel = ref('QWen-Plus')
 /** 用户是否手动滚动了页面 */
@@ -352,7 +352,7 @@ const handleScroll = () => {
  * 处理文件上传成功
  * @param _file
  */
-const handleFileUploadSuccess = (_file: FileUploadResponse['data']) => {
+const handleFileUploadSuccess = (_file: FileInfo) => {
   // 文件上传成功处理
 }
 
@@ -375,7 +375,7 @@ const handleUploadClick = () => {
  * 使用文件
  * @param file 要使用的文件
  */
-const handleUseFile = (file: FileUploadResponse['data']) => {
+const handleUseFile = (file: FileInfo) => {
   // 检查文件是否已经存在
   const existingFile = currentSessionFiles.value.find(f => f.id === file.id)
   if (existingFile) {
@@ -395,7 +395,7 @@ const handleUseFile = (file: FileUploadResponse['data']) => {
  * @param fileId 文件ID
  */
 const removeSessionFile = (fileId: string) => {
-  const fileIndex = currentSessionFiles.value.findIndex((f: FileUploadResponse['data']) => f.id === fileId)
+  const fileIndex = currentSessionFiles.value.findIndex((f: FileInfo) => f.id === fileId)
   if (fileIndex > -1) {
     const fileName = currentSessionFiles.value[fileIndex].name
     currentSessionFiles.value.splice(fileIndex, 1)
@@ -410,6 +410,15 @@ const handleBatchUseComplete = () => {
   // 关闭文件上传模态框
   showFileUpload.value = false
 }
+
+/**
+ * 处理模型变化
+ */
+const handleModelChange = (model: any) => {
+  // ModelSelector 组件已经调用了 API，这里只需要更新本地状态
+  selectedModel.value = model.id
+}
+
 
 /**
  * 格式化文件大小
@@ -485,7 +494,7 @@ const createNewConversation = async () => {
     const conv = await conversationsStore.createConversation()
     activeId.value = conv.id
     conversationsStore.setCurrentConversation(conv.id)
-    router.replace({name: 'Conversation', params: {id: conv.id}})
+    await router.replace({name: 'Conversation', params: {id: conv.id}})
   } catch (error) {
     console.error('创建会话失败:', error)
     message.error('创建会话失败，请稍后再试')

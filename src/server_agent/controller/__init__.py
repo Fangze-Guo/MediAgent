@@ -8,10 +8,14 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from mediagent.modules.conversation_manager import ConversationManager
 from mediagent.modules.task_manager import AsyncTaskManager
+from src.server_agent.configs.config_provider import ConfigProvider
 from src.server_agent.exceptions import setup_exception_handlers
+from src.server_agent.runtime_registry import RuntimeRegistry
 from .ConversationController import ConversationController
 from .FileController import FileController
+from .ModelController import ModelController
 from .UserController import UserController
 
 # 数据目录（保持你的逻辑）
@@ -78,11 +82,27 @@ class Services:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """
+    在应用启动期间创建"全局唯一"的 ConfigProvider 与 RuntimeRegistry，
+    并挂载到 app.state，供所有路由按需使用
+    """
     settings = Settings()
     services = Services(settings)
     app.state.settings = settings
     app.state.services = services
     await services.ainit()  # ✅ 重/异步初始化放这里
+    # 配置提供者与运行态注册器
+    provider = ConfigProvider()
+    app.state.config_provider = provider
+    registry = RuntimeRegistry(
+        task_manager=services.tm,
+        conversation_manager=ConversationManager(str(settings.DATABASE_FILE), str("src/server_agent/conversations")),
+        database_path=str(settings.DATABASE_FILE),
+        stream_id="agentA_internal_stream"
+    )
+    app.state.runtime_registry = registry
+    # 首次刷新运行实例
+    registry.refresh_runtime(provider.get_snapshot())
     try:
         yield
     finally:
@@ -93,8 +113,9 @@ def create_app() -> FastAPI:
     """创建FastAPI应用实例"""
     app = FastAPI(
         title="MediAgent Backend",
-        description="智能医疗助手后端API",
-        version="2.0.0"
+        description="智能医学助手后端API",
+        version="2.0.0",
+        lifespan=lifespan
     )
 
     # 添加CORS中间件
@@ -110,11 +131,13 @@ def create_app() -> FastAPI:
     file_controller = FileController()
     user_controller = UserController()
     conversation_controller = ConversationController()
+    model_controller = ModelController()
 
     # 注册路由
     app.include_router(file_controller.router)
     app.include_router(user_controller.router)
     app.include_router(conversation_controller.router)
+    app.include_router(model_controller.router)
 
     # 设置异常处理器
     setup_exception_handlers(app)
@@ -127,5 +150,6 @@ __all__ = [
     'create_app',
     'FileController',
     'UserController',
-    'ConversationController'
+    'ConversationController',
+    'ModelController'
 ]
