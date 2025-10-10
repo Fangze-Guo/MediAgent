@@ -57,11 +57,11 @@ const routes: RouteRecordRaw[] = [
         }
     },
     {
-        path: '/sandbox-manage',
-        name: 'SandboxManage',
-        component: () => import('@/views/SandboxManageView.vue'),
+        path: '/app-store',
+        name: 'AppStore',
+        component: () => import('@/views/AppStoreView.vue'),
         meta: {
-            title: 'MediAgent - 沙盒文件管理',
+            title: 'MediAgent - 应用商店',
             requiresAuth: true
         }
     },

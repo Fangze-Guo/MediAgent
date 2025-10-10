@@ -2,24 +2,24 @@
   <div class="file-upload">
     <!-- 上传区域 -->
     <div
-      class="upload-area"
-      :class="{
+        class="upload-area"
+        :class="{
         'uploading': uploading,
         'drag-over': dragOver,
         'error': uploadError
       }"
-      @click="triggerFileInput"
-      @dragover.prevent="handleDragOver"
-      @dragleave.prevent="handleDragLeave"
-      @drop.prevent="handleDrop"
+        @click="triggerFileInput"
+        @dragover.prevent="handleDragOver"
+        @dragleave.prevent="handleDragLeave"
+        @drop.prevent="handleDrop"
     >
       <input
-        ref="fileInput"
-        type="file"
-        :accept="acceptedTypes"
-        multiple
-        @change="handleFileSelect"
-        style="display: none"
+          ref="fileInput"
+          type="file"
+          :accept="acceptedTypes"
+          multiple
+          @change="handleFileSelect"
+          style="display: none"
       />
 
       <div v-if="!uploading" class="upload-content">
@@ -35,9 +35,9 @@
         <a-spin size="large" />
         <p class="uploading-text">正在上传...</p>
         <a-progress
-          :percent="uploadProgress"
-          :show-info="false"
-          stroke-color="#1890ff"
+            :percent="uploadProgress"
+            :show-info="false"
+            stroke-color="#1890ff"
         />
       </div>
     </div>
@@ -50,31 +50,31 @@
           待上传文件 ({{ pendingFiles.length }})
         </h4>
         <div class="batch-actions">
-          <a-button 
-            type="primary" 
-            size="small"
-            @click="startUploadPendingFiles"
-            :disabled="pendingFiles.length === 0 || uploading"
-            :loading="uploading"
+          <a-button
+              type="primary"
+              size="small"
+              @click="startUploadPendingFiles"
+              :disabled="pendingFiles.length === 0 || uploading"
+              :loading="uploading"
           >
             开始上传
           </a-button>
-          <a-button 
-            type="link" 
-            size="small"
-            danger
-            @click="clearPendingFiles"
-            :disabled="pendingFiles.length === 0"
+          <a-button
+              type="link"
+              size="small"
+              danger
+              @click="clearPendingFiles"
+              :disabled="pendingFiles.length === 0"
           >
             清空列表
           </a-button>
         </div>
       </div>
       <div class="files-list">
-        <div 
-          v-for="(file, index) in pendingFiles" 
-          :key="`pending-${index}`"
-          class="file-item"
+        <div
+            v-for="(file, index) in pendingFiles"
+            :key="`pending-${index}`"
+            class="file-item"
         >
           <div class="file-info">
             <FileOutlined class="file-icon" />
@@ -88,11 +88,11 @@
             </div>
           </div>
           <div class="file-actions">
-            <a-button 
-              type="link" 
-              size="small"
-              danger
-              @click="removePendingFile(index)"
+            <a-button
+                type="link"
+                size="small"
+                danger
+                @click="removePendingFile(index)"
             >
               移除
             </a-button>
@@ -109,43 +109,30 @@
           已上传文件 ({{ uploadedFiles.length }})
         </h4>
         <div class="batch-actions">
-          <!-- 沙盒模式下不显示"使用文件"相关按钮 -->
-          <template v-if="uploadMode === 'sandbox'">
-            <a-button 
-              type="link" 
-              size="small"
-              @click="handleCloseAndRefresh"
-              :disabled="uploadedFiles.length === 0"
-            >
-              完成上传
-            </a-button>
-          </template>
-          <template v-else>
-            <a-button 
-              type="primary" 
+          <a-button
+              type="primary"
               size="small"
               @click="handleUseAllFiles"
               :disabled="uploadedFiles.length === 0"
-            >
-              全部使用
-            </a-button>
-          </template>
-          <a-button 
-            type="link" 
-            size="small"
-            danger
-            @click="handleRemoveAllFiles"
-            :disabled="uploadedFiles.length === 0"
+          >
+            全部使用
+          </a-button>
+          <a-button
+              type="link"
+              size="small"
+              danger
+              @click="handleRemoveAllFiles"
+              :disabled="uploadedFiles.length === 0"
           >
             全部删除
           </a-button>
         </div>
       </div>
       <div class="files-list">
-        <div 
-          v-for="file in uploadedFiles" 
-          :key="file.id"
-          class="file-item"
+        <div
+            v-for="file in uploadedFiles"
+            :key="file.id"
+            class="file-item"
         >
           <div class="file-info">
             <FileOutlined class="file-icon" />
@@ -159,20 +146,18 @@
             </div>
           </div>
           <div class="file-actions">
-            <!-- 沙盒模式下不显示"使用"按钮 -->
-            <a-button 
-              v-if="uploadMode !== 'sandbox'"
-              type="link" 
-              size="small"
-              @click="handleUseFile(file)"
+            <a-button
+                type="link"
+                size="small"
+                @click="handleUseFile(file)"
             >
               使用
             </a-button>
-            <a-button 
-              type="link" 
-              size="small"
-              danger
-              @click="handleRemoveFile(file.id)"
+            <a-button
+                type="link"
+                size="small"
+                danger
+                @click="handleRemoveFile(file.id)"
             >
               删除
             </a-button>
@@ -184,11 +169,11 @@
     <!-- 错误提示 -->
     <div v-if="uploadError" class="error-message">
       <a-alert
-        :message="uploadError"
-        type="error"
-        show-icon
-        closable
-        @close="uploadError = ''"
+          :message="uploadError"
+          type="error"
+          show-icon
+          closable
+          @close="uploadError = ''"
       />
     </div>
   </div>
@@ -202,11 +187,10 @@
 import { ref, computed } from 'vue'
 import { message } from 'ant-design-vue'
 import { UploadOutlined, FileOutlined } from '@ant-design/icons-vue'
-import { 
-  uploadFile, 
-  uploadFileToSandbox,
-  formatFileSize, 
-  isSupportedFileType, 
+import {
+  uploadFile,
+  formatFileSize,
+  isSupportedFileType,
   type FileInfo
 } from '@/apis/files.ts'
 
@@ -218,18 +202,12 @@ interface Props {
   accept?: string
   /** 最大文件大小（MB） */
   maxSize?: number
-  /** 上传模式：dataset（数据集）或 sandbox（沙盒） */
-  uploadMode?: 'dataset' | 'sandbox'
-  /** 沙盒上传类型：dicom 或 nii，仅在 uploadMode='sandbox' 时有效 */
-  sandboxType?: 'dicom' | 'nii'
 }
 
 const props = withDefaults(defineProps<Props>(), {
   multiple: true,
   accept: 'image/*,.csv,.dcm,.DCM',
-  maxSize: 10,
-  uploadMode: 'dataset',
-  sandboxType: 'dicom'
+  maxSize: 10
 })
 
 // Emits
@@ -255,18 +233,10 @@ const pendingFiles = ref<File[]>([])
 
 // 计算属性
 const acceptedTypes = computed(() => {
-  if (props.uploadMode === 'sandbox') {
-    return props.sandboxType === 'dicom' ? '.dcm,.DCM' : '.nii,.nii.gz'
-  }
   return props.accept
 })
 
 const uploadHintText = computed(() => {
-  if (props.uploadMode === 'sandbox') {
-    return props.sandboxType === 'dicom' 
-      ? '沙盒模式：仅支持 .dcm .DCM 文件（DICOM格式）'
-      : '沙盒模式：仅支持 .nii .nii.gz 文件（NII格式）'
-  }
   return '支持多文件上传：图片文件 (JPG, PNG, GIF, WebP)、CSV 文件和 DICOM 文件 (.dcm)'
 })
 
@@ -315,7 +285,7 @@ const handleDragLeave = (event: DragEvent) => {
 const handleDrop = (event: DragEvent) => {
   event.preventDefault()
   dragOver.value = false
-  
+
   const files = event.dataTransfer?.files
   if (files && files.length > 0) {
     // 先添加到待上传列表，不立即上传
@@ -328,25 +298,25 @@ const handleDrop = (event: DragEvent) => {
  */
 const addFilesToUploadList = (files: File[]) => {
   const validFiles: File[] = []
-  
+
   // 验证文件
   for (const file of files) {
     if (!isSupportedFileType(file)) {
       message.error(`不支持的文件类型: ${file.name}`)
       continue
     }
-    
+
     if (file.size > props.maxSize * 1024 * 1024) {
       message.error(`文件 ${file.name} 超过大小限制 (${props.maxSize}MB)`)
       continue
     }
-    
+
     validFiles.push(file)
   }
-  
+
   // 添加到待上传列表
   pendingFiles.value.push(...validFiles)
-  
+
   if (validFiles.length > 0) {
     message.success(`已添加 ${validFiles.length} 个文件到上传列表`)
   }
@@ -362,10 +332,9 @@ const handleFiles = async (files: File[]) => {
       message.error(`不支持的文件类型: ${file.name}`)
       continue
     }
-    
+
     if (file.size > props.maxSize * 1024 * 1024) {
       message.error(`文件 ${file.name} 超过大小限制 (${props.maxSize}MB)`)
-      continue
     }
   }
 
@@ -386,26 +355,19 @@ const uploadSingleFile = async (file: File) => {
     uploadProgress.value = 0
     uploadError.value = ''
 
-    let response
-    
-    if (props.uploadMode === 'sandbox') {
-      // 沙盒上传
-      const targetDir = props.sandboxType === 'dicom' ? 'dicom' : 'input'
-      response = await uploadFileToSandbox(file, targetDir, (progress) => {
-        uploadProgress.value = progress
-      })
-    } else {
-      // 数据集上传（默认行为）
-      response = await uploadFile(file, '.', (progress) => {
-        uploadProgress.value = progress
-      })
-    }
+    // 数据集上传
+    const response = await uploadFile(file, '.', (progress) => {
+      uploadProgress.value = progress
+    })
 
     if (response.code === 200) {
       uploadedFiles.value.push(response.data)
       emit('uploadSuccess', response.data)
     } else {
-      throw new Error(response.message || '上传失败')
+      const errorMsg = response.message || '上传失败'
+      uploadError.value = errorMsg
+      emit('uploadError', errorMsg)
+      message.error(errorMsg)
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : '上传失败'
@@ -441,14 +403,14 @@ const handleUseAllFiles = () => {
     message.warning('没有可用的文件')
     return
   }
-  
+
   // 触发所有文件的使用事件
   uploadedFiles.value.forEach(file => {
     emit('useFile', file)
   })
-  
+
   message.success(`已添加 ${uploadedFiles.value.length} 个文件到当前会话`)
-  
+
   // 批量使用后关闭模态框
   emit('batchUseComplete')
 }
@@ -461,18 +423,12 @@ const handleRemoveAllFiles = () => {
     message.warning('没有可删除的文件')
     return
   }
-  
+
   const fileCount = uploadedFiles.value.length
   uploadedFiles.value = []
   message.success(`已删除 ${fileCount} 个文件`)
 }
 
-/**
- * 沙盒模式：完成上传并关闭模态框
- */
-const handleCloseAndRefresh = () => {
-  emit('batchUseComplete')
-}
 
 /**
  * 开始上传待上传列表中的文件
@@ -482,10 +438,10 @@ const startUploadPendingFiles = async () => {
     message.warning('没有待上传的文件')
     return
   }
-  
+
   const filesToUpload = [...pendingFiles.value]
   pendingFiles.value = [] // 清空待上传列表
-  
+
   await handleFiles(filesToUpload)
 }
 
@@ -719,25 +675,25 @@ defineExpose({
     padding: 20px 16px;
     min-height: 100px;
   }
-  
+
   .upload-icon {
     font-size: 32px;
   }
-  
+
   .upload-title {
     font-size: 14px;
   }
-  
+
   .upload-hint {
     font-size: 12px;
   }
-  
+
   .file-item {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
   }
-  
+
   .file-actions {
     align-self: flex-end;
   }

@@ -10,7 +10,7 @@ from typing import List, Optional, Dict, Any
 
 from fastapi import UploadFile
 
-from constants.CommonConstants import DATASET_PATH, SANDBOX_PATH
+from constants.CommonConstants import DATASET_PATH
 from src.server_agent.exceptions import ValidationError, NotFoundError, ServiceError, handle_service_exception
 from src.server_agent.model import FileInfo, FileListVO
 
@@ -39,6 +39,7 @@ class FileService:
         fileListVO: FileListVO = await self.getFileListVO(dataset_root, target_path)
         return fileListVO
 
+
     # ==================== 上传文件 ====================
 
     @handle_service_exception
@@ -58,28 +59,6 @@ class FileService:
         fileInfo: FileInfo = await self.uploadFile(dataset_root, file, target_dir)
         return fileInfo
 
-    @handle_service_exception
-    async def uploadFileToSandbox(self, file: UploadFile, target_dir: str = ".") -> FileInfo:
-        """
-        上传文件到沙盒
-
-        Args:
-            file: 上传的文件
-            target_dir: 目标目录 (dicom 或 input)
-
-        Returns:
-            文件信息
-        """
-        # 确保沙盒根目录存在
-        sandbox_root = pathlib.Path(SANDBOX_PATH)
-        sandbox_root.mkdir(parents=True, exist_ok=True)
-        
-        # 确保目标子目录存在
-        target_path = sandbox_root / target_dir
-        target_path.mkdir(parents=True, exist_ok=True)
-        
-        fileInfo: FileInfo = await self.uploadFile(sandbox_root, file, target_dir)
-        return fileInfo
 
     @handle_service_exception
     async def uploadMultipleFilesToData(self, files: List[UploadFile], target_dir: str = ".") -> List[FileInfo]:
@@ -235,6 +214,7 @@ class FileService:
                 service_name="file_service",
                 context={"path": path, "error": str(e)}
             )
+
 
     # ==================== 删除文件 ====================
 

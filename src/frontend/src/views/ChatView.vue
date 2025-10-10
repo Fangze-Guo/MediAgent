@@ -193,6 +193,7 @@
         @cancel="showFileUpload = false"
     >
       <FileUpload
+          upload-mode="dataset"
           @upload-success="handleFileUploadSuccess"
           @upload-error="handleFileUploadError"
           @use-file="handleUseFile"

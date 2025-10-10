@@ -82,7 +82,7 @@ import { useAuthStore } from '@/store/auth'
 import { useRoute, useRouter } from 'vue-router'
 import { computed, h, ref } from 'vue'
 import { MenuProps, message, Modal } from 'ant-design-vue'
-import { CommentOutlined, FolderOutlined, LogoutOutlined, RobotOutlined, BarChartOutlined, FileTextOutlined, ExperimentOutlined } from '@ant-design/icons-vue'
+import { CommentOutlined, FolderOutlined, LogoutOutlined, RobotOutlined, BarChartOutlined, FileTextOutlined, AppstoreOutlined } from '@ant-design/icons-vue'
 
 // 路由相关
 const router = useRouter()
@@ -115,8 +115,8 @@ const items = ref([
   },
   {
     key: '5',
-    icon: () => h(ExperimentOutlined),
-    label: '沙盒管理',
+    icon: () => h(AppstoreOutlined),
+    label: '应用商店',
   },
 ]);
 
@@ -131,8 +131,8 @@ const handleMenuClick: MenuProps['onClick'] = ({key}) => {
     // 跳转到文件管理页面
     router.push('/files')
   } else if (key === '5') {
-    // 跳转到沙盒文件管理页面
-    router.push('/sandbox-manage')
+    // 跳转到应用商店页面
+    router.push('/app-store')
   }
 };
 

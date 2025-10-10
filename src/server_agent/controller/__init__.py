@@ -17,6 +17,7 @@ from .ConversationController import ConversationController
 from .FileController import FileController
 from .ModelController import ModelController
 from .UserController import UserController
+from .AppStoreController import AppStoreController
 
 # 数据目录（保持你的逻辑）
 try:
@@ -132,12 +133,14 @@ def create_app() -> FastAPI:
     user_controller = UserController()
     conversation_controller = ConversationController()
     model_controller = ModelController()
+    app_store_controller = AppStoreController()
 
     # 注册路由
     app.include_router(file_controller.router)
     app.include_router(user_controller.router)
     app.include_router(conversation_controller.router)
     app.include_router(model_controller.router)
+    app.include_router(app_store_controller.router)
 
     # 设置异常处理器
     setup_exception_handlers(app)
@@ -151,5 +154,6 @@ __all__ = [
     'FileController',
     'UserController',
     'ConversationController',
-    'ModelController'
+    'ModelController',
+    'AppStoreController',
 ]
