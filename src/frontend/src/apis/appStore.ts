@@ -19,6 +19,32 @@ export interface AppInfo {
   rating: number
   installed: boolean
   tags: string[]
+  fullDescription?: string
+}
+
+/**
+ * 评论信息接口
+ */
+export interface Review {
+  id: number
+  app_id: string
+  user_name: string
+  rating: number
+  comment: string
+  helpful_count: number
+  date: string
+}
+
+/**
+ * 评论数据响应接口
+ */
+export interface ReviewsData {
+  reviews: Review[]
+  total: number
+  average_rating: number
+  rating_distribution: {
+    [key: string]: number
+  }
 }
 
 /**
@@ -50,7 +76,7 @@ export async function getApps(category?: string, search?: string) {
  * @param appId 应用ID
  * @returns Promise<AppInfo>
  */
-export async function getAppDetail(appId: string) {
+export async function getAppDetail(appId: string): Promise<AppInfo> {
   const response = await get<BaseResponse<AppInfo>>(`/app-store/apps/${appId}`)
   return response.data.data
 }
@@ -81,6 +107,16 @@ export async function installApp(appId: string) {
  */
 export async function uninstallApp(appId: string) {
   const response = await post<BaseResponse<string>>(`/app-store/apps/${appId}/uninstall`)
+  return response.data.data
+}
+
+/**
+ * 获取应用的评论列表
+ * @param appId 应用ID
+ * @returns Promise<ReviewsData>
+ */
+export async function getAppReviews(appId: string): Promise<ReviewsData> {
+  const response = await get<BaseResponse<ReviewsData>>(`/app-store/apps/${appId}/reviews`)
   return response.data.data
 }
 

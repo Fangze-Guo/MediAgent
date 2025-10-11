@@ -50,7 +50,7 @@
         <a-carousel autoplay :dots="true" class="banner-carousel">
           <!-- 遍历精选应用，每个应用一张轮播图 -->
           <div v-for="featured in featuredApps" :key="featured.id" class="banner-slide">
-            <div class="banner-content" @click="showAppDetail(featured)">
+            <div class="banner-content" @click="goToAppDetail(featured.id)">
               <div class="banner-left">
                 <!-- 应用图标 -->
                 <div class="banner-icon">{{ featured.icon }}</div>
@@ -109,7 +109,7 @@
               v-for="app in apps"
               :key="app.id"
               class="app-card"
-              @click="showAppDetail(app)"
+              @click="goToAppDetail(app.id)"
             >
               <!-- 卡片头部：图标和基本信息 -->
               <div class="card-header">
@@ -159,104 +159,6 @@
       </div>
     </div>
 
-    <!-- ==================== 应用详情模态框 ==================== -->
-    <!-- 点击应用卡片时弹出，显示应用的完整信息 -->
-    <a-modal
-      v-model:open="detailVisible"
-      width="900px"
-      :footer="null"
-      class="app-detail-modal"
-    >
-      <div v-if="currentApp" class="app-detail">
-        <!-- 详情页头部：应用图标、名称、评分和操作按钮 -->
-        <div class="detail-header">
-          <div class="detail-left">
-            <!-- 大尺寸应用图标 -->
-            <div class="detail-icon-wrapper">
-              <span class="detail-icon">{{ currentApp.icon }}</span>
-            </div>
-            <!-- 应用主要信息 -->
-            <div class="detail-main-info">
-              <h1 class="detail-title">{{ currentApp.name }}</h1>
-              <p class="detail-author">由 {{ currentApp.author }} 提供</p>
-              <!-- 评分展示区：大号数字评分 + 星星 + 用户数 -->
-              <div class="detail-rating-section">
-                <div class="rating-box">
-                  <div class="rating-score">{{ currentApp.rating }}</div>
-                  <div class="rating-stars">
-                    <StarFilled v-for="i in 5" :key="i" class="star" />
-                  </div>
-                  <div class="rating-text">{{ formatNumber(currentApp.downloads) }} 位用户</div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <!-- 操作按钮区：安装或卸载 -->
-          <div class="detail-actions">
-            <a-button
-              v-if="currentApp.installed"
-              size="large"
-              class="detail-action-btn installed-btn"
-              @click="handleUninstall(currentApp)"
-            >
-              <CheckCircleFilled style="margin-right: 8px" />
-              已添加到 MediAgent
-            </a-button>
-            <a-button
-              v-else
-              type="primary"
-              size="large"
-              class="detail-action-btn"
-              @click="handleInstall(currentApp)"
-            >
-              添加至 MediAgent
-            </a-button>
-          </div>
-        </div>
-
-        <!-- 详情页主体：应用详细信息 -->
-        <div class="detail-body">
-          <!-- 概述区块 -->
-          <div class="detail-section">
-            <h3 class="section-subtitle">概述</h3>
-            <p class="detail-description">{{ currentApp.description }}</p>
-          </div>
-
-          <!-- 详细信息区块：版本、更新日期、类别等 -->
-          <div class="detail-section">
-            <h3 class="section-subtitle">详细信息</h3>
-            <div class="info-grid">
-              <div class="info-item">
-                <span class="info-label">版本</span>
-                <span class="info-value">{{ currentApp.version }}</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">更新日期</span>
-                <span class="info-value">2024年10月11日</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">类别</span>
-                <span class="info-value">{{ currentApp.category }}</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">语言</span>
-                <span class="info-value">中文</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- 标签区块：显示应用相关的所有标签 -->
-          <div class="detail-section">
-            <h3 class="section-subtitle">标签</h3>
-            <div class="detail-tags">
-              <a-tag v-for="tag in currentApp.tags" :key="tag" class="detail-tag">
-                {{ tag }}
-              </a-tag>
-            </div>
-          </div>
-        </div>
-      </div>
-    </a-modal>
   </div>
 </template>
 
@@ -269,6 +171,7 @@
 
 // ==================== 导入依赖 ====================
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 // 图标组件
 import {
@@ -280,14 +183,14 @@ import {
 // API 接口和类型定义
 import { getApps, getCategories, installApp, uninstallApp, type AppInfo } from '@/apis/appStore'
 
+const router = useRouter()
+
 // ==================== 响应式状态 ====================
 const loading = ref(true)                          // 加载状态
 const apps = ref<AppInfo[]>([])                    // 应用列表
 const categories = ref<string[]>([])               // 分类列表
 const selectedCategory = ref('全部')               // 当前选中的分类
 const searchKeyword = ref('')                      // 搜索关键词
-const detailVisible = ref(false)                   // 详情模态框显示状态
-const currentApp = ref<AppInfo | null>(null)       // 当前查看的应用
 
 // ==================== 计算属性 ====================
 /**
@@ -364,13 +267,12 @@ const handleSearch = () => {
 }
 
 /**
- * 显示应用详情
- * 点击应用卡片时触发，打开详情模态框
- * @param app 要查看的应用信息
+ * 跳转到应用详情页
+ * 点击应用卡片时触发，跳转到独立的详情页面
+ * @param appId 应用ID
  */
-const showAppDetail = (app: AppInfo) => {
-  currentApp.value = app
-  detailVisible.value = true
+const goToAppDetail = (appId: string) => {
+  router.push(`/app-store/${appId}`)
 }
 
 /**
@@ -384,10 +286,6 @@ const handleInstall = async (app: AppInfo) => {
     message.success(`${app.name} 已成功添加至 MediAgent`)
     // 更新应用的安装状态
     app.installed = true
-    // 如果详情弹窗正在显示该应用，同步更新
-    if (currentApp.value?.id === app.id) {
-      currentApp.value.installed = true
-    }
   } catch (error) {
     console.error('安装失败', error)
     message.error('安装失败，请稍后重试')
@@ -405,10 +303,6 @@ const handleUninstall = async (app: AppInfo) => {
     message.success(`${app.name} 已从 MediAgent 中移除`)
     // 更新应用的安装状态
     app.installed = false
-    // 如果详情弹窗正在显示该应用，同步更新
-    if (currentApp.value?.id === app.id) {
-      currentApp.value.installed = false
-    }
   } catch (error) {
     console.error('卸载失败', error)
     message.error('卸载失败，请稍后重试')

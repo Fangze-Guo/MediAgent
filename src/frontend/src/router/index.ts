@@ -66,6 +66,15 @@ const routes: RouteRecordRaw[] = [
         }
     },
     {
+        path: '/app-store/:id',
+        name: 'AppDetail',
+        component: () => import('@/views/AppDetailView.vue'),
+        meta: {
+            title: 'MediAgent - 应用详情',
+            requiresAuth: true
+        }
+    },
+    {
         path: '/:pathMatch(.*)*',
         name: 'NotFound',
         component: () => import('@/views/NotFoundView.vue'),
