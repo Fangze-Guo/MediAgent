@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import json
+import sqlite3
+import asyncio
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple, List, Protocol
+from pathlib import Path
+from typing import Any, Dict, Optional, Tuple, List, Protocol, Union
 
 try:
     from openai import AsyncOpenAI
@@ -20,39 +23,48 @@ class AgentAConfig:
     base_url: Optional[str] = None                # 例如 "http://127.0.0.1:1234/v1"
     request_timeout: float = 60.0
     max_retries: int = 2                          # 每轮 LLM 调用的重试次数
-    max_tool_rounds: int = 3                      # 连续“工具/任务”回合上限
+    max_tool_rounds: int = 3                      # 连续“工具/任务/查询状态”回合上限
 
-    # —— 新增：是否在 system 中注入工具目录（只读，帮助模型写出更贴近工具的描述）——
+    # —— 是否在 system 中注入工具目录（只读，帮助模型写出更贴近工具的描述）——
     include_tool_catalog: bool = True
     tool_catalog_limit: int = 20                  # 最多注入多少条工具
     tool_desc_maxlen: int = 160                   # 每条工具描述的截断长度（字符数）
 
-    # 系统提示（不出现“agentA/agentB”等无信息标签）
+    # 系统提示
     system_prefix: str = (
         """
-你负责在一次人机对话中做两类决定：
+你现在是一个医疗工具助手系统中的核心智能体，负责和用户直接对话，然后根据用户的需求执行对应操作（实际执行会交由其他模块完成）。
+为了保证你的输出规范可以被固定程序解析，你在产生回复时只能通过调用工具的形式。
+你想要进行输出时，根据需求从以下函数中挑选一个
 1) 若应直接回复用户，请调用函数 emit_user_reply，并把要说的话放到 content；
-2) 若需要创建或推进一项任务，请调用函数 emit_task_request，并把用于创建/推进任务的自然语言描述放到 description。
-禁止输出纯文本，你必须调用以上两个函数之一。对话上下文以系统提供的消息为准。
+2) 若需要创建或推进一项任务，请调用函数 emit_task_request，并把用于创建/推进任务的自然语言描述放到 description；
+3) 若用户想查询某个任务的运行状态，请调用函数 emit_task_status_query，并把任务的 task_uid 放到 task_uid。
+
+禁止输出纯文本，你必须调用以上三个函数之一。对话上下文以系统提供的消息为准。
+有时候用户会想知道你拥有什么功能，不要将上述这几个函数暴露给用户，这些函数只是为了规范输出而设置的。
+后续会将实际可用的工具函数列表暴露给你，这些才是用户真的想知道的内容。
+同时，在调用函数 emit_task_request来创建任务时，本质上会将你提出的描述提交给一个专门负责创建任务的智能体（后续简称智能体B），由它来生成规范的、可以被解析的输出
+之后系统会解析智能体B的输出，来进行具体的操作。为了降低智能体B的负担，我虽然不要求你生成的描述格式上规范，但至少保证信息要清晰。
 
 【严格约束——避免“画蛇添足”】
 - 不要臆造或扩展任何工具参数键名、字段名或取值；不要凭空给工具加默认值。
-- 如需提到工具，只能使用“工具目录”中出现的名称，不加入任何参数键名；更不要写 JSON 片段或键值对；要严格核对工具提供的参数列表，不要臆造工具不存在的参数。
-- 你的任务描述只写**目的/输入/输出/约束**的自然语言，不写具体参数键名（例如 batch_size、epochs、lr、patch_size 等）。
-- 如果用户明确给了参数（例如“批大小 64”），原样保留为自然语言描述，不转换为“参数键名: 值”的格式。
+- 如需提到工具，只能使用“工具目录”中出现的名称。
+- 你的任务描述可以写**目的/输入/输出/约束**的自然语言，如果能明确，则具体到参数键名（例如 batch_size、epochs、lr、patch_size 等）。
+- 如果用户明确给了参数（例如“批大小 64”），尝试转换为“参数键名: 值”的格式。
 - 不确定时，不要猜；要么向用户澄清（emit_user_reply），要么在任务描述里标注“需后端根据工具规范补全参数”。
-- 若后端（执行器/任务管理器）已经返回“创建成功”且含 task_uid，你必须立刻 emit_user_reply：
+- 若后端已返回“创建成功”且含 task_uid，你必须立刻 emit_user_reply：
   • 告知“任务已创建”
   • 明确给出 task_uid
 
 【任务描述模板（用于 emit_task_request.description）】
-请严格用自然语言的短段落，按照以下要点组织（可以合并为一段话）：
-- 目的：用一句话概述要完成的事。
-- 输入来源：指出数据/路径/上游结果（如“来自公共数据集 test_set”或“使用上一步的产出”）。
+请严格用自然语言短段落，包含：
+- 目的（一句话概述要做什么，然后可以补充上具体的参数）
+- 输入来源（数据/路径/上游结果）
 
 【决策准则】
-- 如果信息不足以开始：优先 emit_user_reply 提问澄清，问题要具体、可一次性补齐。
-- 如果能开始：emit_task_request，用上面的模板写**自然语言**；不要包含任何键名/JSON/代码样式。
+- 信息不足则先 emit_user_reply 提问澄清（一次性补齐的具体问题）。
+- 能开始则 emit_task_request。
+- 用户询问进度/状态/日志→ emit_task_status_query，拿到状态后用一句中文汇报。
         """.strip()
     )
 
@@ -66,14 +78,16 @@ class ConversationManagerLike(Protocol):
 
 
 class ExecutorLike(Protocol):
-    """执行器：至少需具备 create_task(user_uid, plan_text)。"""
+    """执行器：至少具备 create_task(user_uid, plan_text)。"""
     async def create_task(self, user_uid: Optional[str], plan_text: str) -> Dict[str, Any]: ...
 
 
 class TaskManagerAsyncLike(Protocol):
-    """你给的 AsyncTaskManager 的最小异步接口，用于拉取工具目录。"""
+    """
+    你提供的 AsyncTaskManager 关键接口（我们只用到 list_tools 与 get_task_status）。
+    """
     async def list_tools(self) -> List[Dict[str, Any]]: ...
-    # （如需更多可继续补充，但本文件仅用到 list_tools）
+    async def get_task_status(self, task_uid: str) -> Dict[str, Any]: ...
 
 
 # ============================ 主类 ============================
@@ -81,15 +95,9 @@ class TaskManagerAsyncLike(Protocol):
 class DialogueAgentA:
     """
     - 初始化需要：executor（执行器）、cm（对话管理器）、stream_id（内部信息流识别码）、
-                 task_manager（用于获取工具目录）、可选 default_user_uid。
-    - 对外仅保留一个接口：converse(conversation_uid, user_input) -> str（面向用户的文本）。
-    - I/O 流程：
-      * 收到用户输入 → 写入 main_chat 与内部信息流(target=stream_id)。
-      * 仅从内部信息流读取历史 + system_prefix → 送入 LLM（强制函数：emit_user_reply / emit_task_request）。
-      * 如启用 include_tool_catalog，则在 system 中注入一次精简工具目录（只读，真实调用仍由执行器完成）。
-      * LLM 输出无论如何先写入内部信息流。
-      * emit_user_reply → 写入主对话流并返回。
-      * emit_task_request → 调用执行器创建/推进任务，回执写入内部信息流，再让 LLM 继续判断；多轮至上限则总结并返回。
+                 task_manager（获取工具目录/查询任务状态）、数据库文件 db_path、可选 default_user_uid。
+    - 创建/推进任务时：根据 conversation_uid → 查 SQLite(conversations) → 取 owner_uid 作为 user_uid。
+    - 新增：emit_task_status_query → 调用 tm.get_task_status(task_uid)。
     """
 
     def __init__(
@@ -100,6 +108,7 @@ class DialogueAgentA:
         cm: ConversationManagerLike,
         stream_id: str,
         task_manager: TaskManagerAsyncLike,
+        db_path: Union[str, Path],
         default_user_uid: Optional[str] = None,
     ):
         if AsyncOpenAI is None:
@@ -110,6 +119,9 @@ class DialogueAgentA:
         self.stream_id = stream_id
         self.tm = task_manager
         self.default_user_uid = default_user_uid
+
+        self.db_path = Path(db_path).expanduser().resolve()
+
         self._client = AsyncOpenAI(
             api_key=(self.cfg.api_key or "lm-studio"),
             base_url=(self.cfg.base_url or "http://127.0.0.1:1234/v1"),
@@ -121,7 +133,7 @@ class DialogueAgentA:
     # -------------------- 唯一外部接口 --------------------
     async def converse(self, conversation_uid: str, user_input: str) -> str:
         """对外唯一入口：直到产出面向用户的最终回复文本才返回。"""
-        # 1) 把用户消息写入 main_chat 与 内部信息流
+        # 1) 记录用户消息
         await self._append_main(conversation_uid, role="user", text=user_input)
         await self._append_internal(conversation_uid, role="user", text=user_input)
 
@@ -131,7 +143,11 @@ class DialogueAgentA:
         while True:
             # 2) 组装 LLM 输入（system + 工具目录[可选] + 内部历史）
             messages = await self._build_llm_messages(conversation_uid)
-            tools = [self._tool_emit_user_reply(), self._tool_emit_task_request()]
+            tools = [
+                self._tool_emit_user_reply(),
+                self._tool_emit_task_request(),
+                self._tool_emit_task_status_query(),  # 新增
+            ]
 
             # 3) 调 LLM（带重试）
             raw_resp, err = await self._call_llm_with_retry(messages, tools)
@@ -150,8 +166,7 @@ class DialogueAgentA:
             # 5) 解析意图
             intent, payload, perr = self._parse_llm_decision(raw_resp)
             if perr:
-                # 不立刻退出，给模型一个轻提示并进入下一轮（受上限约束）
-                nudge = f"请仅调用 emit_user_reply 或 emit_task_request 两个函数之一。错误信息：{perr}"
+                nudge = "请仅调用 emit_user_reply / emit_task_request / emit_task_status_query 之一。" + f"错误：{perr}"
                 await self._append_internal(conversation_uid, role="system", text=nudge)
                 tool_round += 1
                 if tool_round >= limit:
@@ -169,51 +184,41 @@ class DialogueAgentA:
             if intent == "task_request":
                 description = (payload.get("description") or "").strip()
                 if not description:
-                    # 任务描述为空，提示并进入下一轮
                     note = "任务描述为空，无法创建或推进。请补全关键信息。"
                     await self._append_internal(conversation_uid, role="assistant", text=note)
                     tool_round += 1
                     if tool_round >= limit:
-                        # 达到上限：请求模型输出一句面向用户的总结/下一步说明
-                        summary_prompt = (
-                            "请用一句中文向用户说明当前进展："
-                            "若任务已成功，给出明确结果；"
-                            "若仍需信息或发生失败，说明缺失项/原因，并给出下一步建议。"
-                            "只输出给用户看的文本。"
-                        )
-                        await self._append_internal(conversation_uid, role="system", text=summary_prompt)
-                        messages2 = await self._build_llm_messages(conversation_uid)
-                        raw2, err2 = await self._call_llm_with_retry(messages2, tools)
-                        final_text = None
-                        if not err2 and raw2:
-                            await self._append_internal(
-                                conversation_uid, role="assistant",
-                                text=json.dumps(raw2, ensure_ascii=False)
-                            )
-                            fin_intent, fin_payload, _ = self._parse_llm_decision(raw2)
-                            if fin_intent == "user_reply":
-                                final_text = (fin_payload.get("content") or "").strip()
-                        if not final_text:
-                            final_text = "本轮已达最大尝试次数，请确认需求或稍后再试。"
+                        final_text = "本轮已达最大尝试次数，请确认需求或稍后再试。"
                         await self._append_main(conversation_uid, role="assistant", text=final_text)
                         return final_text
-                    # 未达上限：继续循环
                     continue
 
-                # 调用执行器
+                # 查询任务归属用户
+                owner_uid = await self._get_owner_uid(conversation_uid)
+                if not owner_uid:
+                    if self.default_user_uid:
+                        owner_uid = self.default_user_uid
+                    else:
+                        msg = "无法确定任务归属用户：未在数据库(conversations)中找到该对话的 owner_uid。"
+                        await self._append_internal(conversation_uid, role="assistant", text=msg)
+                        await self._append_main(conversation_uid, role="assistant", text=msg)
+                        return msg
+
+                # 调用执行器创建任务（保持你的现有架构：创建由 executor 负责）
                 try:
-                    res = await self.executor.create_task(self.default_user_uid, plan_text=description)
+                    res = await self.executor.create_task(owner_uid, plan_text=description)
                 except Exception as e:
                     res = {"ok": False, "error": f"执行器异常: {e!r}"}
-                # 执行器回执写入内部流（role=tool）
+
+                # 执行器回执写入内部流
                 await self._append_internal(
-                    conversation_uid, role="tool",
+                    conversation_uid, role="tool_result",
                     text=json.dumps(res, ensure_ascii=False)
                 )
 
                 tool_round += 1
                 if tool_round >= limit:
-                    # 达到上限：请求模型输出一句面向用户的总结/下一步说明
+                    # 请模型向用户做一句话总结（含 task_uid 如有）
                     summary_prompt = (
                         "请用一句中文向用户说明当前进展："
                         "若任务已成功，给出明确结果（含 task_uid，如有）；"
@@ -237,18 +242,69 @@ class DialogueAgentA:
                     await self._append_main(conversation_uid, role="assistant", text=final_text)
                     return final_text
 
-                # 未达上限：继续把“工具回执”作为上下文喂给模型
-                continue
+                continue  # 未达上限，继续作为上下文驱动下一轮
 
-            # 7) 兜底：未知分支（理论上不会到这）。给个轻提示并继续循环
+            if intent == "task_status_query":
+                task_uid = (payload.get("task_uid") or "").strip()
+                if not task_uid:
+                    note = "未提供 task_uid，无法查询任务状态。请给出具体 task_uid。"
+                    await self._append_internal(conversation_uid, role="assistant", text=note)
+                    tool_round += 1
+                    if tool_round >= limit:
+                        final_text = "没有 task_uid，无法查询任务状态。请提供任务编号后重试。"
+                        await self._append_main(conversation_uid, role="assistant", text=final_text)
+                        return final_text
+                    continue
+
+                # —— 直接调用你提供的异步包装：tm.get_task_status(task_uid) —— #
+                try:
+                    result = await self.tm.get_task_status(task_uid)
+                except Exception as e:
+                    result = {"ok": False, "error": f"查询异常: {e!r}", "task_uid": task_uid}
+
+                await self._append_internal(
+                    conversation_uid, role="tool_result",
+                    text=json.dumps(result, ensure_ascii=False)
+                )
+
+                # 让模型基于 tool_result 说一句人话；若失败则用兜底摘要
+                tool_round += 1
+                if tool_round >= limit:
+                    final_text = self._summarize_status_for_user(result)
+                    await self._append_main(conversation_uid, role="assistant", text=final_text)
+                    return final_text
+
+                summary_prompt = (
+                    "请读取上一个工具结果中的任务状态，为用户用一句中文进行简明汇报："
+                    "指出任务当前状态（运行中/已完成/失败），若提供了 progress 则给出百分比，"
+                    "若有 running_step 则简单点名（不超过一处），并包含 task_uid。只输出给用户看的文本。"
+                )
+                await self._append_internal(conversation_uid, role="system", text=summary_prompt)
+                messages2 = await self._build_llm_messages(conversation_uid)
+                raw2, err2 = await self._call_llm_with_retry(messages2, tools)
+                if not err2 and raw2:
+                    await self._append_internal(
+                        conversation_uid, role="assistant",
+                        text=json.dumps(raw2, ensure_ascii=False)
+                    )
+                    fin_intent, fin_payload, _ = self._parse_llm_decision(raw2)
+                    if fin_intent == "user_reply":
+                        final_text = (fin_payload.get("content") or "").strip() or "已返回任务状态。"
+                        await self._append_main(conversation_uid, role="assistant", text=final_text)
+                        return final_text
+
+                final_text = self._summarize_status_for_user(result)
+                await self._append_main(conversation_uid, role="assistant", text=final_text)
+                return final_text
+
+            # 7) 兜底
             await self._append_internal(conversation_uid, role="system",
-                                        text="请仅使用 emit_user_reply 或 emit_task_request。")
+                                        text="请仅使用 emit_user_reply / emit_task_request / emit_task_status_query。")
             tool_round += 1
             if tool_round >= limit:
                 final_text = "本轮已达最大尝试次数，请确认需求或稍后再试。"
                 await self._append_main(conversation_uid, role="assistant", text=final_text)
                 return final_text
-            # 继续下一轮
             continue
 
     # -------------------- LLM 调用与解析 --------------------
@@ -280,8 +336,8 @@ class DialogueAgentA:
     def _parse_llm_decision(self, resp: dict) -> Tuple[Optional[str], Dict[str, Any], Optional[str]]:
         """
         返回:
-          - intent: "user_reply" | "task_request" | None
-          - payload: {"content": "..."} 或 {"description": "..."}
+          - intent: "user_reply" | "task_request" | "task_status_query" | None
+          - payload: {"content": "..."} | {"description": "..."} | {"task_uid": "..."}
           - error: 解析错误描述（无错误则为 None）
         """
         try:
@@ -306,10 +362,12 @@ class DialogueAgentA:
                     return "user_reply", {"content": (args_obj.get("content") or "")}, None
                 if name == "emit_task_request":
                     return "task_request", {"description": (args_obj.get("description") or "")}, None
+                if name == "emit_task_status_query":
+                    return "task_status_query", {"task_uid": (args_obj.get("task_uid") or "")}, None
 
             # 2) 旧版 function_call
             fc = msg.get("function_call") or {}
-            if fc.get("name") in ("emit_user_reply", "emit_task_request"):
+            if fc.get("name") in ("emit_user_reply", "emit_task_request", "emit_task_status_query"):
                 args = fc.get("arguments")
                 if isinstance(args, str):
                     try:
@@ -320,8 +378,9 @@ class DialogueAgentA:
                     args_obj = args or {}
                 if fc.get("name") == "emit_user_reply":
                     return "user_reply", {"content": (args_obj.get("content") or "")}, None
-                else:
+                if fc.get("name") == "emit_task_request":
                     return "task_request", {"description": (args_obj.get("description") or "")}, None
+                return "task_status_query", {"task_uid": (args_obj.get("task_uid") or "")}, None
 
             # 3) 内容兜底（部分网关把 JSON 塞在 content）
             content = (msg.get("content") or "").strip()
@@ -333,6 +392,8 @@ class DialogueAgentA:
                             return "user_reply", {"content": str(obj["content"])}, None
                         if obj.get("type") == "task_request" and "description" in obj:
                             return "task_request", {"description": str(obj["description"])}, None
+                        if obj.get("type") == "task_status_query" and "task_uid" in obj:
+                            return "task_status_query", {"task_uid": str(obj["task_uid"])}, None
                 except Exception:
                     pass
 
@@ -343,7 +404,6 @@ class DialogueAgentA:
     @staticmethod
     def _strip_json_fences(txt: str) -> str:
         txt = txt.strip()
-        # 如果整体以代码围栏开头（例如 ``` 或 ```json），去掉首尾围栏行
         if txt.startswith("```"):
             lines: List[str] = []
             for line in txt.splitlines():
@@ -399,12 +459,33 @@ class DialogueAgentA:
             }
         }
 
+    def _tool_emit_task_status_query(self) -> Dict[str, Any]:
+        return {
+            "type": "function",
+            "function": {
+                "name": "emit_task_status_query",
+                "description": "当用户想查询某个任务的运行状态时调用此函数，传入任务的 task_uid。",
+                "parameters": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["task_uid"],
+                    "properties": {
+                        "task_uid": {
+                            "type": "string",
+                            "minLength": 4,
+                            "description": "要查询状态的任务唯一编号（task_uid）。"
+                        }
+                    }
+                }
+            }
+        }
+
     # -------------------- 构造对 LLM 的 messages --------------------
 
     async def _build_llm_messages(self, conversation_uid: str) -> List[Dict[str, str]]:
         msgs: List[Dict[str, str]] = [{"role": "system", "content": self.cfg.system_prefix}]
 
-        # —— 注入一次精简工具目录（只读；真实调用仍由执行器完成）——
+        # 注入一次精简工具目录（只读）
         if self.cfg.include_tool_catalog:
             if self._tool_catalog_cache is None:
                 self._tool_catalog_cache = await self._get_tool_catalog_text()
@@ -417,7 +498,7 @@ class DialogueAgentA:
                     )
                 })
 
-        # —— 拼接内部信息流历史 —— #
+        # 拼接内部信息流历史
         res = await self.cm.get_messages(conversation_uid, target=self.stream_id)
         if res.get("ok"):
             for it in (res.get("messages") or []):
@@ -429,10 +510,6 @@ class DialogueAgentA:
         return msgs
 
     async def _get_tool_catalog_text(self) -> Optional[str]:
-        """
-        从 task_manager 读取工具列表并格式化为简洁目录文本；
-        task_manager 为异步外观（如 AsyncTaskManager）。
-        """
         try:
             tools = await self.tm.list_tools()
         except Exception:
@@ -455,10 +532,110 @@ class DialogueAgentA:
             return None
         return "\n".join(lines)
 
-    # -------------------- 与 CM 的读写（直接写 role/content） --------------------
+    # -------------------- 与 CM 的读写 --------------------
 
     async def _append_main(self, conversation_uid: str, role: str, text: str) -> None:
         await self.cm.add_message_to_main(conversation_uid, role=role, content=text)
 
     async def _append_internal(self, conversation_uid: str, role: str, text: str) -> None:
         await self.cm.add_message_to_stream(conversation_uid, target=self.stream_id, role=role, content=text)
+
+    # -------------------- DB 查询：根据对话ID拿 owner_uid --------------------
+
+    async def _get_owner_uid(self, conversation_uid: str) -> Optional[str]:
+        return await asyncio.to_thread(self._lookup_owner_uid_sync, conversation_uid)
+
+    def _lookup_owner_uid_sync(self, conversation_uid: str) -> Optional[str]:
+        try:
+            conn = sqlite3.connect(self.db_path.as_posix(), check_same_thread=False)
+            try:
+                cur = conn.execute(
+                    "SELECT owner_uid FROM conversations WHERE conversation_uid = ? LIMIT 1",
+                    (conversation_uid,),
+                )
+                row = cur.fetchone()
+                if row and row[0]:
+                    return str(row[0])
+                return None
+            finally:
+                conn.close()
+        except Exception:
+            return None
+
+    # -------------------- 兜底摘要：把 get_task_status 返回压成一句人话 --------------------
+
+    def _summarize_status_for_user(self, result: Dict[str, Any]) -> str:
+        """
+        适配你提供的 get_task_status 返回结构：
+        {
+          "ok": True/False,
+          "task_uid": "...",
+          "status": "running|succeeded|failed|queued|created|...",
+          "user_uid": "...",
+          "total_steps": int,
+          "last_completed_step": int,
+          "current_step_number": Optional[int],
+          "current_step_uid": Optional[str],
+          "failed_step_number": Optional[int],
+          "failed_step_uid": Optional[str],
+          "running_step": Optional[{
+              "step_uid": "...",
+              "step_number": int,
+              "tool_name": "...",
+              "status": "running",
+              "run_id": "..."
+          }],
+          "progress": Optional[float in [0,1]]
+        }
+        """
+        ok = result.get("ok", False)
+        task_uid = result.get("task_uid") or "(未知)"
+        if not ok:
+            return f"查询任务 {task_uid} 状态失败：{result.get('error') or '未知错误'}。"
+
+        status = str(result.get("status") or "").lower()
+        progress = result.get("progress")
+        prog_txt = ""
+        if isinstance(progress, (int, float)):
+            try:
+                prog_txt = f"（进度 {round(progress * 100)}%）"
+            except Exception:
+                prog_txt = ""
+
+        running = result.get("running_step") or {}
+        running_hint = ""
+        if isinstance(running, dict) and running:
+            sn = running.get("step_number")
+            tn = running.get("tool_name")
+            if sn is not None and tn:
+                running_hint = f"；当前执行第{sn}步 {tn}"
+            elif sn is not None:
+                running_hint = f"；当前执行第{sn}步"
+            elif tn:
+                running_hint = f"；当前执行 {tn}"
+
+        failed_no = result.get("failed_step_number")
+        failed_uid = result.get("failed_step_uid")
+        failed_hint = ""
+        if failed_no is not None or failed_uid:
+            if failed_no is not None and failed_uid:
+                failed_hint = f"；失败发生在第{failed_no}步（{failed_uid}）"
+            elif failed_no is not None:
+                failed_hint = f"；失败发生在第{failed_no}步"
+            else:
+                failed_hint = f"；失败步骤UID：{failed_uid}"
+
+        # 统一的对用户文案
+        status_map = {
+            "running": "运行中",
+            "succeeded": "已完成",
+            "success": "已完成",
+            "done": "已完成",
+            "failed": "失败",
+            "error": "失败",
+            "queued": "排队中",
+            "created": "已创建",
+        }
+        human = status_map.get(status, status or "未知")
+
+        return f"任务 {task_uid} 当前状态：{human}{prog_txt}{running_hint}{failed_hint}。"

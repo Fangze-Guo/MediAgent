@@ -273,6 +273,43 @@ async def start_evaluate(ctx: Context, in_dir: str, out_dir: str) -> dict:
     return {"run_id": ri.run_id, "log_path": str(ri.log_path), "status_path": str(ri.status_path),
             "out_dir": out_dir, "started": True}
 
+@job_tool(
+    name="convert_dicom_to_nifti",
+    description=(
+        "将 DICOM 序列批量转换为 NIfTI 文件。\n\n"
+        "输入目录结构示例：\n"
+        "  ├─ Patient001\n"
+        "  │   ├─ C0\n"
+        "  │   └─ C2\n"
+        "  ├─ Patient002\n"
+        "  │   ├─ C0\n"
+        "  │   └─ C2\n"
+        "输出目录将生成对应的 NIfTI 文件：C0.nii.gz, C2.nii.gz。\n\n"
+        "【用于 LLM 产出 steps[*] 的规则】\n"
+        "1) tool_name='convert_dicom_to_nifti'。\n"
+        "2) source_kind='step' 或 'direct' 均可。\n"
+        "3) additional_params 必须为 {}。\n"
+        "4) 禁止 additional_params 出现 in_dir/out_dir。\n"
+        "【示例】\n"
+        "{\n"
+        "  \"step_number\": 5,\n"
+        "  \"tool_name\": \"convert_dicom_to_nifti\",\n"
+        "  \"source_kind\": \"direct\",\n"
+        "  \"source\": \"file:///mnt/data/dicoms\",\n"
+        "  \"additional_params\": {}\n"
+        "}"
+    )
+)
+async def convert_dicom_to_nifti(ctx: Context, in_dir: str, out_dir: str) -> dict:
+    ri = await _launch_and_capture("convert_dicom_to_nifti.py", "--in-dir", in_dir, "--out-dir", out_dir, out_dir=out_dir)
+    return {
+        "run_id": ri.run_id,
+        "log_path": str(ri.log_path),
+        "status_path": str(ri.status_path),
+        "out_dir": out_dir,
+        "started": True,
+    }
+
 
 # ============================ 内部辅助工具（执行层用） ============================
 @server.tool()
