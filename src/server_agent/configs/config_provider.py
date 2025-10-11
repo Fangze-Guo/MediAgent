@@ -42,6 +42,8 @@ class ConfigProvider:
     def set_current_model(self, model_id: str) -> bool:
         """设置当前模型"""
         with self._lock:
+            # 重新从磁盘加载最新配置
+            self.reload_from_disk()
             models = (self._data.get("models") or {})
             if model_id not in models:
                 return False
@@ -52,6 +54,8 @@ class ConfigProvider:
     def get_snapshot(self) -> ModelSnapshot:
         """生成快照，用于只读"""
         with self._lock:
+            # 重新从磁盘加载最新配置
+            self.reload_from_disk()
             current_model_id = self._data.get("current_model_id") or ""
             models = (self._data.get("models") or {})
             m = models.get(current_model_id) or {}

@@ -55,10 +55,6 @@ class ConversationService:
             except Exception:
                 pass
 
-        # 次选：返回已缓存的实例（仅当之前通过 request 获取过时才存在）
-        if self._dialogueAgentA is not None:
-            return self._dialogueAgentA
-
         # 无法获取运行态时抛错，提示调用方在有 request 的上下文中使用
         raise RuntimeError("Runtime agent is not available. Ensure to call within a FastAPI request context.")
 

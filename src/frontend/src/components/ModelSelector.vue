@@ -252,17 +252,12 @@ const showModelConfig = () => {
 
 const getTagClass = (tag: string) => {
   const classMap: Record<string, string> = {
-    '对话': 'tag-blue',
-    '文本理解': 'tag-blue',
-    '高速': 'tag-green',
-    '性价比': 'tag-green',
-    '最强能力': 'tag-purple',
-    '复杂任务': 'tag-purple',
-    '多模态': 'tag-orange',
+    '日常对话': 'tag-blue',
+    '文本创作': 'tag-green',
     '代码生成': 'tag-orange',
-    '快速': 'tag-green',
-    '中文优化': 'tag-red',
-    '多轮对话': 'tag-red'
+    '数学问题': 'tag-red',
+    '逻辑推理': 'tag-cyan',
+    '复杂分析': 'tag-magenta',
   }
   return classMap[tag] || 'tag-default'
 }
@@ -532,6 +527,8 @@ defineExpose({
 .tag-purple { background: #f3e5f5; color: #7b1fa2; }
 .tag-orange { background: #fff3e0; color: #f57c00; }
 .tag-red { background: #ffebee; color: #c62828; }
+.tag-cyan { background: #e0f7fa; color: #00acc1; }
+.tag-magenta { background: #fce4ec; color: #c2185b; }
 .tag-default { background: #f5f5f5; color: #666; }
 
 .model-status {

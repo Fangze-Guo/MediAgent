@@ -24,9 +24,6 @@ class RuntimeRegistry:
         """根据快照原子重建运行实例。"""
         if snapshot is None:
             return
-        if (self.cfg_a and getattr(self.cfg_a, "model", None) == snapshot.current_model_id
-                and getattr(self.cfg_a, "base_url", None) == snapshot.base_url):
-            return
 
         new_cfg_b = AgentBConfig(
             model=snapshot.current_model_id,
@@ -67,9 +64,12 @@ class RuntimeRegistry:
         self.agent = new_agent
 
         logging.getLogger(__name__).info(
-            "模式配置刷新 | current=%s | model %s -> %s | base_url %s -> %s",
+            "🔄 模型配置刷新 | current=%s | model %s -> %s | base_url %s -> %s",
             snapshot.current_model_id, old_model, snapshot.current_model_id, str(old_base), str(snapshot.base_url)
         )
+        print(f"🔄 模型配置刷新: {old_model} -> {snapshot.current_model_id}")
+        print(f"🔄 API端点: {old_base} -> {snapshot.base_url}")
+        print(f"🔄 API Key: {snapshot.api_key[:20] if snapshot.api_key else 'None'}...")
 
     def get_agent(self):
         return self.agent

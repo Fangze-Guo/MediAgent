@@ -115,6 +115,13 @@ class ModelConfigService:
         logger.info(f"已切换到模型: {self.model_configs[model_id].name}")
         return True
 
+    def reload_configs(self):
+        """重新从文件加载配置"""
+        self.model_configs.clear()
+        self.current_model_id = None
+        self._load_configs_from_file()
+        logger.info("已重新加载模型配置")
+
     def get_all_models(self) -> List[ModelConfig]:
         """获取所有模型配置"""
         return list(self.model_configs.values())

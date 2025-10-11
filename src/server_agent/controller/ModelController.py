@@ -75,8 +75,11 @@ class ModelController(BaseController):
 
         @self.router.get("/configs", response_model=BaseResponse[ModelConfigsResponse])
         async def getModelConfigs() -> BaseResponse[ModelConfigsResponse]:
-            """获取所有模型配置"""
+            """获取所有模型配置（每次从文件重新加载）"""
             try:
+                # 重新从文件加载配置
+                self.model_service.reload_configs()
+                
                 models = self.model_service.get_all_models()
                 current_model_id = self.model_service.current_model_id or ""
                 
@@ -137,6 +140,8 @@ class ModelController(BaseController):
                 success = provider.set_current_model(request.model_id)
                 if success:
                     snapshot = provider.get_snapshot()
+                    print(f"🔄 模型切换成功: {request.model_id}")
+                    print(f"🔄 快照信息: model={snapshot.current_model_id}, base_url={snapshot.base_url}")
                     registry.refresh_runtime(snapshot)
                     return ResultUtils.success(True)
                 else:

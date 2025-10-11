@@ -129,7 +129,7 @@
             <a-select v-model:value="editFormData.provider">
               <a-select-option value="阿里云">阿里云</a-select-option>
               <a-select-option value="OpenAI">OpenAI</a-select-option>
-              <a-select-option value="智谱AI">智谱AI</a-select-option>
+              <a-select-option value="DeepSeek">DeepSeek</a-select-option>
             </a-select>
           </a-form-item>
           <a-form-item label="API基础URL" name="base_url" :rules="[{ required: true, message: '请输入API基础URL' }]">
@@ -152,13 +152,12 @@
               placeholder="输入标签"
               style="width: 100%"
             >
-              <a-select-option value="对话">对话</a-select-option>
-              <a-select-option value="文本理解">文本理解</a-select-option>
-              <a-select-option value="高速">高速</a-select-option>
-              <a-select-option value="性价比">性价比</a-select-option>
-              <a-select-option value="多模态">多模态</a-select-option>
+              <a-select-option value="日常对话">日常对话</a-select-option>
+              <a-select-option value="文本创作">文本创作</a-select-option>
               <a-select-option value="代码生成">代码生成</a-select-option>
-              <a-select-option value="中文优化">中文优化</a-select-option>
+              <a-select-option value="数学问题">数学问题</a-select-option>
+              <a-select-option value="逻辑推理">逻辑推理</a-select-option>
+              <a-select-option value="复杂分析">复杂分析</a-select-option>
             </a-select>
           </a-form-item>
         </a-form>
@@ -168,7 +167,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import { 
   RobotOutlined, 
@@ -430,15 +429,12 @@ const deleteModel = (modelId: string) => {
 
 const getTagColor = (tag: string) => {
   const colorMap: Record<string, string> = {
-    '对话': 'blue',
-    '文本理解': 'blue',
-    '高速': 'green',
-    '性价比': 'green',
-    '多模态': 'orange',
+    '日常对话': 'blue',
+    '文本创作': 'green',
     '代码生成': 'orange',
-    '中文优化': 'red',
-    '最强能力': 'purple',
-    '复杂任务': 'purple'
+    '数学问题': 'red',
+    '逻辑推理': 'cyan',
+    '复杂分析': 'magenta',
   }
   return colorMap[tag] || 'default'
 }
@@ -450,13 +446,6 @@ const getStatusText = (status?: string) => {
     'offline': '离线'
   }
   return statusMap[status || 'offline']
-}
-
-// 监听visible变化，加载数据
-const loadModelsOnVisible = () => {
-  if (props.visible) {
-    loadModels()
-  }
 }
 
 onMounted(() => {
@@ -538,6 +527,21 @@ defineExpose({
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+/* 标签选择框样式优化 */
+:deep(.ant-select-selection-item) {
+  border-radius: 12px !important;
+  font-size: 12px !important;
+  padding: 2px 8px !important;
+  margin: 2px !important;
+  transition: all 0.3s ease !important;
+}
+
+/* 选择框悬停效果 */
+:deep(.ant-select-selection-item:hover) {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
 }
 
 .model-status {
