@@ -1,25 +1,54 @@
 <template>
   <div class="sidebar">
+    <!-- ==================== 顶部标题区 ==================== -->
     <div class="sidebar-header">
+      <img src="/MediAgent.png" alt="MediAgent Logo" class="logo-image" />
       <h3>MediAgent</h3>
     </div>
 
+    <!-- ==================== 主内容区 ==================== -->
     <div class="sidebar-content">
+      <!-- 加载骨架屏 -->
+      <div v-if="!isMenuReady" class="menu-skeleton">
+        <div class="skeleton-item" v-for="i in 3" :key="i">
+          <div class="skeleton-icon"></div>
+          <div class="skeleton-text"></div>
+        </div>
+      </div>
+      
+      <!-- 导航菜单 -->
       <a-menu
-          v-model:openKeys="openKeys"
-          v-model:selectedKeys="selectedKeys"
+          v-else
+          :selectedKeys="selectedKeys"
           mode="inline"
           :items="items"
           @click="handleMenuClick"
+          class="sidebar-menu"
       />
+      
       <hr />
+      
+      <!-- 历史对话区 -->
       <div class="history-section">
         <h4>历史对话</h4>
-        <a-list class="chat-list" :split="false">
+        
+        <!-- 对话列表骨架屏 -->
+        <div v-if="!isConversationsReady" class="conversations-skeleton">
+          <div class="conversation-skeleton-item" v-for="i in 3" :key="i">
+            <div class="skeleton-avatar"></div>
+            <div class="skeleton-content">
+              <div class="skeleton-title"></div>
+              <div class="skeleton-preview"></div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 对话列表 -->
+        <a-list v-else class="chat-list" :split="false">
           <a-list-item
               v-for="c in conversations"
               :key="c.id"
-              :class="['chat-item', { active: c.id === currentId }]"
+              :class="['chat-item', { active: isConversationActive(c.id) }]"
               @click="openConversation(c.id)"
           >
             <div class="chat-item-link">
@@ -44,7 +73,7 @@
       </div>
     </div>
 
-    <!-- 用户信息区域 - 移到底部 -->
+    <!-- ==================== 用户信息区域 - 固定在底部 ==================== -->
     <div class="user-section">
       <div class="user-info">
         <div class="user-avatar">
@@ -74,25 +103,34 @@
 <script setup lang="ts">
 /**
  * 侧边栏组件
- * 显示应用标题、新建对话按钮和历史会话列表
- * 提供会话切换功能
+ * 显示应用标题、导航菜单和历史会话列表
+ * 提供会话切换功能，实现正确的高亮逻辑
  */
 import { useConversationsStore } from '@/store/conversations'
 import { useAuthStore } from '@/store/auth'
 import { useRoute, useRouter } from 'vue-router'
-import { computed, h, ref } from 'vue'
+import { computed, h, ref, onMounted, nextTick } from 'vue'
 import { MenuProps, message, Modal } from 'ant-design-vue'
 import { CommentOutlined, FolderOutlined, LogoutOutlined, RobotOutlined, BarChartOutlined, FileTextOutlined, AppstoreOutlined } from '@ant-design/icons-vue'
 
-// 路由相关
+// ==================== 路由和状态管理 ====================
 const router = useRouter()
 const route = useRoute()
-
-// 状态管理
 const conversationsStore = useConversationsStore()
 const authStore = useAuthStore()
 
-// 计算属性
+// ==================== 骨架屏状态 ====================
+/**
+ * 菜单是否准备好
+ * 使用骨架屏避免初始加载时的闪烁
+ */
+const isMenuReady = ref(false)
+/**
+ * 对话列表是否准备好
+ */
+const isConversationsReady = ref(false)
+
+// ==================== 计算属性 ====================
 /** 当前活跃的会话ID，从路由参数获取 */
 const currentId = computed(() => String(route.params.id || ''))
 /** 会话列表，从store获取 */
@@ -100,41 +138,102 @@ const conversations = computed(() => conversationsStore.conversations)
 /** 当前用户信息 */
 const currentUser = computed(() => authStore.currentUser)
 
-const selectedKeys = ref(['1']);
-const openKeys = ref(['sub1']);
+// ==================== 初始化 ====================
+/**
+ * 组件挂载后初始化
+ * 使用 nextTick 确保 DOM 更新后再显示内容
+ */
+onMounted(async () => {
+  // 等待路由完全解析和 DOM 更新
+  await nextTick()
+  
+  // 短暂延迟后显示菜单，确保高亮状态正确
+  setTimeout(() => {
+    isMenuReady.value = true
+  }, 50)
+  
+  // 对话列表稍后加载
+  setTimeout(() => {
+    isConversationsReady.value = true
+  }, 100)
+})
+
+// ==================== 菜单配置 ====================
 const items = ref([
   {
-    key: '1',
+    key: 'home',
     icon: () => h(CommentOutlined),
     label: '新建对话',
   },
   {
-    key: '3',
+    key: 'files',
     icon: () => h(FolderOutlined),
     label: '文件管理',
   },
   {
-    key: '5',
+    key: 'app-store',
     icon: () => h(AppstoreOutlined),
-    label: '应用商店',
+    label: 'App Store',
   },
-]);
+])
 
 /**
+ * 根据当前路由计算应该高亮的菜单项
+ * 逻辑：
+ * - /conversation/:id → 不高亮（显示对话项高亮）
+ * - /app-store → 高亮"App Store"
+ * - /files → 高亮"文件管理"
+ * - / → 高亮"新建对话"
+ */
+const selectedKeys = computed(() => {
+  const path = route.path
+  
+  if (path.startsWith('/conversation/')) {
+    return []
+  }
+  
+  if (path === '/app-store') {
+    return ['app-store']
+  }
+  
+  if (path === '/files') {
+    return ['files']
+  }
+  
+  if (path === '/') {
+    return ['home']
+  }
+  
+  return []
+})
+
+// ==================== 菜单交互 ====================
+/**
  * 处理菜单点击事件
+ * 根据菜单项的 key 跳转到对应页面
  */
 const handleMenuClick: MenuProps['onClick'] = ({key}) => {
-  if (key === '1') {
-    // 跳转到主页（新建对话）
+  if (key === 'home') {
+    // 跳转到首页（新建对话）
     router.push('/')
-  } else if (key === '3') {
+  } else if (key === 'files') {
     // 跳转到文件管理页面
     router.push('/files')
-  } else if (key === '5') {
+  } else if (key === 'app-store') {
     // 跳转到应用商店页面
     router.push('/app-store')
   }
-};
+}
+
+// ==================== 对话交互 ====================
+/**
+ * 判断对话是否为当前激活状态
+ * 只有在对话页面 (/conversation/:id) 且 ID 匹配时才高亮
+ * @param conversationId 对话ID
+ */
+const isConversationActive = (conversationId: string) => {
+  return route.name === 'Conversation' && currentId.value === conversationId
+}
 
 /**
  * 打开指定会话
@@ -283,12 +382,131 @@ const getConversationAvatarStyle = (conversation: any) => {
   position: relative;
 }
 
+/* ==================== 骨架屏样式 ==================== */
+/* 参考 Chrome Web Store 的骨架屏设计 */
+
+/* 菜单骨架屏 */
+.menu-skeleton {
+  padding: 4px 0;
+}
+
+.skeleton-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  margin-bottom: 4px;
+  gap: 12px;
+}
+
+.skeleton-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s ease-in-out infinite;
+}
+
+.skeleton-text {
+  flex: 1;
+  height: 16px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s ease-in-out infinite;
+}
+
+/* 对话列表骨架屏 */
+.conversations-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.conversation-skeleton-item {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  gap: 12px;
+}
+
+.skeleton-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.skeleton-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skeleton-title {
+  width: 70%;
+  height: 14px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s ease-in-out infinite;
+}
+
+.skeleton-preview {
+  width: 90%;
+  height: 12px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s ease-in-out infinite;
+}
+
+/* 骨架屏动画 */
+@keyframes skeleton-loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* 菜单容器优化 */
+.sidebar-menu {
+  /* 优化渲染性能，减少闪烁 */
+  will-change: auto;
+  /* 淡入动画 */
+  animation: fadeIn 0.2s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 /* 菜单项样式调整 */
 :deep(.ant-menu-item) {
   height: 48px !important;
   line-height: 48px !important;
   font-size: 16px !important;
   margin-bottom: 4px !important;
+  /* 禁用选中状态的过渡动画，避免闪烁 */
+  transition: none !important;
+}
+
+:deep(.ant-menu-item-selected) {
+  /* 确保选中状态立即生效 */
+  transition: none !important;
 }
 
 :deep(.ant-menu-item .anticon) {
@@ -299,10 +517,26 @@ const getConversationAvatarStyle = (conversation: any) => {
   border-right: none !important;
 }
 
+/* 对话列表淡入动画 */
+.chat-list {
+  animation: fadeIn 0.2s ease-in;
+}
+
 /* 顶部标题区：内边距与底部分隔线 */
 .sidebar-header {
   padding: 20px;
   border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Logo 图片 */
+.logo-image {
+  width: 60px;
+  height: 60px;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 /* 标题文本：大小与颜色 */
@@ -310,6 +544,7 @@ const getConversationAvatarStyle = (conversation: any) => {
   margin: 0;
   color: #333;
   font-size: 18px;
+  font-weight: 600;
 }
 
 /* 内容滚动区：撑满剩余高度，允许纵向滚动 */
