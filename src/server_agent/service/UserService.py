@@ -3,30 +3,14 @@
 """
 from __future__ import annotations
 
-from typing import TypedDict, Optional, Dict
+from typing import Optional
 
-from model.vo import UserVO
 from src.server_agent.exceptions import (
     ValidationError, ConflictError, NotFoundError,
     AuthenticationError, DatabaseError, handle_service_exception
 )
 from src.server_agent.mapper import UserMapper
-
-
-# ==================== 数据模型 ====================
-
-class LoginResult(TypedDict):
-    ok: bool
-    code: str
-    message: str
-    token: Optional[str]
-
-
-class RegisterResult(TypedDict):
-    ok: bool
-    code: str
-    message: str
-    uid: Optional[int]
+from src.server_agent.model.vo.UserVO import UserVO
 
 
 class UserService:
@@ -132,11 +116,17 @@ class UserService:
 
         user_row = await self.userMapper.find_user_by_token(token)
         if user_row:
-            return {
-                "uid": user_row.uid,
-                "user_name": user_row.user_name,
-                "token": user_row.token
-            }
+            # 确保role字段不为None
+            role_value = getattr(user_row, 'role', 'user')
+            if role_value is None:
+                role_value = 'user'
+                
+            return UserVO(
+                uid=user_row.uid,
+                user_name=user_row.user_name,
+                token=user_row.token,
+                role=role_value
+            )
         return None
 
     @handle_service_exception

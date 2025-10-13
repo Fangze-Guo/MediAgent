@@ -15,6 +15,7 @@ export interface RegisterRequest {
 export interface UserInfo {
   uid: number
   user_name: string
+  role?: string  // 用户角色：user, admin
 }
 
 export const useAuthStore = defineStore('auth', {
@@ -90,14 +91,15 @@ export const useAuthStore = defineStore('auth', {
       
       try {
         const response = await getUserInfo()
-        // 检查响应格式并获取用户数据
         const userData = response.data
+        
         if (userData && userData.uid) {
           this.user = {
             uid: userData.uid,
-            user_name: userData.user_name
+            user_name: userData.user_name,
+            role: userData.role || 'user'
           }
-          // 将用户信息保存到localStorage
+          
           localStorage.setItem('mediagent_user', JSON.stringify(this.user))
           return this.user
         }

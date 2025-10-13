@@ -13,6 +13,7 @@ export interface RegisterRequest {
 export interface UserInfo {
   uid: number
   user_name: string
+  role?: string  // 用户角色：user, admin
 }
 
 export interface LoginResponse {

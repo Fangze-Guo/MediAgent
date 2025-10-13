@@ -8,22 +8,17 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from mediagent.modules.conversation_manager import ConversationManager
-from mediagent.modules.task_manager import AsyncTaskManager
 from src.server_agent.configs.config_provider import ConfigProvider
 from src.server_agent.exceptions import setup_exception_handlers
 from src.server_agent.runtime_registry import RuntimeRegistry
+from src.server_new.mediagent.modules.conversation_manager import ConversationManager
+from src.server_new.mediagent.modules.task_manager import AsyncTaskManager
+from src.server_new.mediagent.paths import DATA_DIR, in_data, in_mediagent
+from .AppStoreController import AppStoreController
 from .ConversationController import ConversationController
 from .FileController import FileController
 from .ModelController import ModelController
 from .UserController import UserController
-from .AppStoreController import AppStoreController
-
-# 数据目录（保持你的逻辑）
-try:
-    from mediagent.paths import DATA_DIR, in_data, in_mediagent
-except Exception:
-    DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
 
 class Settings:

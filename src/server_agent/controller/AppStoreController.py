@@ -261,3 +261,22 @@ class AppStoreController(BaseController):
                 return ResultUtils.success(stats)
             except Exception as e:
                 return ResultUtils.error(ErrorCode.SYSTEM_ERROR, f"获取统计信息失败: {str(e)}")
+        
+        @self.router.put("/apps/{app_id}/features")
+        async def update_app_features(app_id: str, request: dict = Body(...)) -> BaseResponse[dict]:
+            """
+            更新应用功能特点
+            Args:
+                app_id: 应用ID
+                request: 包含features字段的请求体
+            """
+            try:
+                features = request.get('features', '')
+                success = await self.app_service.update_app_features(app_id, features)
+                
+                if success:
+                    return ResultUtils.success({"message": "功能特点更新成功"})
+                else:
+                    return ResultUtils.error(ErrorCode.NOT_FOUND, "应用不存在")
+            except Exception as e:
+                return ResultUtils.error(ErrorCode.SYSTEM_ERROR, f"更新功能特点失败: {str(e)}")

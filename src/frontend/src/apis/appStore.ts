@@ -13,6 +13,7 @@ export interface AppInfo {
   category: string
   description: string
   full_description?: string
+  features?: string  // 功能特点 (Markdown格式)
   icon: string
   version: string
   author: string
@@ -211,6 +212,17 @@ export interface AppStoreStats {
  */
 export async function getAppStoreStats(): Promise<AppStoreStats> {
   const response = await get<BaseResponse<AppStoreStats>>('/app-store/stats')
+  return response.data.data
+}
+
+/**
+ * 更新应用功能特点
+ * @param appId 应用ID
+ * @param features 功能特点内容 (Markdown格式)
+ * @returns Promise<{message: string}>
+ */
+export async function updateAppFeatures(appId: string, features: string): Promise<{message: string}> {
+  const response = await put<BaseResponse<{message: string}>>(`/app-store/apps/${appId}/features`, { features })
   return response.data.data
 }
 

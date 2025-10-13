@@ -81,10 +81,12 @@
 
           <!-- 功能特点 -->
           <div class="section features-section">
-            <h2 class="section-title">功能特点</h2>
-            <ul class="features-list">
-              <li v-for="(feature, index) in features" :key="index">{{ feature }}</li>
-            </ul>
+            <FeaturesMarkdown 
+              :app-id="appId" 
+              :features="app?.features || ''" 
+              :can-edit="true"
+              @save="handleSaveFeatures"
+            />
           </div>
 
           <!-- 评论区 -->
@@ -349,9 +351,10 @@ import {
   CloseOutlined,
   DeleteOutlined
 } from '@ant-design/icons-vue'
-import { getAppDetail, getApps, installApp, uninstallApp, getAppReviews, addAppReview, updateAppReview, deleteAppReview, toggleReviewHelpful } from '@/apis/appStore'
+import { getAppDetail, getApps, installApp, uninstallApp, getAppReviews, addAppReview, updateAppReview, deleteAppReview, toggleReviewHelpful, updateAppFeatures } from '@/apis/appStore'
 import type { AppInfo, Review, ReviewsData, AddReviewRequest } from '@/apis/appStore'
 import { useAuthStore } from '@/store/auth'
+import FeaturesMarkdown from '@/components/FeaturesMarkdown.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -398,17 +401,23 @@ const isCurrentUserReview = (review: Review) => {
   return review.user_name === authStore.currentUser.user_name
 }
 
-// 功能特点
-const features = computed(() => {
-  if (!app.value) return []
-  return [
-    '支持 DICOM 格式转换',
-    '批量处理功能',
-    '高效的图像处理算法',
-    '支持多种输出格式',
-    '用户友好的界面设计'
-  ]
-})
+// 保存功能特点
+const handleSaveFeatures = async (appId: string, features: string) => {
+  try {
+    // 调用后端API保存功能特点
+    await updateAppFeatures(appId, features)
+    
+    // 更新本地数据
+    if (app.value) {
+      app.value.features = features
+    }
+    
+    message.success('功能特点保存成功')
+  } catch (error) {
+    console.error('保存功能特点失败:', error)
+    message.error('保存失败，请重试')
+  }
+}
 
 // 计算评分统计（从后端获取的数据）
 const getStarCount = (star: number) => {
@@ -932,27 +941,8 @@ onMounted(() => {
 }
 
 /* 功能特点 */
-.features-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-.features-list li {
-  padding: 12px 0;
-  padding-left: 24px;
-  position: relative;
-  font-size: 14px;
-  color: #5f6368;
-  line-height: 1.6;
-}
-
-.features-list li::before {
-  content: '✓';
-  position: absolute;
-  left: 0;
-  color: #1a73e8;
-  font-weight: bold;
+.features-section {
+  margin-bottom: 32px;
 }
 
 /* 评论区 */

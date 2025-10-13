@@ -429,3 +429,25 @@ class AppStoreService:
             "total_reviews": total_reviews,
             "category_stats": category_stats
         }
+    
+    async def update_app_features(self, app_id: str, features: str) -> bool:
+        """
+        更新应用的功能特点
+        Args:
+            app_id: 应用ID
+            features: 功能特点内容 (Markdown格式)
+        Returns:
+            是否成功
+        """
+        # 检查应用是否存在
+        check_query = "SELECT id FROM apps WHERE id = ?"
+        check_result = await self._execute_query(check_query, (app_id,))
+        
+        if not check_result:
+            return False
+        
+        # 更新功能特点
+        update_query = "UPDATE apps SET features = ? WHERE id = ?"
+        rows_affected = await self._execute_command(update_query, (features, app_id))
+        
+        return rows_affected > 0
