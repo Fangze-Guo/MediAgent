@@ -75,7 +75,7 @@
           <div class="section overview-section">
             <h2 class="section-title">概述</h2>
             <div class="overview-content">
-              {{ app.fullDescription || app.description }}
+              {{ app.full_description || app.description }}
             </div>
           </div>
 
@@ -89,17 +89,32 @@
 
           <!-- 评论区 -->
           <div class="section reviews-section">
-            <h2 class="section-title">用户评价 ({{ reviews.length }})</h2>
+            <div class="reviews-header">
+              <h2 class="section-title">用户评价 ({{ reviews.length }})</h2>
+              <div class="review-controls">
+                <a-select v-model:value="reviewSort" class="sort-select" @change="handleSortChange">
+                  <a-select-option value="newest">最新</a-select-option>
+                  <a-select-option value="oldest">最早</a-select-option>
+                  <a-select-option value="highest">评分最高</a-select-option>
+                  <a-select-option value="lowest">评分最低</a-select-option>
+                  <a-select-option value="helpful">最有用</a-select-option>
+                </a-select>
+                <a-button type="primary" @click="handleWriteReview">
+                  <template #icon><EditOutlined /></template>
+                  {{ hasUserReviewed ? '修改评论' : '写评论' }}
+                </a-button>
+              </div>
+            </div>
             
             <!-- 评分统计 -->
             <div class="rating-stats">
               <div class="stats-summary">
                 <div class="average-rating">
-                  <span class="big-rating">{{ app.rating }}</span>
+                  <span class="big-rating">{{ reviewsData?.average_rating || 0 }}</span>
                   <div class="stars-small">
-                    <StarFilled v-for="i in 5" :key="i" :style="{ color: i <= Math.round(app.rating) ? '#faad14' : '#e0e0e0' }" />
+                    <StarFilled v-for="i in 5" :key="i" :style="{ color: i <= Math.round(reviewsData?.average_rating || 0) ? '#faad14' : '#e0e0e0' }" />
                   </div>
-                  <span class="total-reviews">{{ reviews.length }} 条评价</span>
+                  <span class="total-reviews">{{ reviewsData?.total || 0 }} 条评价</span>
                 </div>
               </div>
               <div class="stats-bars">
@@ -113,30 +128,139 @@
               </div>
             </div>
 
+            <!-- 添加评论表单 -->
+            <div v-if="showAddReview" class="add-review-form">
+              <div class="form-header">
+                <h3>{{ isEditingReview ? '修改评论' : '写评论' }}</h3>
+                <a-button type="text" @click="cancelAddReview">
+                  <CloseOutlined />
+                </a-button>
+              </div>
+              
+              <!-- 用户信息提示 -->
+              <div class="user-info-tip">
+                <UserOutlined />
+                <span>评论将以 <strong>{{ authStore.currentUser?.user_name || '未知用户' }}</strong> 的名义发布</span>
+              </div>
+              
+              <a-form :model="reviewForm" layout="vertical" @finish="submitReview">
+                <a-form-item label="您的评分" name="rating" :rules="[{ required: true, message: '请选择评分' }]">
+                  <div class="rating-input">
+                    <StarFilled 
+                      v-for="i in 5" 
+                      :key="i" 
+                      :style="{ 
+                        color: i <= reviewForm.rating ? '#faad14' : '#e0e0e0',
+                        fontSize: '24px',
+                        cursor: 'pointer',
+                        marginRight: '4px'
+                      }"
+                      @click="reviewForm.rating = i"
+                      @mouseenter="hoverRating = i"
+                      @mouseleave="hoverRating = 0"
+                    />
+                    <span class="rating-text" v-if="reviewForm.rating > 0">
+                      {{ getRatingText(reviewForm.rating) }}
+                    </span>
+                  </div>
+                </a-form-item>
+                <a-form-item label="评论内容" name="comment" :rules="[{ required: true, message: '请输入评论内容' }]">
+                  <a-textarea 
+                    v-model:value="reviewForm.comment" 
+                    placeholder="请分享您的使用体验..." 
+                    :rows="4"
+                    :maxlength="500"
+                    show-count
+                  />
+                </a-form-item>
+                <a-form-item>
+                  <div class="form-actions">
+                    <a-button @click="cancelAddReview">取消</a-button>
+                    <a-button type="primary" html-type="submit" :loading="submittingReview">
+                      {{ isEditingReview ? '保存修改' : '发布评论' }}
+                    </a-button>
+                  </div>
+                </a-form-item>
+              </a-form>
+            </div>
+
             <!-- 评论列表 -->
             <div class="reviews-list">
-              <div v-for="review in reviews" :key="review.id" class="review-item">
-                <div class="review-header">
-                  <div class="reviewer-avatar">{{ review.user_name.charAt(0) }}</div>
-                  <div class="reviewer-info">
-                    <div class="reviewer-name">{{ review.user_name }}</div>
-                    <div class="review-date">{{ review.date }}</div>
+              <div v-if="sortedReviews.length === 0" class="no-reviews">
+                <div class="no-reviews-icon">💬</div>
+                <div class="no-reviews-text">暂无评论</div>
+                <div class="no-reviews-desc">成为第一个评论此应用的用户吧！</div>
+                <a-button type="primary" @click="handleWriteReview">
+                  写第一条评论
+                </a-button>
+              </div>
+              <div v-else class="reviews-container">
+                <div v-for="(review, index) in sortedReviews" :key="review.id" class="review-item" :class="{ 'my-review': isCurrentUserReview(review) }">
+                  <div class="review-card">
+                    <div class="review-header">
+                      <div class="reviewer-avatar" :style="{ background: getAvatarColor(review.user_name) }" :class="{ 'my-avatar': isCurrentUserReview(review) }">
+                        {{ review.user_name.charAt(0).toUpperCase() }}
+                      </div>
+                      <div class="reviewer-info">
+                        <div class="reviewer-name">
+                          {{ review.user_name }}
+                          <span v-if="isCurrentUserReview(review)" class="my-review-badge">
+                            <UserOutlined />
+                            我的评论
+                          </span>
+                        </div>
+                        <div class="review-meta">
+                          <span class="review-date">{{ formatDate(review.created_at) }}</span>
+                          <span class="review-index">#{{ index + 1 }}</span>
+                        </div>
+                      </div>
+                      <div class="review-rating">
+                        <div class="stars-container">
+                          <StarFilled v-for="i in review.rating" :key="i" class="star-filled" />
+                          <StarFilled v-for="i in (5 - review.rating)" :key="i + review.rating" class="star-empty" />
+                        </div>
+                        <span class="rating-text">{{ review.rating }}.0 分</span>
+                      </div>
+                    </div>
+                    
+                    <div class="review-content">
+                      <div class="content-text">{{ review.comment }}</div>
+                      <div v-if="review.comment.length > 100" class="content-gradient"></div>
+                    </div>
+                    
+                    <div class="review-footer">
+                      <div class="review-actions">
+                        <a-button 
+                          type="text" 
+                          size="small" 
+                          @click="toggleHelpful(review.id)"
+                          :class="{ active: review.isHelpful }"
+                          class="action-btn helpful-btn"
+                        >
+                          <LikeOutlined />
+                          <span class="count">({{ review.helpful_count }})</span>
+                        </a-button>
+                        
+                        <!-- 只有用户自己的评论才显示删除按钮 -->
+                        <a-button 
+                          v-if="isCurrentUserReview(review)" 
+                          type="text" 
+                          size="small" 
+                          class="action-btn delete-btn"
+                          @click="handleDeleteReview(review.id)"
+                        >
+                          <DeleteOutlined />
+                          <span>删除</span>
+                        </a-button>
+                      </div>
+                      
+                      <div class="review-stats">
+                        <span class="helpful-stats" v-if="review.helpful_count > 0">
+                          {{ review.helpful_count }} 人觉得有用
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div class="review-rating">
-                    <StarFilled v-for="i in review.rating" :key="i" style="color: #faad14" />
-                  </div>
-                </div>
-                <div class="review-content">
-                  {{ review.comment }}
-                </div>
-                <div class="review-actions">
-                  <a-button type="text" size="small">
-                    <LikeOutlined />
-                    有用 ({{ review.helpful_count }})
-                  </a-button>
-                  <a-button type="text" size="small">
-                    <DislikeOutlined />
-                  </a-button>
                 </div>
               </div>
             </div>
@@ -212,7 +336,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { message } from 'ant-design-vue'
+import { message, Modal } from 'ant-design-vue'
 import {
   LeftOutlined,
   StarFilled,
@@ -220,14 +344,18 @@ import {
   CheckCircleFilled,
   ShareAltOutlined,
   LikeOutlined,
-  DislikeOutlined,
-  InboxOutlined
+  InboxOutlined,
+  EditOutlined,
+  CloseOutlined,
+  DeleteOutlined
 } from '@ant-design/icons-vue'
-import { getAppDetail, getApps, installApp, uninstallApp, getAppReviews } from '@/apis/appStore'
-import type { AppInfo, Review, ReviewsData } from '@/apis/appStore'
+import { getAppDetail, getApps, installApp, uninstallApp, getAppReviews, addAppReview, updateAppReview, deleteAppReview, toggleReviewHelpful } from '@/apis/appStore'
+import type { AppInfo, Review, ReviewsData, AddReviewRequest } from '@/apis/appStore'
+import { useAuthStore } from '@/store/auth'
 
 const route = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()
 
 // 响应式状态
 const loading = ref(true)
@@ -236,10 +364,41 @@ const relatedApps = ref<AppInfo[]>([])
 const reviews = ref<Review[]>([])
 const reviewsData = ref<ReviewsData | null>(null)
 
+// 评论相关状态
+const showAddReview = ref(false)
+const submittingReview = ref(false)
+const reviewSort = ref('newest')
+const hoverRating = ref(0)
+const isEditingReview = ref(false)  // 是否在编辑现有评论
+const userExistingReview = ref<Review | null>(null)  // 用户的现有评论
+const reviewForm = ref<AddReviewRequest>({
+  user_name: '',  // 这个字段会在提交时自动填充当前用户名
+  rating: 0,
+  comment: ''
+})
+
 // 应用ID
 const appId = computed(() => route.params.id as string)
 
-// 功能特点（可以从后端获取）
+// 检查当前用户是否已经评论过
+const hasUserReviewed = computed(() => {
+  if (!authStore.currentUser) return false
+  return reviews.value.some(review => review.user_name === authStore.currentUser?.user_name)
+})
+
+// 获取当前用户的评论
+const currentUserReview = computed(() => {
+  if (!authStore.currentUser) return null
+  return reviews.value.find(review => review.user_name === authStore.currentUser?.user_name) || null
+})
+
+// 判断评论是否属于当前用户
+const isCurrentUserReview = (review: Review) => {
+  if (!authStore.currentUser) return false
+  return review.user_name === authStore.currentUser.user_name
+}
+
+// 功能特点
 const features = computed(() => {
   if (!app.value) return []
   return [
@@ -271,6 +430,70 @@ const formatNumber = (num: number | undefined) => {
   return num.toString()
 }
 
+// 格式化日期
+const formatDate = (dateString: string) => {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+  
+  if (days === 0) return '今天'
+  if (days === 1) return '昨天'
+  if (days < 7) return `${days}天前`
+  if (days < 30) return `${Math.floor(days / 7)}周前`
+  if (days < 365) return `${Math.floor(days / 30)}个月前`
+  return `${Math.floor(days / 365)}年前`
+}
+
+// 获取评分文本
+const getRatingText = (rating: number) => {
+  const texts = ['', '很差', '一般', '还行', '不错', '很棒']
+  return texts[rating] || ''
+}
+
+// 根据用户名生成头像颜色
+const getAvatarColor = (userName: string) => {
+  const colors = [
+    'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+    'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+    'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+    'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+    'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
+    'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)',
+    'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
+    'linear-gradient(135deg, #ff8a80 0%, #ea4c89 100%)',
+    'linear-gradient(135deg, #8fd3f4 0%, #84fab0 100%)'
+  ]
+  
+  // 根据用户名计算哈希值来选择颜色
+  let hash = 0
+  for (let i = 0; i < userName.length; i++) {
+    hash = userName.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  
+  return colors[Math.abs(hash) % colors.length]
+}
+
+// 排序后的评论列表
+const sortedReviews = computed(() => {
+  const reviewsCopy = [...reviews.value]
+  switch (reviewSort.value) {
+    case 'newest':
+      return reviewsCopy.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    case 'oldest':
+      return reviewsCopy.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    case 'highest':
+      return reviewsCopy.sort((a, b) => b.rating - a.rating)
+    case 'lowest':
+      return reviewsCopy.sort((a, b) => a.rating - b.rating)
+    case 'helpful':
+      return reviewsCopy.sort((a, b) => b.helpful_count - a.helpful_count)
+    default:
+      return reviewsCopy
+  }
+})
+
 // 加载应用详情
 const loadAppDetail = async () => {
   loading.value = true
@@ -285,10 +508,14 @@ const loadAppDetail = async () => {
       relatedApps.value = allApps.filter(a => a.id !== appId.value).slice(0, 5)
     }
     
-    // 加载评论数据
-    const reviewData = await getAppReviews(appId.value)
+    // 加载评论数据，如果用户已登录则传递用户ID
+    const userId = authStore.currentUser?.uid
+    const reviewData = await getAppReviews(appId.value, userId)
     reviewsData.value = reviewData
-    reviews.value = reviewData.reviews
+    reviews.value = reviewData.reviews.map(review => ({
+      ...review,
+      isHelpful: review.user_liked || false  // 使用后端返回的点赞状态
+    }))
   } catch (error) {
     console.error('加载应用详情失败', error)
     message.error('加载应用详情失败')
@@ -331,6 +558,168 @@ const goBack = () => {
 // 跳转到其他应用
 const goToApp = (id: string) => {
   router.push(`/app-store/${id}`)
+}
+
+// 评论相关函数
+const handleWriteReview = () => {
+  if (!authStore.currentUser) {
+    message.error('请先登录后再发表评论')
+    return
+  }
+
+  if (hasUserReviewed.value && currentUserReview.value) {
+    // 用户已经评论过，进入编辑模式
+    isEditingReview.value = true
+    userExistingReview.value = currentUserReview.value
+    reviewForm.value = {
+      user_name: currentUserReview.value.user_name,
+      rating: currentUserReview.value.rating,
+      comment: currentUserReview.value.comment
+    }
+  } else {
+    // 用户还没有评论，进入新建模式
+    isEditingReview.value = false
+    userExistingReview.value = null
+    reviewForm.value = {
+      user_name: '',
+      rating: 0,
+      comment: ''
+    }
+  }
+  
+  showAddReview.value = true
+}
+
+const submitReview = async () => {
+  try {
+    // 检查用户是否已登录
+    if (!authStore.currentUser) {
+      message.error('请先登录后再发表评论')
+      return
+    }
+
+    submittingReview.value = true
+    
+    // 自动填充当前用户名
+    const reviewData = {
+      user_name: authStore.currentUser.user_name,
+      rating: reviewForm.value.rating,
+      comment: reviewForm.value.comment
+    }
+    
+    if (isEditingReview.value && userExistingReview.value) {
+      // 编辑模式：更新现有评论
+      await updateAppReview(appId.value, userExistingReview.value.id, reviewData)
+      message.success('评论修改成功！')
+    } else {
+      // 新建模式：添加新评论
+      await addAppReview(appId.value, reviewData)
+      message.success('评论发布成功！')
+    }
+    
+    // 重置表单和状态
+    reviewForm.value = {
+      user_name: '',
+      rating: 0,
+      comment: ''
+    }
+    showAddReview.value = false
+    isEditingReview.value = false
+    userExistingReview.value = null
+    
+    // 重新加载评论
+    const userId = authStore.currentUser?.uid
+    const reviewData2 = await getAppReviews(appId.value, userId)
+    reviewsData.value = reviewData2
+    reviews.value = reviewData2.reviews.map(review => ({
+      ...review,
+      isHelpful: review.user_liked || false
+    }))
+  } catch (error) {
+    console.error('提交评论失败', error)
+    message.error(isEditingReview.value ? '评论修改失败，请重试' : '评论发布失败，请重试')
+  } finally {
+    submittingReview.value = false
+  }
+}
+
+const cancelAddReview = () => {
+  showAddReview.value = false
+  isEditingReview.value = false
+  userExistingReview.value = null
+  reviewForm.value = {
+    user_name: '',
+    rating: 0,
+    comment: ''
+  }
+}
+
+const handleSortChange = () => {
+  // 排序逻辑已在 computed 中处理
+}
+
+const toggleHelpful = async (reviewId: number) => {
+  if (!authStore.currentUser) {
+    message.error('请先登录后再点赞')
+    return
+  }
+
+  const review = reviews.value.find(r => r.id === reviewId)
+  if (!review) return
+
+  try {
+    // 调用后端API
+    const result = await toggleReviewHelpful(appId.value, reviewId, authStore.currentUser.uid)
+    
+    // 更新前端状态
+    review.helpful_count = result.helpful_count
+    review.isHelpful = result.user_liked
+    
+    message.success(result.user_liked ? '已点赞' : '已取消点赞')
+  } catch (error) {
+    console.error('点赞操作失败', error)
+    message.error('操作失败，请重试')
+  }
+}
+
+// 删除评论
+const handleDeleteReview = async (reviewId: number) => {
+  if (!authStore.currentUser) {
+    message.error('请先登录')
+    return
+  }
+
+  try {
+    // 显示确认对话框
+    const confirmed = await new Promise((resolve) => {
+      Modal.confirm({
+        title: '确认删除评论',
+        content: '删除后无法恢复，确定要删除这条评论吗？',
+        okText: '删除',
+        okType: 'danger',
+        cancelText: '取消',
+        onOk: () => resolve(true),
+        onCancel: () => resolve(false),
+      })
+    })
+
+    if (!confirmed) return
+
+    await deleteAppReview(appId.value, reviewId, authStore.currentUser.user_name)
+    message.success('评论删除成功')
+    
+    // 重新加载评论数据
+    const userId = authStore.currentUser?.uid
+    const reviewData = await getAppReviews(appId.value, userId)
+    reviewsData.value = reviewData
+    reviews.value = reviewData.reviews.map(review => ({
+      ...review,
+      isHelpful: review.user_liked || false
+    }))
+  } catch (error) {
+    console.error('删除评论失败', error)
+    message.error('删除评论失败，请重试')
+  }
 }
 
 // 监听路由变化，重新加载数据
@@ -567,6 +956,111 @@ onMounted(() => {
 }
 
 /* 评论区 */
+.reviews-section {
+  padding: 32px 0;
+}
+
+.reviews-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.review-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.sort-select {
+  width: 120px;
+}
+
+/* 添加评论表单样式 */
+.add-review-form {
+  background: #f8f9fa;
+  border: 1px solid #e8eaed;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 32px;
+}
+
+.form-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.form-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+  color: #202124;
+}
+
+/* 用户信息提示样式 */
+.user-info-tip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #f0f8ff;
+  border: 1px solid #d6f1ff;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  font-size: 14px;
+  color: #1890ff;
+}
+
+.user-info-tip strong {
+  color: #1890ff;
+  font-weight: 600;
+}
+
+.rating-input {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.rating-text {
+  font-size: 14px;
+  color: #5f6368;
+  font-weight: 500;
+}
+
+.form-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+/* 无评论状态样式 */
+.no-reviews {
+  text-align: center;
+  padding: 60px 20px;
+  color: #5f6368;
+}
+
+.no-reviews-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.no-reviews-text {
+  font-size: 18px;
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: #202124;
+}
+
+.no-reviews-desc {
+  font-size: 14px;
+  margin-bottom: 24px;
+}
+
 .rating-stats {
   display: flex;
   gap: 40px;
@@ -651,64 +1145,321 @@ onMounted(() => {
   gap: 24px;
 }
 
-.review-item {
-  padding: 20px;
-  border: 1px solid #e8eaed;
-  border-radius: 8px;
+/* 评论容器样式 */
+.reviews-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
+/* 评论卡片样式 */
+.review-item {
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.review-item:hover {
+  transform: translateY(-2px);
+}
+
+.review-card {
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid #f0f0f0;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  padding: 24px;
+}
+
+.review-item:hover .review-card {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  border-color: #e6f7ff;
+}
+
+
+/* 评论头部样式 */
 .review-header {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
 }
 
 .reviewer-avatar {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #1a73e8 0%, #4285f4 100%);
   color: white;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: bold;
+  font-weight: 600;
   font-size: 18px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border: 3px solid #fff;
 }
 
 .reviewer-info {
   flex: 1;
+  min-width: 0;
 }
 
 .reviewer-name {
-  font-weight: 500;
-  color: #202124;
-  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a1a;
+  font-size: 16px;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+
+.review-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: #8c8c8c;
 }
 
 .review-date {
-  font-size: 12px;
-  color: #5f6368;
+  font-weight: 500;
 }
 
+.review-index {
+  background: #f0f0f0;
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+/* 评分样式 */
 .review-rating {
   display: flex;
-  gap: 2px;
-  font-size: 14px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
 }
 
+.stars-container {
+  display: flex;
+  gap: 2px;
+}
+
+.star-filled {
+  color: #faad14;
+  font-size: 16px;
+  filter: drop-shadow(0 1px 2px rgba(250, 173, 20, 0.3));
+}
+
+.star-empty {
+  color: #e8e8e8;
+  font-size: 16px;
+}
+
+.rating-text {
+  font-size: 12px;
+  color: #8c8c8c;
+  font-weight: 500;
+}
+
+/* 评论内容样式 */
 .review-content {
-  font-size: 14px;
-  color: #5f6368;
-  line-height: 1.6;
-  margin-bottom: 12px;
+  margin-bottom: 20px;
+  position: relative;
+}
+
+.content-text {
+  color: #262626;
+  line-height: 1.7;
+  font-size: 15px;
+  word-break: break-word;
+}
+
+.content-gradient {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 20px;
+  background: linear-gradient(transparent, rgba(255, 255, 255, 0.9));
+  pointer-events: none;
+}
+
+/* 评论底部样式 */
+.review-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 16px;
+  border-top: 1px solid #f5f5f5;
 }
 
 .review-actions {
   display: flex;
-  gap: 8px;
+  gap: 4px;
 }
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.action-btn:hover {
+  background-color: #f5f5f5;
+  transform: translateY(-1px);
+}
+
+.helpful-btn.active {
+  background: linear-gradient(135deg, #1890ff, #40a9ff);
+  color: white;
+  border-color: transparent;
+}
+
+.helpful-btn.active:hover {
+  background: linear-gradient(135deg, #096dd9, #1890ff);
+  color: white;
+}
+
+.delete-btn:hover {
+  background-color: #fff1f0;
+  color: #ff4d4f;
+  border-color: #ffccc7;
+}
+
+
+.count {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 11px;
+}
+
+.helpful-btn:not(.active) .count {
+  background: #f0f0f0;
+  color: #8c8c8c;
+}
+
+.review-stats {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.helpful-stats {
+  font-weight: 500;
+}
+
+/* 用户自己的评论高亮样式 */
+.my-review .review-card {
+  background: #f6ffed;
+  border-left: 4px solid #52c41a;
+  box-shadow: 0 2px 8px rgba(82, 196, 26, 0.08);
+}
+
+.my-review:hover .review-card {
+  box-shadow: 0 4px 12px rgba(82, 196, 26, 0.12);
+}
+
+/* 用户头像特殊样式 */
+.my-avatar {
+  border: 2px solid #52c41a !important;
+}
+
+/* 我的评论徽章 - 简约版 */
+.my-review-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #52c41a;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 500;
+  margin-left: 8px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .review-card {
+    padding: 16px;
+  }
+  
+  .review-header {
+    gap: 12px;
+  }
+  
+  .reviewer-avatar {
+    width: 40px;
+    height: 40px;
+    font-size: 16px;
+  }
+  
+  .reviewer-name {
+    font-size: 14px;
+  }
+  
+  .content-text {
+    font-size: 14px;
+  }
+  
+  .review-footer {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  
+  .review-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+/* 动画效果 */
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.review-item {
+  animation: slideInUp 0.3s ease-out;
+}
+
+.review-item:nth-child(1) { animation-delay: 0.1s; }
+.review-item:nth-child(2) { animation-delay: 0.2s; }
+.review-item:nth-child(3) { animation-delay: 0.3s; }
+.review-item:nth-child(4) { animation-delay: 0.4s; }
+.review-item:nth-child(5) { animation-delay: 0.5s; }
+
+/* 加载动画 */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.review-item.loading {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
 
 /* 右侧信息栏 */
 .sidebar-content {
