@@ -63,13 +63,8 @@ class RuntimeRegistry:
         self.executor = new_executor
         self.agent = new_agent
 
-        logging.getLogger(__name__).info(
-            "🔄 模型配置刷新 | current=%s | model %s -> %s | base_url %s -> %s",
-            snapshot.current_model_id, old_model, snapshot.current_model_id, str(old_base), str(snapshot.base_url)
-        )
         print(f"🔄 模型配置刷新: {old_model} -> {snapshot.current_model_id}")
         print(f"🔄 API端点: {old_base} -> {snapshot.base_url}")
-        print(f"🔄 API Key: {snapshot.api_key[:20] if snapshot.api_key else 'None'}...")
 
     def get_agent(self):
         return self.agent
