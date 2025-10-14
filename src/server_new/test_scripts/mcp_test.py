@@ -49,25 +49,58 @@ async def main():
         async with ClientSession(read, write) as session:
             await session.initialize()
 
-            # 1) ingest
-            r = await session.call_tool("start_ingest", {"in_dir": "dummy://source", "out_dir": str(s1)})
-            j = parse_json(r); run_id = j["run_id"]; print("ingest run:", run_id)
+            # # 1) ingest
+            # r = await session.call_tool("start_ingest", {"in_dir": "dummy://source", "out_dir": str(s1)})
+            # j = parse_json(r); run_id = j["run_id"]; print("ingest run:", run_id)
+            # await tail(session, run_id)
+            #
+            # # 2) preprocess
+            # r = await session.call_tool("start_preprocess", {"in_dir": str(s1), "out_dir": str(s2)})
+            # j = parse_json(r); run_id = j["run_id"]; print("preprocess run:", run_id)
+            # await tail(session, run_id)
+            #
+            # # 3) train
+            # r = await session.call_tool("start_train", {"in_dir": str(s2), "out_dir": str(s3), "epochs": 3})
+            # j = parse_json(r); run_id = j["run_id"]; print("train run:", run_id)
+            # await tail(session, run_id)
+            #
+            # # 4) evaluate
+            # r = await session.call_tool("start_evaluate", {"in_dir": str(s3), "out_dir": str(s4)})
+            # j = parse_json(r); run_id = j["run_id"]; print("evaluate run:", run_id)
+            # await tail(session, run_id)
+
+            # r= await session.call_tool("convert_dicom_to_nifti",{"in_dir": r"D:\mcp_test\0_DICOM", "out_dir": r"D:\mcp_test\dicom2nii"})
+            # j = parse_json(r)
+            # run_id = j["run_id"]
+            # print("ingest run:", run_id)
+            # await tail(session, run_id)
+
+            # r = await session.call_tool("register_deeds", {
+            #     "in_dir": r"D:\mcp_test\dicom2nii",
+            #     "out_dir": r"D:\mcp_test\reg_out",
+            # })
+            # j = parse_json(r)
+            # print("SERVER RESP:", j)  # ← 关键打印
+            # run_id = j.get("run_id")
+            # if not run_id:
+            #     raise RuntimeError(f"tool failed, no run_id. server returned: {j}")
+            # print("register run:", run_id)
+            # await tail(session, run_id)
+
+            # ------------- 5) nnU-Net 批量分割：复制 reg_out → 在拷贝里生成 C2_mask.nii.gz -------------
+            r = await session.call_tool("segment_c2_with_nnunet", {
+                "in_dir":  r"D:\mcp_test\reg_out",      # 上一步 register_deeds 的输出
+                "out_dir": r"D:\mcp_test\nnunet_out",   # 本步输出目录（会先整体复制 in_dir）
+            })
+            j = parse_json(r)
+            print("SERVER RESP (nnunet):", j)
+            run_id = j.get("run_id")
+            if not run_id:
+                raise RuntimeError(f"tool failed, no run_id. server returned: {j}")
+            print("nnunet run:", run_id)
             await tail(session, run_id)
 
-            # 2) preprocess
-            r = await session.call_tool("start_preprocess", {"in_dir": str(s1), "out_dir": str(s2)})
-            j = parse_json(r); run_id = j["run_id"]; print("preprocess run:", run_id)
-            await tail(session, run_id)
 
-            # 3) train
-            r = await session.call_tool("start_train", {"in_dir": str(s2), "out_dir": str(s3), "epochs": 3})
-            j = parse_json(r); run_id = j["run_id"]; print("train run:", run_id)
-            await tail(session, run_id)
-
-            # 4) evaluate
-            r = await session.call_tool("start_evaluate", {"in_dir": str(s3), "out_dir": str(s4)})
-            j = parse_json(r); run_id = j["run_id"]; print("evaluate run:", run_id)
-            await tail(session, run_id)
 
 if __name__ == "__main__":
     asyncio.run(main())
