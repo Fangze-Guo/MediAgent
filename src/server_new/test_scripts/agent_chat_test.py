@@ -17,13 +17,13 @@ CONVERSATIONS_ROOT   = in_data("conversations")
 MCPSERVER_FILE       = in_mediagent("mcp_server_tools", "mcp_server.py")
 
 # —— LLM（LM Studio / OpenAI 兼容网关 / 官方 API 均可）——
-# OPENAI_API_KEY  = "sk-d0e27c4c590a454e8284309067c03f04"                 # 本地网关通常可用占位符；用官方API请改为真实key
-# OPENAI_BASE_URL = "https://api.deepseek.com/v1"  # 本地网关示例；用官方API可置为 None
-# OPENAI_MODEL    = "deepseek-chat"   # 你的模型名称
-
 OPENAI_API_KEY  = "sk-d0e27c4c590a454e8284309067c03f04"                 # 本地网关通常可用占位符；用官方API请改为真实key
-OPENAI_BASE_URL = "http://127.0.0.1:1234/v1"  # 本地网关示例；用官方API可置为 None
-OPENAI_MODEL    = "qwen/qwen3-30b-a3b-2507"   # 你的模型名称
+OPENAI_BASE_URL = "https://api.deepseek.com/v1"  # 本地网关示例；用官方API可置为 None
+OPENAI_MODEL    = "deepseek-chat"   # 你的模型名称
+
+# OPENAI_API_KEY  = "sk-d0e27c4c590a454e8284309067c03f04"                 # 本地网关通常可用占位符；用官方API请改为真实key
+# OPENAI_BASE_URL = "http://127.0.0.1:1234/v1"  # 本地网关示例；用官方API可置为 None
+# OPENAI_MODEL    = "qwen/qwen3-30b-a3b-2507"   # 你的模型名称
 
 # —— 用户 / 对话标识（可留空以便脚本交互创建）——
 OWNER_UID: str = "6127016735"                 # create_conversation() 需要：必须存在于 users(uid)

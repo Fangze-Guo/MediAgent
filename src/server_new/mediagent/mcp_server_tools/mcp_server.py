@@ -310,6 +310,34 @@ async def convert_dicom_to_nifti(ctx: Context, in_dir: str, out_dir: str) -> dic
         "started": True,
     }
 
+@job_tool(
+    name="register_deeds",
+    description=(
+        "使用 linearBCV + deedsBCV 将每个病人目录中的 C2.nii.gz 配准到 C0.nii.gz。\n"
+        "输入目录可为根目录（含多个病人）或单病人目录；输出结构与输入一致。\n"
+        "二进制文件 linearBCV / deedsBCV 需放在本工具脚本同级的 bin/ 文件夹内。\n"
+        "参数：in_dir, out_dir。"
+    )
+)
+async def register_deeds(ctx: Context, in_dir: str, out_dir: str) -> dict:
+    try:
+        ri = await _launch_and_capture(
+            "register_deeds.py", "--in-dir", in_dir, "--out-dir", out_dir, out_dir=out_dir
+        )
+        return {
+            "run_id": ri.run_id,
+            "log_path": str(ri.log_path),
+            "status_path": str(ri.status_path),
+            "out_dir": out_dir,
+            "started": True,
+        }
+    except Exception as e:
+        # 关键：失败也明确告诉客户端
+        return {"error": f"failed to start register_deeds: {e}"}
+
+
+
+
 
 # ============================ 内部辅助工具（执行层用） ============================
 @server.tool()
