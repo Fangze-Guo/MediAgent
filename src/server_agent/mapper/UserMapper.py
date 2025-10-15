@@ -25,6 +25,7 @@ class User:
     password: str
     token: Optional[str] = None
     role: str = 'user'  # 用户角色：user, admin
+    avatar: Optional[str] = None  # 用户头像（Base64格式）
 
 
 class UserMapper(BaseMapper):
@@ -65,7 +66,7 @@ class UserMapper(BaseMapper):
             User 对象或 None
         """
         query = """
-                SELECT uid, user_name, password, token, role
+                SELECT uid, user_name, password, token, role, avatar
                 FROM users
                 WHERE user_name = ? COLLATE NOCASE
                 LIMIT 1 \
@@ -87,7 +88,8 @@ class UserMapper(BaseMapper):
                 user_name=result['user_name'],
                 password=result['password'],
                 token=result['token'],
-                role=role_value
+                role=role_value,
+                avatar=result['avatar']
             )
         return None
 
@@ -102,7 +104,7 @@ class UserMapper(BaseMapper):
             User 对象或 None
         """
         query = """
-                SELECT uid, user_name, password, token, role
+                SELECT uid, user_name, password, token, role, avatar
                 FROM users
                 WHERE token = ?
                 LIMIT 1 \
@@ -124,7 +126,8 @@ class UserMapper(BaseMapper):
                 user_name=result['user_name'],
                 password=result['password'],
                 token=result['token'],
-                role=role_value
+                role=role_value,
+                avatar=result['avatar']
             )
         return None
 
@@ -139,7 +142,7 @@ class UserMapper(BaseMapper):
             User 对象或 None
         """
         query = """
-                SELECT uid, user_name, password, token, role
+                SELECT uid, user_name, password, token, role, avatar
                 FROM users
                 WHERE uid = ?
                 LIMIT 1 \
@@ -161,7 +164,8 @@ class UserMapper(BaseMapper):
                 user_name=result['user_name'],
                 password=result['password'],
                 token=result['token'],
-                role=role_value
+                role=role_value,
+                avatar=result['avatar']
             )
         return None
 
@@ -220,8 +224,8 @@ class UserMapper(BaseMapper):
         operations = [
             {
                 'query': """
-                         INSERT INTO users (uid, user_name, password, token)
-                         VALUES (?, ?, ?, NULL)
+                         INSERT INTO users (uid, user_name, password, token, role, avatar)
+                         VALUES (?, ?, ?, NULL, 'user', NULL)
                          """,
                 'params': (uid, user_name, password_hash)
             }
@@ -233,7 +237,9 @@ class UserMapper(BaseMapper):
             uid=uid,
             user_name=user_name,
             password=password_hash,
-            token=None
+            token=None,
+            role='user',
+            avatar=None
         )
 
     async def update_user_token(self, uid: int, token: str) -> bool:
@@ -311,3 +317,37 @@ class UserMapper(BaseMapper):
     async def verify_password(self, user: User, password: str) -> bool:
         """验证密码"""
         return user.password == self._hash_password(password)
+
+    async def update_user_profile(self, uid: int, user_name: str, avatar: Optional[str] = None) -> bool:
+        """
+        更新用户个人信息（用户名和头像）
+        
+        Args:
+            uid: 用户ID
+            user_name: 新用户名
+            avatar: 新头像（Base64格式，可选）
+            
+        Returns:
+            更新是否成功
+        """
+        try:
+            if avatar is not None:
+                # 更新用户名和头像
+                query = "UPDATE users SET user_name = ?, avatar = ? WHERE uid = ?"
+                params = (user_name, avatar, uid)
+            else:
+                # 只更新用户名
+                query = "UPDATE users SET user_name = ? WHERE uid = ?"
+                params = (user_name, uid)
+
+            operations = [{
+                'query': query,
+                'params': params
+            }]
+
+            await self.execute_transaction(operations)
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to update user profile for uid {uid}: {e}")
+            return False

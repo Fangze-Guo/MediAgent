@@ -15,7 +15,7 @@
           <div class="skeleton-text"></div>
         </div>
       </div>
-      
+
       <!-- 导航菜单 -->
       <a-menu
           v-else
@@ -25,13 +25,13 @@
           @click="handleMenuClick"
           class="sidebar-menu"
       />
-      
+
       <hr />
-      
+
       <!-- 历史对话区 -->
       <div class="history-section">
         <h4>历史对话</h4>
-        
+
         <!-- 对话列表骨架屏 -->
         <div v-if="!isConversationsReady" class="conversations-skeleton">
           <div class="conversation-skeleton-item" v-for="i in 3" :key="i">
@@ -42,7 +42,7 @@
             </div>
           </div>
         </div>
-        
+
         <!-- 对话列表 -->
         <a-list v-else class="chat-list" :split="false">
           <a-list-item
@@ -53,10 +53,10 @@
           >
             <div class="chat-item-link">
               <!-- 会话头像 -->
-              <div 
-                class="conversation-avatar" 
-                :class="getConversationAvatarClass(c)"
-                :style="getConversationAvatarStyle(c)"
+              <div
+                  class="conversation-avatar"
+                  :class="getConversationAvatarClass(c)"
+                  :style="getConversationAvatarStyle(c)"
               >
                 <component :is="getConversationIcon(c)" />
               </div>
@@ -77,26 +77,53 @@
     <div class="user-section">
       <div class="user-info">
         <div class="user-avatar">
-          {{ currentUser?.user_name?.charAt(0).toUpperCase() || 'U' }}
+          <img
+              v-if="currentUser?.avatar"
+              :src="currentUser.avatar"
+              :alt="currentUser.user_name"
+              class="avatar-image"
+          />
+          <span v-else class="avatar-text">
+            {{ currentUser?.user_name?.charAt(0).toUpperCase() || 'U' }}
+          </span>
         </div>
         <div class="user-details">
           <div class="user-name">{{ currentUser?.user_name || '用户' }}</div>
           <div class="user-uid">UID: {{ currentUser?.uid || '--' }}</div>
         </div>
       </div>
-      <a-button 
-        type="text" 
-        danger 
-        size="small" 
-        @click="handleLogout"
-        class="logout-btn"
-      >
-        <template #icon>
-          <LogoutOutlined />
-        </template>
-        退出登录
-      </a-button>
+
+      <div class="user-actions">
+        <a-button
+            type="text"
+            size="small"
+            @click="showUserProfile"
+            class="edit-btn"
+            title="编辑个人信息"
+        >
+          <template #icon>
+            <EditOutlined />
+          </template>
+        </a-button>
+        <a-button
+            type="text"
+            danger
+            size="small"
+            @click="handleLogout"
+            class="logout-btn"
+            title="退出登录"
+        >
+          <template #icon>
+            <LogoutOutlined />
+          </template>
+        </a-button>
+      </div>
     </div>
+
+    <!-- 用户信息编辑弹窗 -->
+    <UserProfileModal
+        v-model:open="userProfileVisible"
+    />
   </div>
 </template>
 
@@ -109,9 +136,19 @@
 import { useConversationsStore } from '@/store/conversations'
 import { useAuthStore } from '@/store/auth'
 import { useRoute, useRouter } from 'vue-router'
-import { computed, h, ref, onMounted, nextTick } from 'vue'
+import { computed, h, nextTick, onMounted, ref } from 'vue'
 import { MenuProps, message, Modal } from 'ant-design-vue'
-import { CommentOutlined, FolderOutlined, LogoutOutlined, RobotOutlined, BarChartOutlined, FileTextOutlined, AppstoreOutlined } from '@ant-design/icons-vue'
+import {
+  AppstoreOutlined,
+  BarChartOutlined,
+  CommentOutlined,
+  EditOutlined,
+  FileTextOutlined,
+  FolderOutlined,
+  LogoutOutlined,
+  RobotOutlined
+} from '@ant-design/icons-vue'
+import UserProfileModal from './UserProfileModal.vue'
 
 // ==================== 路由和状态管理 ====================
 const router = useRouter()
@@ -130,6 +167,12 @@ const isMenuReady = ref(false)
  */
 const isConversationsReady = ref(false)
 
+// ==================== 用户信息编辑 ====================
+/**
+ * 用户信息编辑弹窗显示状态
+ */
+const userProfileVisible = ref(false)
+
 // ==================== 计算属性 ====================
 /** 当前活跃的会话ID，从路由参数获取 */
 const currentId = computed(() => String(route.params.id || ''))
@@ -146,12 +189,12 @@ const currentUser = computed(() => authStore.currentUser)
 onMounted(async () => {
   // 等待路由完全解析和 DOM 更新
   await nextTick()
-  
+
   // 短暂延迟后显示菜单，确保高亮状态正确
   setTimeout(() => {
     isMenuReady.value = true
   }, 50)
-  
+
   // 对话列表稍后加载
   setTimeout(() => {
     isConversationsReady.value = true
@@ -187,23 +230,23 @@ const items = ref([
  */
 const selectedKeys = computed(() => {
   const path = route.path
-  
+
   if (path.startsWith('/conversation/')) {
     return []
   }
-  
+
   if (path === '/app-store') {
     return ['app-store']
   }
-  
+
   if (path === '/files') {
     return ['files']
   }
-  
+
   if (path === '/') {
     return ['home']
   }
-  
+
   return []
 })
 
@@ -290,6 +333,11 @@ const handleDeleteConversation = (id: string) => {
   })
 }
 
+// 显示用户信息编辑弹窗
+const showUserProfile = () => {
+  userProfileVisible.value = true
+}
+
 // 处理用户登出
 const handleLogout = () => {
   Modal.confirm({
@@ -318,7 +366,7 @@ const getConversationIcon = (conversation: any) => {
   if (conversation.toolInfo?.toolIcon) {
     return conversation.toolInfo.toolIcon
   }
-  
+
   if (conversation.assistantType) {
     switch (conversation.assistantType) {
       case 'data':
@@ -341,7 +389,7 @@ const getConversationAvatarClass = (conversation: any) => {
   if (conversation.toolInfo?.toolId) {
     return `tool-avatar tool-${conversation.toolInfo.toolId}`
   }
-  
+
   if (conversation.assistantType) {
     switch (conversation.assistantType) {
       case 'data':
@@ -555,12 +603,6 @@ const getConversationAvatarStyle = (conversation: any) => {
   overflow-y: auto;
 }
 
-/* 新建对话按钮悬停效果：轻微上移与阴影 */
-.new-chat-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-}
-
 /* 历史区域标题：间距、字号与颜色 */
 .history-section h4 {
   margin: 0 0 16px 0;
@@ -659,14 +701,6 @@ const getConversationAvatarStyle = (conversation: any) => {
   position: relative;
 }
 
-
-/* 工具头像基础样式 */
-.tool-avatar {
-  /* 基础样式，渐变背景通过内联样式设置 */
-  position: relative;
-}
-
-
 .data-avatar {
   background: linear-gradient(135deg, #fa8c16, #ffa940);
 }
@@ -700,6 +734,15 @@ const getConversationAvatarStyle = (conversation: any) => {
   display: flex;
   align-items: center;
   margin-bottom: 12px;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  position: relative;
+}
+
+.user-info:hover {
+  background-color: #f5f5f5;
 }
 
 .user-avatar {
@@ -716,6 +759,19 @@ const getConversationAvatarStyle = (conversation: any) => {
   margin-right: 12px;
   box-shadow: 0 2px 8px rgba(24, 144, 255, 0.3);
   transition: all 0.3s ease;
+  overflow: hidden;
+  border: 2px solid #fff;
+}
+
+.avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-text {
+  font-size: 18px;
+  font-weight: bold;
 }
 
 .user-avatar:hover {
@@ -743,9 +799,27 @@ const getConversationAvatarStyle = (conversation: any) => {
   display: inline-block;
 }
 
-.logout-btn {
-  width: 100%;
+.user-actions {
+  display: flex;
+  gap: 8px;
   margin-top: 8px;
+}
+
+.edit-btn {
+  flex: 1;
+  height: 32px;
+  border-radius: 6px;
+  transition: all 0.3s ease;
+}
+
+.edit-btn:hover {
+  background: #f0f9ff;
+  border-color: #1890ff;
+  color: #1890ff;
+}
+
+.logout-btn {
+  flex: 1;
   height: 32px;
   border-radius: 6px;
   transition: all 0.3s ease;

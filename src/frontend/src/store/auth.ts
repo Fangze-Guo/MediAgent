@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
-import { login, register, getUserInfo } from '@/apis/auth'
+import { login, register, getUserInfo, updateUserProfile } from '@/apis/auth'
+import type { UpdateUserProfileRequest } from '@/types/auth'
 
 // 类型定义
 export interface LoginRequest {
@@ -16,6 +17,7 @@ export interface UserInfo {
   uid: number
   user_name: string
   role?: string  // 用户角色：user, admin
+  avatar?: string  // 用户头像（Base64）
 }
 
 export const useAuthStore = defineStore('auth', {
@@ -97,7 +99,8 @@ export const useAuthStore = defineStore('auth', {
           this.user = {
             uid: userData.uid,
             user_name: userData.user_name,
-            role: userData.role || 'user'
+            role: userData.role || 'user',
+            avatar: userData.avatar
           }
           
           localStorage.setItem('mediagent_user', JSON.stringify(this.user))
@@ -147,6 +150,36 @@ export const useAuthStore = defineStore('auth', {
           // 如果初始化失败，清除token
           this.logout()
         }
+      }
+    },
+
+    // 更新用户信息
+    async updateUserProfile(profileData: UpdateUserProfileRequest) {
+      if (!this.token) {
+        throw new Error('未登录')
+      }
+
+      try {
+        const response = await updateUserProfile(profileData)
+        const updatedUser = response.data
+
+        if (updatedUser && updatedUser.uid) {
+          // 更新本地用户信息
+          this.user = {
+            uid: updatedUser.uid,
+            user_name: updatedUser.user_name,
+            role: updatedUser.role || 'user',
+            avatar: updatedUser.avatar
+          }
+          
+          // 保存到localStorage
+          localStorage.setItem('mediagent_user', JSON.stringify(this.user))
+          
+          return this.user
+        }
+      } catch (error: any) {
+        console.error('Update user profile error:', error)
+        throw error
       }
     }
   }

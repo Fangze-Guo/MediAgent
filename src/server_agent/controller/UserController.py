@@ -12,6 +12,7 @@ from src.server_agent.exceptions import (
     AuthenticationError
 )
 from src.server_agent.model.dto.user.UserRegisterRequest import UserRegisterRequest
+from src.server_agent.model.dto.user.UpdateUserProfileRequest import UpdateUserProfileRequest
 from src.server_agent.service import UserService
 from .base import BaseController
 
@@ -45,6 +46,19 @@ class UserController(BaseController):
         async def get_user_info(userVO: UserVO = Depends(self._get_current_user)) -> BaseResponse[UserVO]:
             """获取用户信息接口"""
             return ResultUtils.success(userVO)
+
+        @self.router.put("/profile")
+        async def update_user_profile(
+            request: UpdateUserProfileRequest,
+            userVO: UserVO = Depends(self._get_current_user)
+        ) -> BaseResponse[UserVO]:
+            """更新用户信息接口"""
+            updated_user = await self.userService.update_user_profile(
+                userVO.uid, 
+                request.user_name, 
+                request.avatar
+            )
+            return ResultUtils.success(updated_user)
 
     # ==================== 工具方法 ====================
 
