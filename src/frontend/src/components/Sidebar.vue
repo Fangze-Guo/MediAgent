@@ -216,7 +216,7 @@ const items = ref([
   {
     key: 'app-store',
     icon: () => h(AppstoreOutlined),
-    label: 'App Store',
+    label: '工具仓库',
   },
 ])
 

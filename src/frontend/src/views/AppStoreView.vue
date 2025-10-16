@@ -7,7 +7,7 @@
         <!-- 商店 Logo 区域 -->
         <div class="store-logo">
           <span class="logo-icon">🏪</span>
-          <span class="logo-text">MediAgent 应用商店</span>
+          <span class="logo-text">MediAgent 工具仓库</span>
         </div>
         
         <!-- 搜索框区域：支持搜索应用名称、描述和标签 -->
@@ -97,7 +97,7 @@
           <!-- 区块标题：显示当前分类和应用数量 -->
           <div class="section-header">
             <h2 class="section-title">
-              {{ selectedCategory === '全部' ? '推荐应用' : selectedCategory }}
+              {{ selectedCategory === '全部' ? '推荐工具' : selectedCategory }}
             </h2>
             <span class="results-count">{{ apps.length }} 个应用</span>
           </div>

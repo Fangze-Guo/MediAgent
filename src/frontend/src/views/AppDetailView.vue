@@ -5,7 +5,7 @@
       <div class="header-container">
         <a-button type="text" @click="goBack" class="back-btn">
           <LeftOutlined />
-          返回应用商店
+          返回工具仓库
         </a-button>
       </div>
     </div>
@@ -27,13 +27,14 @@
             <div class="app-header-info">
               <h1 class="app-title">{{ app.name }}</h1>
               <div class="app-provider">由 {{ app.author }} 提供</div>
-              
+
               <!-- 评分和用户数 -->
               <div class="rating-section">
                 <div class="rating-display">
                   <div class="rating-number">{{ app.rating }}</div>
                   <div class="rating-stars">
-                    <StarFilled v-for="i in 5" :key="i" :style="{ color: i <= Math.round(app.rating) ? '#faad14' : '#e0e0e0' }" />
+                    <StarFilled v-for="i in 5" :key="i"
+                                :style="{ color: i <= Math.round(app.rating) ? '#faad14' : '#e0e0e0' }" />
                   </div>
                   <div class="rating-text">({{ formatNumber(app.downloads) }} 个评分)</div>
                 </div>
@@ -46,20 +47,20 @@
               <!-- 操作按钮 -->
               <div class="action-buttons">
                 <a-button
-                  v-if="app.installed"
-                  size="large"
-                  class="primary-action-btn installed"
-                  @click="handleUninstall"
+                    v-if="app.installed"
+                    size="large"
+                    class="primary-action-btn installed"
+                    @click="handleUninstall"
                 >
                   <CheckCircleFilled style="margin-right: 8px" />
                   已添加到 MediAgent
                 </a-button>
                 <a-button
-                  v-else
-                  type="primary"
-                  size="large"
-                  class="primary-action-btn"
-                  @click="handleInstall"
+                    v-else
+                    type="primary"
+                    size="large"
+                    class="primary-action-btn"
+                    @click="handleInstall"
                 >
                   添加至 MediAgent
                 </a-button>
@@ -81,192 +82,197 @@
 
           <!-- 功能特点 -->
           <div class="section features-section">
-            <FeaturesMarkdown 
-              :app-id="appId" 
-              :features="app?.features || ''" 
-              :can-edit="true"
-              @save="handleSaveFeatures"
+            <FeaturesMarkdown
+                :app-id="appId"
+                :features="app?.features || ''"
+                :can-edit="true"
+                @save="handleSaveFeatures"
             />
           </div>
 
           <!-- 评论区 -->
-          <div class="section reviews-section">
-            <div class="reviews-header">
-              <h2 class="section-title">用户评价 ({{ reviews.length }})</h2>
-              <div class="review-controls">
-                <a-select v-model:value="reviewSort" class="sort-select" @change="handleSortChange">
-                  <a-select-option value="newest">最新</a-select-option>
-                  <a-select-option value="oldest">最早</a-select-option>
-                  <a-select-option value="highest">评分最高</a-select-option>
-                  <a-select-option value="lowest">评分最低</a-select-option>
-                  <a-select-option value="helpful">最有用</a-select-option>
-                </a-select>
-                <a-button type="primary" @click="handleWriteReview">
-                  <template #icon><EditOutlined /></template>
-                  {{ hasUserReviewed ? '修改评论' : '写评论' }}
-                </a-button>
-              </div>
-            </div>
-            
-            <!-- 评分统计 -->
-            <div class="rating-stats">
-              <div class="stats-summary">
-                <div class="average-rating">
-                  <span class="big-rating">{{ reviewsData?.average_rating || 0 }}</span>
-                  <div class="stars-small">
-                    <StarFilled v-for="i in 5" :key="i" :style="{ color: i <= Math.round(reviewsData?.average_rating || 0) ? '#faad14' : '#e0e0e0' }" />
-                  </div>
-                  <span class="total-reviews">{{ reviewsData?.total || 0 }} 条评价</span>
-                </div>
-              </div>
-              <div class="stats-bars">
-                <div v-for="star in [5, 4, 3, 2, 1]" :key="star" class="stat-bar">
-                  <span class="star-label">{{ star }} 星</span>
-                  <div class="bar-container">
-                    <div class="bar-fill" :style="{ width: getStarPercentage(star) + '%' }"></div>
-                  </div>
-                  <span class="star-count">{{ getStarCount(star) }}</span>
-                </div>
-              </div>
-            </div>
+<!--          <div class="section reviews-section">-->
+<!--            <div class="reviews-header">-->
+<!--              <h2 class="section-title">用户评价 ({{ reviews.length }})</h2>-->
+<!--              <div class="review-controls">-->
+<!--                <a-select v-model:value="reviewSort" class="sort-select" @change="handleSortChange">-->
+<!--                  <a-select-option value="newest">最新</a-select-option>-->
+<!--                  <a-select-option value="oldest">最早</a-select-option>-->
+<!--                  <a-select-option value="highest">评分最高</a-select-option>-->
+<!--                  <a-select-option value="lowest">评分最低</a-select-option>-->
+<!--                  <a-select-option value="helpful">最有用</a-select-option>-->
+<!--                </a-select>-->
+<!--                <a-button type="primary" @click="handleWriteReview">-->
+<!--                  <template #icon>-->
+<!--                    <EditOutlined />-->
+<!--                  </template>-->
+<!--                  {{ hasUserReviewed ? '修改评论' : '写评论' }}-->
+<!--                </a-button>-->
+<!--              </div>-->
+<!--            </div>-->
 
-            <!-- 添加评论表单 -->
-            <div v-if="showAddReview" class="add-review-form">
-              <div class="form-header">
-                <h3>{{ isEditingReview ? '修改评论' : '写评论' }}</h3>
-                <a-button type="text" @click="cancelAddReview">
-                  <CloseOutlined />
-                </a-button>
-              </div>
-              
-              <!-- 用户信息提示 -->
-              <div class="user-info-tip">
-                <UserOutlined />
-                <span>评论将以 <strong>{{ authStore.currentUser?.user_name || '未知用户' }}</strong> 的名义发布</span>
-              </div>
-              
-              <a-form :model="reviewForm" layout="vertical" @finish="submitReview">
-                <a-form-item label="您的评分" name="rating" :rules="[{ required: true, message: '请选择评分' }]">
-                  <div class="rating-input">
-                    <StarFilled 
-                      v-for="i in 5" 
-                      :key="i" 
-                      :style="{ 
-                        color: i <= reviewForm.rating ? '#faad14' : '#e0e0e0',
-                        fontSize: '24px',
-                        cursor: 'pointer',
-                        marginRight: '4px'
-                      }"
-                      @click="reviewForm.rating = i"
-                      @mouseenter="hoverRating = i"
-                      @mouseleave="hoverRating = 0"
-                    />
-                    <span class="rating-text" v-if="reviewForm.rating > 0">
-                      {{ getRatingText(reviewForm.rating) }}
-                    </span>
-                  </div>
-                </a-form-item>
-                <a-form-item label="评论内容" name="comment" :rules="[{ required: true, message: '请输入评论内容' }]">
-                  <a-textarea 
-                    v-model:value="reviewForm.comment" 
-                    placeholder="请分享您的使用体验..." 
-                    :rows="4"
-                    :maxlength="500"
-                    show-count
-                  />
-                </a-form-item>
-                <a-form-item>
-                  <div class="form-actions">
-                    <a-button @click="cancelAddReview">取消</a-button>
-                    <a-button type="primary" html-type="submit" :loading="submittingReview">
-                      {{ isEditingReview ? '保存修改' : '发布评论' }}
-                    </a-button>
-                  </div>
-                </a-form-item>
-              </a-form>
-            </div>
+<!--            &lt;!&ndash; 评分统计 &ndash;&gt;-->
+<!--            <div class="rating-stats">-->
+<!--              <div class="stats-summary">-->
+<!--                <div class="average-rating">-->
+<!--                  <span class="big-rating">{{ reviewsData?.average_rating || 0 }}</span>-->
+<!--                  <div class="stars-small">-->
+<!--                    <StarFilled v-for="i in 5" :key="i"-->
+<!--                                :style="{ color: i <= Math.round(reviewsData?.average_rating || 0) ? '#faad14' : '#e0e0e0' }" />-->
+<!--                  </div>-->
+<!--                  <span class="total-reviews">{{ reviewsData?.total || 0 }} 条评价</span>-->
+<!--                </div>-->
+<!--              </div>-->
+<!--              <div class="stats-bars">-->
+<!--                <div v-for="star in [5, 4, 3, 2, 1]" :key="star" class="stat-bar">-->
+<!--                  <span class="star-label">{{ star }} 星</span>-->
+<!--                  <div class="bar-container">-->
+<!--                    <div class="bar-fill" :style="{ width: getStarPercentage(star) + '%' }"></div>-->
+<!--                  </div>-->
+<!--                  <span class="star-count">{{ getStarCount(star) }}</span>-->
+<!--                </div>-->
+<!--              </div>-->
+<!--            </div>-->
 
-            <!-- 评论列表 -->
-            <div class="reviews-list">
-              <div v-if="sortedReviews.length === 0" class="no-reviews">
-                <div class="no-reviews-icon">💬</div>
-                <div class="no-reviews-text">暂无评论</div>
-                <div class="no-reviews-desc">成为第一个评论此应用的用户吧！</div>
-                <a-button type="primary" @click="handleWriteReview">
-                  写第一条评论
-                </a-button>
-              </div>
-              <div v-else class="reviews-container">
-                <div v-for="(review, index) in sortedReviews" :key="review.id" class="review-item" :class="{ 'my-review': isCurrentUserReview(review) }">
-                  <div class="review-card">
-                    <div class="review-header">
-                      <div class="reviewer-avatar" :style="{ background: getAvatarColor(review.user_name) }" :class="{ 'my-avatar': isCurrentUserReview(review) }">
-                        {{ review.user_name.charAt(0).toUpperCase() }}
-                      </div>
-                      <div class="reviewer-info">
-                        <div class="reviewer-name">
-                          {{ review.user_name }}
-                          <span v-if="isCurrentUserReview(review)" class="my-review-badge">
-                            <UserOutlined />
-                            我的评论
-                          </span>
-                        </div>
-                        <div class="review-meta">
-                          <span class="review-date">{{ formatDate(review.created_at) }}</span>
-                          <span class="review-index">#{{ index + 1 }}</span>
-                        </div>
-                      </div>
-                      <div class="review-rating">
-                        <div class="stars-container">
-                          <StarFilled v-for="i in review.rating" :key="i" class="star-filled" />
-                          <StarFilled v-for="i in (5 - review.rating)" :key="i + review.rating" class="star-empty" />
-                        </div>
-                        <span class="rating-text">{{ review.rating }}.0 分</span>
-                      </div>
-                    </div>
-                    
-                    <div class="review-content">
-                      <div class="content-text">{{ review.comment }}</div>
-                      <div v-if="review.comment.length > 100" class="content-gradient"></div>
-                    </div>
-                    
-                    <div class="review-footer">
-                      <div class="review-actions">
-                        <a-button 
-                          type="text" 
-                          size="small" 
-                          @click="toggleHelpful(review.id)"
-                          :class="{ active: review.isHelpful }"
-                          class="action-btn helpful-btn"
-                        >
-                          <LikeOutlined />
-                          <span class="count">({{ review.helpful_count }})</span>
-                        </a-button>
-                        
-                        <!-- 只有用户自己的评论才显示删除按钮 -->
-                        <a-button 
-                          v-if="isCurrentUserReview(review)" 
-                          type="text" 
-                          size="small" 
-                          class="action-btn delete-btn"
-                          @click="handleDeleteReview(review.id)"
-                        >
-                          <DeleteOutlined />
-                          <span>删除</span>
-                        </a-button>
-                      </div>
-                      
-                      <div class="review-stats">
-                        <span class="helpful-stats" v-if="review.helpful_count > 0">
-                          {{ review.helpful_count }} 人觉得有用
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+<!--            &lt;!&ndash; 添加评论表单 &ndash;&gt;-->
+<!--            <div v-if="showAddReview" class="add-review-form">-->
+<!--              <div class="form-header">-->
+<!--                <h3>{{ isEditingReview ? '修改评论' : '写评论' }}</h3>-->
+<!--                <a-button type="text" @click="cancelAddReview">-->
+<!--                  <CloseOutlined />-->
+<!--                </a-button>-->
+<!--              </div>-->
+
+<!--              &lt;!&ndash; 用户信息提示 &ndash;&gt;-->
+<!--              <div class="user-info-tip">-->
+<!--                <UserOutlined />-->
+<!--                <span>评论将以 <strong>{{ authStore.currentUser?.user_name || '未知用户' }}</strong> 的名义发布</span>-->
+<!--              </div>-->
+
+<!--              <a-form :model="reviewForm" layout="vertical" @finish="submitReview">-->
+<!--                <a-form-item label="您的评分" name="rating" :rules="[{ required: true, message: '请选择评分' }]">-->
+<!--                  <div class="rating-input">-->
+<!--                    <StarFilled-->
+<!--                        v-for="i in 5"-->
+<!--                        :key="i"-->
+<!--                        :style="{-->
+<!--                        color: i <= reviewForm.rating ? '#faad14' : '#e0e0e0',-->
+<!--                        fontSize: '24px',-->
+<!--                        cursor: 'pointer',-->
+<!--                        marginRight: '4px'-->
+<!--                      }"-->
+<!--                        @click="reviewForm.rating = i"-->
+<!--                        @mouseenter="hoverRating = i"-->
+<!--                        @mouseleave="hoverRating = 0"-->
+<!--                    />-->
+<!--                    <span class="rating-text" v-if="reviewForm.rating > 0">-->
+<!--                      {{ getRatingText(reviewForm.rating) }}-->
+<!--                    </span>-->
+<!--                  </div>-->
+<!--                </a-form-item>-->
+<!--                <a-form-item label="评论内容" name="comment" :rules="[{ required: true, message: '请输入评论内容' }]">-->
+<!--                  <a-textarea-->
+<!--                      v-model:value="reviewForm.comment"-->
+<!--                      placeholder="请分享您的使用体验..."-->
+<!--                      :rows="4"-->
+<!--                      :maxlength="500"-->
+<!--                      show-count-->
+<!--                  />-->
+<!--                </a-form-item>-->
+<!--                <a-form-item>-->
+<!--                  <div class="form-actions">-->
+<!--                    <a-button @click="cancelAddReview">取消</a-button>-->
+<!--                    <a-button type="primary" html-type="submit" :loading="submittingReview">-->
+<!--                      {{ isEditingReview ? '保存修改' : '发布评论' }}-->
+<!--                    </a-button>-->
+<!--                  </div>-->
+<!--                </a-form-item>-->
+<!--              </a-form>-->
+<!--            </div>-->
+
+<!--            &lt;!&ndash; 评论列表 &ndash;&gt;-->
+<!--            <div class="reviews-list">-->
+<!--              <div v-if="sortedReviews.length === 0" class="no-reviews">-->
+<!--                <div class="no-reviews-icon">💬</div>-->
+<!--                <div class="no-reviews-text">暂无评论</div>-->
+<!--                <div class="no-reviews-desc">成为第一个评论此应用的用户吧！</div>-->
+<!--                <a-button type="primary" @click="handleWriteReview">-->
+<!--                  写第一条评论-->
+<!--                </a-button>-->
+<!--              </div>-->
+<!--              <div v-else class="reviews-container">-->
+<!--                <div v-for="(review, index) in sortedReviews" :key="review.id" class="review-item"-->
+<!--                     :class="{ 'my-review': isCurrentUserReview(review) }">-->
+<!--                  <div class="review-card">-->
+<!--                    <div class="review-header">-->
+<!--                      <div class="reviewer-avatar" :style="{ background: getAvatarColor(review.user_name) }"-->
+<!--                           :class="{ 'my-avatar': isCurrentUserReview(review) }">-->
+<!--                        {{ review.user_name.charAt(0).toUpperCase() }}-->
+<!--                      </div>-->
+<!--                      <div class="reviewer-info">-->
+<!--                        <div class="reviewer-name">-->
+<!--                          {{ review.user_name }}-->
+<!--                          <span v-if="isCurrentUserReview(review)" class="my-review-badge">-->
+<!--                            <UserOutlined />-->
+<!--                            我的评论-->
+<!--                          </span>-->
+<!--                        </div>-->
+<!--                        <div class="review-meta">-->
+<!--                          <span class="review-date">{{ formatDate(review.created_at) }}</span>-->
+<!--                          <span class="review-index">#{{ index + 1 }}</span>-->
+<!--                        </div>-->
+<!--                      </div>-->
+<!--                      <div class="review-rating">-->
+<!--                        <div class="stars-container">-->
+<!--                          <StarFilled v-for="i in review.rating" :key="i" class="star-filled" />-->
+<!--                          <StarFilled v-for="i in (5 - review.rating)" :key="i + review.rating" class="star-empty" />-->
+<!--                        </div>-->
+<!--                        <span class="rating-text">{{ review.rating }}.0 分</span>-->
+<!--                      </div>-->
+<!--                    </div>-->
+
+<!--                    <div class="review-content">-->
+<!--                      <div class="content-text">{{ review.comment }}</div>-->
+<!--                      <div v-if="review.comment.length > 100" class="content-gradient"></div>-->
+<!--                    </div>-->
+
+<!--                    <div class="review-footer">-->
+<!--                      <div class="review-actions">-->
+<!--                        <a-button-->
+<!--                            type="text"-->
+<!--                            size="small"-->
+<!--                            @click="toggleHelpful(review.id)"-->
+<!--                            :class="{ active: review.isHelpful }"-->
+<!--                            class="action-btn helpful-btn"-->
+<!--                        >-->
+<!--                          <LikeOutlined />-->
+<!--                          <span class="count">({{ review.helpful_count }})</span>-->
+<!--                        </a-button>-->
+
+<!--                        &lt;!&ndash; 只有用户自己的评论才显示删除按钮 &ndash;&gt;-->
+<!--                        <a-button-->
+<!--                            v-if="isCurrentUserReview(review)"-->
+<!--                            type="text"-->
+<!--                            size="small"-->
+<!--                            class="action-btn delete-btn"-->
+<!--                            @click="handleDeleteReview(review.id)"-->
+<!--                        >-->
+<!--                          <DeleteOutlined />-->
+<!--                          <span>删除</span>-->
+<!--                        </a-button>-->
+<!--                      </div>-->
+
+<!--                      <div class="review-stats">-->
+<!--                        <span class="helpful-stats" v-if="review.helpful_count > 0">-->
+<!--                          {{ review.helpful_count }} 人觉得有用-->
+<!--                        </span>-->
+<!--                      </div>-->
+<!--                    </div>-->
+<!--                  </div>-->
+<!--                </div>-->
+<!--              </div>-->
+<!--            </div>-->
+<!--          </div>-->
         </div>
 
         <!-- 右侧信息栏 -->
@@ -310,7 +316,8 @@
           <div class="info-card">
             <h3 class="info-card-title">相关应用</h3>
             <div class="related-apps">
-              <div v-for="relatedApp in relatedApps" :key="relatedApp.id" class="related-app-item" @click="goToApp(relatedApp.id)">
+              <div v-for="relatedApp in relatedApps" :key="relatedApp.id" class="related-app-item"
+                   @click="goToApp(relatedApp.id)">
                 <div class="related-app-icon">{{ relatedApp.icon }}</div>
                 <div class="related-app-info">
                   <div class="related-app-name">{{ relatedApp.name }}</div>
@@ -330,29 +337,40 @@
     <div v-else class="error-container">
       <InboxOutlined style="font-size: 64px; color: #dadce0" />
       <p class="error-text">未找到该应用</p>
-      <a-button type="primary" @click="goBack">返回应用商店</a-button>
+      <a-button type="primary" @click="goBack">返回工具仓库</a-button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import {
-  LeftOutlined,
-  StarFilled,
-  UserOutlined,
   CheckCircleFilled,
-  ShareAltOutlined,
-  LikeOutlined,
-  InboxOutlined,
-  EditOutlined,
   CloseOutlined,
-  DeleteOutlined
+  DeleteOutlined,
+  EditOutlined,
+  InboxOutlined,
+  LeftOutlined,
+  LikeOutlined,
+  ShareAltOutlined,
+  StarFilled,
+  UserOutlined
 } from '@ant-design/icons-vue'
-import { getAppDetail, getApps, installApp, uninstallApp, getAppReviews, addAppReview, updateAppReview, deleteAppReview, toggleReviewHelpful, updateAppFeatures } from '@/apis/appStore'
-import type { AppInfo, Review, ReviewsData, AddReviewRequest } from '@/apis/appStore'
+import type { AddReviewRequest, AppInfo, Review, ReviewsData } from '@/apis/appStore'
+import {
+  addAppReview,
+  deleteAppReview,
+  getAppDetail,
+  getAppReviews,
+  getApps,
+  installApp,
+  toggleReviewHelpful,
+  uninstallApp,
+  updateAppFeatures,
+  updateAppReview
+} from '@/apis/appStore'
 import { useAuthStore } from '@/store/auth'
 import FeaturesMarkdown from '@/components/FeaturesMarkdown.vue'
 
@@ -406,12 +424,12 @@ const handleSaveFeatures = async (appId: string, features: string) => {
   try {
     // 调用后端API保存功能特点
     await updateAppFeatures(appId, features)
-    
+
     // 更新本地数据
     if (app.value) {
       app.value.features = features
     }
-    
+
     message.success('功能特点保存成功')
   } catch (error) {
     console.error('保存功能特点失败:', error)
@@ -445,7 +463,7 @@ const formatDate = (dateString: string) => {
   const now = new Date()
   const diff = now.getTime() - date.getTime()
   const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-  
+
   if (days === 0) return '今天'
   if (days === 1) return '昨天'
   if (days < 7) return `${days}天前`
@@ -474,13 +492,13 @@ const getAvatarColor = (userName: string) => {
     'linear-gradient(135deg, #ff8a80 0%, #ea4c89 100%)',
     'linear-gradient(135deg, #8fd3f4 0%, #84fab0 100%)'
   ]
-  
+
   // 根据用户名计算哈希值来选择颜色
   let hash = 0
   for (let i = 0; i < userName.length; i++) {
     hash = userName.charCodeAt(i) + ((hash << 5) - hash)
   }
-  
+
   return colors[Math.abs(hash) % colors.length]
 }
 
@@ -510,13 +528,13 @@ const loadAppDetail = async () => {
     // 加载应用详情
     const data = await getAppDetail(appId.value)
     app.value = data
-    
+
     // 加载相关应用（同类别）
     if (data.category) {
       const allApps = await getApps(data.category)
       relatedApps.value = allApps.filter(a => a.id !== appId.value).slice(0, 5)
     }
-    
+
     // 加载评论数据，如果用户已登录则传递用户ID
     const userId = authStore.currentUser?.uid
     const reviewData = await getAppReviews(appId.value, userId)
@@ -595,7 +613,7 @@ const handleWriteReview = () => {
       comment: ''
     }
   }
-  
+
   showAddReview.value = true
 }
 
@@ -608,14 +626,14 @@ const submitReview = async () => {
     }
 
     submittingReview.value = true
-    
+
     // 自动填充当前用户名
     const reviewData = {
       user_name: authStore.currentUser.user_name,
       rating: reviewForm.value.rating,
       comment: reviewForm.value.comment
     }
-    
+
     if (isEditingReview.value && userExistingReview.value) {
       // 编辑模式：更新现有评论
       await updateAppReview(appId.value, userExistingReview.value.id, reviewData)
@@ -625,7 +643,7 @@ const submitReview = async () => {
       await addAppReview(appId.value, reviewData)
       message.success('评论发布成功！')
     }
-    
+
     // 重置表单和状态
     reviewForm.value = {
       user_name: '',
@@ -635,7 +653,7 @@ const submitReview = async () => {
     showAddReview.value = false
     isEditingReview.value = false
     userExistingReview.value = null
-    
+
     // 重新加载评论
     const userId = authStore.currentUser?.uid
     const reviewData2 = await getAppReviews(appId.value, userId)
@@ -679,11 +697,11 @@ const toggleHelpful = async (reviewId: number) => {
   try {
     // 调用后端API
     const result = await toggleReviewHelpful(appId.value, reviewId, authStore.currentUser.uid)
-    
+
     // 更新前端状态
     review.helpful_count = result.helpful_count
     review.isHelpful = result.user_liked
-    
+
     message.success(result.user_liked ? '已点赞' : '已取消点赞')
   } catch (error) {
     console.error('点赞操作失败', error)
@@ -716,7 +734,7 @@ const handleDeleteReview = async (reviewId: number) => {
 
     await deleteAppReview(appId.value, reviewId, authStore.currentUser.user_name)
     message.success('评论删除成功')
-    
+
     // 重新加载评论数据
     const userId = authStore.currentUser?.uid
     const reviewData = await getAppReviews(appId.value, userId)
@@ -736,7 +754,7 @@ watch(() => route.params.id, () => {
   if (route.params.id) {
     loadAppDetail()
   }
-}, { immediate: false })
+}, {immediate: false})
 
 // 组件挂载时加载数据
 onMounted(() => {
@@ -1383,31 +1401,31 @@ onMounted(() => {
   .review-card {
     padding: 16px;
   }
-  
+
   .review-header {
     gap: 12px;
   }
-  
+
   .reviewer-avatar {
     width: 40px;
     height: 40px;
     font-size: 16px;
   }
-  
+
   .reviewer-name {
     font-size: 14px;
   }
-  
+
   .content-text {
     font-size: 14px;
   }
-  
+
   .review-footer {
     flex-direction: column;
     gap: 12px;
     align-items: flex-start;
   }
-  
+
   .review-actions {
     width: 100%;
     justify-content: space-between;
@@ -1430,11 +1448,25 @@ onMounted(() => {
   animation: slideInUp 0.3s ease-out;
 }
 
-.review-item:nth-child(1) { animation-delay: 0.1s; }
-.review-item:nth-child(2) { animation-delay: 0.2s; }
-.review-item:nth-child(3) { animation-delay: 0.3s; }
-.review-item:nth-child(4) { animation-delay: 0.4s; }
-.review-item:nth-child(5) { animation-delay: 0.5s; }
+.review-item:nth-child(1) {
+  animation-delay: 0.1s;
+}
+
+.review-item:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.review-item:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.review-item:nth-child(4) {
+  animation-delay: 0.4s;
+}
+
+.review-item:nth-child(5) {
+  animation-delay: 0.5s;
+}
 
 /* 加载动画 */
 @keyframes pulse {
