@@ -4,13 +4,14 @@
 
 from typing import List
 
-from fastapi import UploadFile, File, Form
+from fastapi import UploadFile, File, Form, Depends, Header
 from fastapi.responses import StreamingResponse
 
 from src.server_agent.common import BaseResponse
 from src.server_agent.common.ResultUtils import ResultUtils
-from src.server_agent.model import DeleteFileRequest, CreateFolderRequest, BatchDeleteFilesRequest, FileInfo, FileListVO
-from src.server_agent.service import FileService
+from src.server_agent.model import DeleteFileRequest, CreateFolderRequest, BatchDeleteFilesRequest, FileInfo, FileListVO, UserVO
+from src.server_agent.service import FileService, UserService
+from src.server_agent.exceptions import AuthenticationError
 from .base import BaseController
 
 
@@ -20,15 +21,19 @@ class FileController(BaseController):
     def __init__(self):
         super().__init__(prefix="/files", tags=[["文件管理"]])
         self.fileService = FileService()
+        self.userService = UserService()
         self._register_routes()
 
     def _register_routes(self):
         """注册所有路由"""
 
         @self.router.get("/dataset")
-        async def getDataSetFiles(target_path: str = ".") -> BaseResponse[FileListVO]:
+        async def getDataSetFiles(
+            target_path: str = ".",
+            userVO: UserVO = Depends(self._get_current_user)
+        ) -> BaseResponse[FileListVO]:
             """获取数据集文件列表"""
-            fileListVO: FileListVO = await self.fileService.getDataSetFiles(target_path)
+            fileListVO: FileListVO = await self.fileService.getDataSetFiles(target_path, userVO.uid)
             return ResultUtils.success(fileListVO)
 
         @self.router.post("/upload")
@@ -66,3 +71,27 @@ class FileController(BaseController):
             """创建文件夹"""
             await self.fileService.createFolder(request.folderName, request.currentPath)
             return ResultUtils.success(None)
+
+    # ==================== 工具方法 ====================
+
+    async def _get_current_user(self, authorization: str = Header(None)) -> UserVO:
+        """根据token获取用户信息的依赖函数"""
+        if not authorization:
+            raise AuthenticationError(
+                detail="Missing authorization header",
+                context={"header": "Authorization"}
+            )
+
+        # 支持多种格式：Bearer token 或直接 token
+        if authorization.startswith("Bearer "):
+            token = authorization[7:]  # 移除 "Bearer " 前缀
+        else:
+            token = authorization  # 直接使用 token
+
+        userVO: UserVO = await self.userService.get_user_by_token(token)
+        if not userVO:
+            raise AuthenticationError(
+                detail="Invalid token",
+                context={"token": token[:10] + "..." if len(token) > 10 else token}
+            )
+        return userVO

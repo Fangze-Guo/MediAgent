@@ -145,6 +145,13 @@ export async function uploadFile(
 
             // 发送请求
             xhr.open('POST', `${baseURL}/files/upload`)
+            
+            // 添加认证头
+            const token = localStorage.getItem('mediagent_token')
+            if (token) {
+                xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+            }
+            
             xhr.timeout = 60000 // 60秒超时
             xhr.send(formData)
         })

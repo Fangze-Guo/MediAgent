@@ -24,19 +24,20 @@ class FileService:
         self.MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB（DICOM文件可能较大）
         self.ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.csv', '.dcm', '.DCM', '.nii', '.nii.gz'}
 
-    async def getDataSetFiles(self, target_path: str) -> FileListVO:
+    async def getDataSetFiles(self, target_path: str, user_id: int = None) -> FileListVO:
         """
            获取数据集文件列表
 
            Args:
                target_path: 目标路径，相对于 DATASET_PATH 的路径
+               user_id: 当前用户ID，用于过滤private文件夹内容
 
            Returns:
                FileListVO: 文件列表信息
            """
         # 将DATASET_PATH转换为pathlib.Path对象
         dataset_root = pathlib.Path(DATASET_PATH)
-        fileListVO: FileListVO = await self.getFileListVO(dataset_root, target_path)
+        fileListVO: FileListVO = await self.getFileListVO(dataset_root, target_path, user_id)
         return fileListVO
 
 
@@ -155,13 +156,14 @@ class FileService:
         )
         return file_info
 
-    async def getFileListVO(self, files_dir: pathlib.Path, path: str) -> FileListVO:
+    async def getFileListVO(self, files_dir: pathlib.Path, path: str, user_id: int = None) -> FileListVO:
         """
         获取文件列表信息
 
         Args:
             files_dir: 文件目录
             path: 目录路径
+            user_id: 当前用户ID，用于过滤private文件夹内容
 
         Returns:
             文件列表信息
@@ -174,6 +176,10 @@ class FileService:
                 try:
                     stat = item.stat()
                     is_directory = item.is_dir()
+
+                    # 检查是否需要过滤private文件夹下的内容
+                    if self._should_filter_item(item, files_dir, user_id):
+                        continue
 
                     file_id = f"{abs(hash(str(item)))}"
                     file_type = "directory" if is_directory else self._get_content_type(item.suffix)
@@ -337,6 +343,47 @@ class FileService:
         logger.info(f"文件夹创建成功: {new_folder_path}")
 
     # ==================== 🛠️工具方法 ====================
+
+    @staticmethod
+    def _should_filter_item(item: pathlib.Path, files_dir: pathlib.Path, user_id: int = None) -> bool:
+        """
+        检查是否应该过滤掉某个文件或文件夹
+        
+        Args:
+            item: 当前文件或文件夹路径
+            files_dir: 文件根目录
+            user_id: 当前用户ID
+            
+        Returns:
+            bool: True表示应该过滤掉，False表示不过滤
+        """
+        try:
+            # 如果没有提供用户ID，不进行过滤
+            if user_id is None:
+                return False
+                
+            # 获取相对路径
+            relative_path = str(item.relative_to(files_dir)).replace('\\', '/')
+            path_parts = relative_path.split('/')
+            
+            # 检查是否在private目录下
+            if len(path_parts) >= 2 and path_parts[0] == 'private':
+                # 如果当前项就是private目录的直接子目录（用户文件夹）
+                if len(path_parts) == 2:
+                    # 检查文件夹名是否与当前用户ID匹配
+                    folder_name = path_parts[1]
+                    # 如果文件夹名不是当前用户的ID，则过滤掉
+                    try:
+                        folder_user_id = int(folder_name)
+                        return folder_user_id != user_id
+                    except ValueError:
+                        # 如果文件夹名不是数字，也过滤掉（按照用户ID命名的约定）
+                        return True
+                        
+            return False
+        except Exception as e:
+            logger.error(f"过滤文件项时发生错误: {e}")
+            return False
 
     @staticmethod
     def _get_file_path_by_id(file_id: str, files_dir: pathlib.Path) -> Optional[str]:
