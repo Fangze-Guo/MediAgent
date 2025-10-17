@@ -9,29 +9,120 @@ HERE   = Path(__file__).resolve().parent
 SERVER = HERE.parent / "mediagent" / "mcp_server_tools" / "mcp_server.py"
 CWD    = SERVER.parent
 
+# === 新增：超时阈值（秒） ===
+POLL_TIMEOUT_SEC = 5.0
+STATUS_TIMEOUT_SEC = 5.0
+
 def parse_json(result):
-    for part in result.content:
-        if isinstance(part, TextContent):
-            try:
-                return json.loads(part.text)
-            except Exception:
-                return {"text": part.text}
+    """
+    更健壮的解析：
+    - 遍历所有 TextContent 段，找出第一个能 json.loads 的；
+    - 优先返回包含 'items' 或 'run_id' 的对象；
+    - 若都不是 JSON，最后退回 {'text': <最后一个文本段>}。
+    """
+    picked = None
+    fallback_text = None
+    try:
+        parts = getattr(result, "content", []) or []
+        for part in parts:
+            if isinstance(part, TextContent):
+                txt = part.text
+                fallback_text = txt
+                try:
+                    obj = json.loads(txt)
+                    # 优先包含关键信息的对象
+                    if isinstance(obj, dict) and ("items" in obj or "run_id" in obj or "offset" in obj):
+                        return obj
+                    if picked is None and isinstance(obj, dict):
+                        picked = obj
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    if picked is not None:
+        return picked
+    if fallback_text is not None:
+        return {"text": fallback_text}
     return {}
 
-async def tail(session, run_id):
-    offset = 0
-    while True:
-        r = await session.call_tool("poll_logs", {"run_id": run_id, "offset": offset})
-        obj = parse_json(r)
-        for it in obj.get("items", []):
-            print(f"[log] {it.get('line')}")
-        offset = obj.get("offset", offset)
+# === 新增：带超时的 call_tool 包装（静默失败，下一轮重试） ===
+async def call_tool_with_timeout(session: ClientSession, tool: str, payload: dict, timeout: float):
+    try:
+        return await asyncio.wait_for(session.call_tool(tool, payload), timeout=timeout)
+    except Exception:
+        return None  # 超时或异常：返回 None，调用方按原有循环逻辑重试
 
-        s = parse_json(await session.call_tool("get_status", {"run_id": run_id}))
-        if s.get("done"):
-            print(f"[done] exit_code={s.get('exit_code')}")
-            break
+async def tail(session, run_id):
+    """
+    从 0 开始增量读取；如长时间无新增，自动触发一次“从末尾追新”（offset=-1）。
+    加入 seq 去重，避免重复行。
+    """
+    offset = 0
+    empty_rounds = 0
+    MAX_EMPTY_ROUNDS_BEFORE_TAIL = 20  # ~5 秒（配合下面 sleep 0.25s）
+
+    last_seq_printed = -1  # 关键：记录最后一次已输出的 seq
+
+    while True:
+        # 常规增量拉取（加超时）
+        r = await call_tool_with_timeout(
+            session, "poll_logs", {"run_id": run_id, "offset": offset, "limit": 200}, POLL_TIMEOUT_SEC
+        )
+        if r is None:
+            await asyncio.sleep(0.25)
+            continue
+        obj = parse_json(r)
+
+        items = obj.get("items", [])
+        new_offset = obj.get("offset", offset)
+
+        if items:
+            for it in items:
+                seq = it.get("seq")
+                line = it.get("line")
+                # 仅打印“未打印过”的新序号
+                if isinstance(seq, int) and seq > last_seq_printed:
+                    if line is None:
+                        print(f"[log] seq={seq} off={new_offset} {json.dumps(it, ensure_ascii=False)}")
+                    else:
+                        print(f"[log] seq={seq} off={new_offset} {line}")
+                    last_seq_printed = seq
+            offset = new_offset
+            empty_rounds = 0
+        else:
+            empty_rounds += 1
+            # 连续多轮无新增：触发一次“从当前末尾追新”（加超时）
+            if empty_rounds >= MAX_EMPTY_ROUNDS_BEFORE_TAIL:
+                r_tail = await call_tool_with_timeout(
+                    session, "poll_logs", {"run_id": run_id, "offset": -1}, POLL_TIMEOUT_SEC
+                )
+                if r_tail is not None:
+                    obj_tail = parse_json(r_tail)
+                    tail_items = obj_tail.get("items", [])
+                    tail_offset = obj_tail.get("offset", offset)
+                    if tail_items:
+                        for it in tail_items:
+                            seq = it.get("seq")
+                            line = it.get("line")
+                            if isinstance(seq, int) and seq > last_seq_printed:
+                                if line is None:
+                                    print(f"[log] seq={seq} off={tail_offset} {json.dumps(it, ensure_ascii=False)}")
+                                else:
+                                    print(f"[log] seq={seq} off={tail_offset} {line}")
+                                last_seq_printed = seq
+                        offset = tail_offset
+                    empty_rounds = 0  # 重置
+
+        # 查询一次状态（加超时）
+        s_resp = await call_tool_with_timeout(session, "get_status", {"run_id": run_id}, STATUS_TIMEOUT_SEC)
+        if s_resp is not None:
+            s = parse_json(s_resp)
+            if s.get("done"):
+                print(f"[done] exit_code={s.get('exit_code')}")
+                break
+
         await asyncio.sleep(0.25)
+
 
 async def main():
     out_root = HERE.parent / "data" / "test" / "stream_test"
@@ -88,7 +179,7 @@ async def main():
             # await tail(session, run_id)
 
             # ------------- 5) nnU-Net 批量分割：复制 reg_out → 在拷贝里生成 C2_mask.nii.gz -------------
-            r = await session.call_tool("segment_c2_with_nnunet", {
+            r = await session.call_tool("start_nnunet_predict", {
                 "in_dir":  r"D:\mcp_test\reg_out",      # 上一步 register_deeds 的输出
                 "out_dir": r"D:\mcp_test\nnunet_out",   # 本步输出目录（会先整体复制 in_dir）
             })
@@ -99,8 +190,6 @@ async def main():
                 raise RuntimeError(f"tool failed, no run_id. server returned: {j}")
             print("nnunet run:", run_id)
             await tail(session, run_id)
-
-
 
 if __name__ == "__main__":
     asyncio.run(main())

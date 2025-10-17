@@ -21,6 +21,12 @@ LOG_DIR: Path = in_data("TM_logs")  # 日志文件存放目录
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+# ===== MCP 交互的统一超时/重试策略 =====
+MCP_DEFAULT_TIMEOUT_SEC: float = 10.0   # 单次调用超时
+MCP_DEFAULT_RETRIES: int = 5           # 最大重试次数（含最后一次）
+MCP_BACKOFF_BASE_SEC: float = 0.5      # 退避起始秒数，指数退避：base * (2 ** (attempt-1))
+
+
 
 # ============================ 轻量日志工具 ============================
 _log_lock = threading.RLock()
@@ -97,10 +103,11 @@ def _schema_to_json(schema_obj: Any) -> Optional[Dict[str, Any]]:
 class MCPExecutor:
     """
     在独立线程中维护一个事件循环和 MCP stdio 会话（常驻）。
-    - start(): 启动线程并建立会话（只一次）
-    - list_tools(): 线程安全，同步调用
-    - call_tool(name, args): 线程安全，同步调用
-    - close(): 优雅关闭会话与线程
+    为所有对 MCP 的直接调用提供“超时 + 重试”的同步方法包装：
+      - list_tools(timeout=None, retries=None)
+      - list_job_tools_meta(timeout=None, retries=None)
+      - call_tool(name, args, timeout=None, retries=None)
+    以上参数缺省时使用全局默认（见常量）。
     """
     def __init__(self, server_path: Path) -> None:
         self._server_path = Path(server_path).expanduser().resolve()
@@ -109,7 +116,7 @@ class MCPExecutor:
         self._ready_evt = threading.Event()
         self._stop_evt: Optional[asyncio.Event] = None
         self._session: Optional[ClientSession] = None
-        self._client_cm = None   # stdio_client(...) async contextmanager
+        self._client_cm = None
         self._error: Optional[BaseException] = None
         log_info("MCP", f"Executor init with server={self._server_path}")
 
@@ -149,36 +156,98 @@ class MCPExecutor:
         self._loop = None
         log_info("MCP", "Executor closed")
 
-    # ---------- 线程安全同步方法 ----------
-    def list_tools(self) -> List[Dict[str, Any]]:
+    # ---------- 线程安全同步方法（带超时+重试） ----------
+    def list_tools(self, *, timeout: Optional[float] = None, retries: Optional[int] = None) -> List[Dict[str, Any]]:
+        timeout = timeout or MCP_DEFAULT_TIMEOUT_SEC
+        retries = retries if retries is not None else MCP_DEFAULT_RETRIES
         loop = self._loop
         if loop is None or self._session is None:
             log_error("MCP", "list_tools(): loop/session not ready")
             raise RuntimeError("MCP 执行器未就绪")
-        fut = asyncio.run_coroutine_threadsafe(self._coro_list_tools(), loop)
-        tools = fut.result()
-        log_info("MCP", f"list_tools(): got {len(tools)} tools")
-        return tools
 
-    def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
+        attempt = 0
+        while True:
+            attempt += 1
+            fut = asyncio.run_coroutine_threadsafe(self._coro_list_tools(), loop)
+            try:
+                tools = fut.result(timeout=timeout)
+                log_info("MCP", f"list_tools(): got {len(tools)} tools")
+                return tools
+            except Exception as e:
+                fut.cancel()
+                log_warn("MCP", f"list_tools(): attempt#{attempt} failed ({type(e).__name__}: {e})")
+                if attempt >= retries:
+                    log_exception("MCP", "list_tools(): exhausted retries", e)
+                    raise
+                time.sleep(MCP_BACKOFF_BASE_SEC * (2 ** (attempt - 1)))
+
+    def call_tool(
+        self,
+        tool_name: str,
+        arguments: Dict[str, Any],
+        *,
+        timeout: Optional[float] = None,
+        retries: Optional[int] = None,
+    ) -> Any:
+        timeout = timeout or MCP_DEFAULT_TIMEOUT_SEC
+        retries = retries if retries is not None else MCP_DEFAULT_RETRIES
         loop = self._loop
         if loop is None or self._session is None:
             log_error("MCP", f"call_tool({tool_name}): loop/session not ready")
             raise RuntimeError("MCP 执行器未就绪")
+
         log_info("MCP", f"call_tool(): name={tool_name}, args_keys={list(arguments.keys())}")
-        fut = asyncio.run_coroutine_threadsafe(self._coro_call_tool(tool_name, arguments), loop)
-        try:
-            res = fut.result()
-            # 便于日志定位 run_id
-            rid = None
-            if isinstance(res, dict):
-                rid = res.get("run_id") or (res.get("data", {}) if isinstance(res.get("data"), dict) else {}).get("run_id")
-            preview = f"dict keys={list(res.keys())}" if isinstance(res, dict) else (str(res)[:200] + "..." if isinstance(res, str) and len(res) > 200 else str(res))
-            log_info("MCP", f"call_tool() result: run_id={rid}, preview={preview}")
-            return res
-        except BaseException as e:
-            log_exception("MCP", f"call_tool({tool_name}) fut.result() failed", e)
-            raise
+        attempt = 0
+        last_err: Optional[BaseException] = None
+
+        while True:
+            attempt += 1
+            fut = asyncio.run_coroutine_threadsafe(self._coro_call_tool(tool_name, arguments), loop)
+            try:
+                res = fut.result(timeout=timeout)
+                # 便于日志定位 run_id
+                rid = None
+                if isinstance(res, dict):
+                    rid = res.get("run_id") or (res.get("data", {}) if isinstance(res.get("data"), dict) else {}).get("run_id")
+                preview = (
+                    f"dict keys={list(res.keys())}" if isinstance(res, dict)
+                    else (str(res)[:200] + "..." if isinstance(res, str) and len(res) > 200 else str(res))
+                )
+                log_info("MCP", f"call_tool() result: run_id={rid}, preview={preview}")
+                return res
+            except Exception as e:
+                last_err = e
+                fut.cancel()
+                log_warn("MCP", f"call_tool({tool_name}): attempt#{attempt} failed ({type(e).__name__}: {e})")
+                if attempt >= retries:
+                    log_exception("MCP", f"call_tool({tool_name}): exhausted retries", e)
+                    raise
+                time.sleep(MCP_BACKOFF_BASE_SEC * (2 ** (attempt - 1)))
+
+    # 新增：线程安全同步方法（通过自定义工具获取 name/description 列表），带超时+重试
+    def list_job_tools_meta(self, *, timeout: Optional[float] = None, retries: Optional[int] = None) -> list[dict]:
+        timeout = timeout or MCP_DEFAULT_TIMEOUT_SEC
+        retries = retries if retries is not None else MCP_DEFAULT_RETRIES
+        loop = self._loop
+        if loop is None or self._session is None:
+            log_error("MCP", "list_job_tools_meta(): loop/session not ready")
+            raise RuntimeError("MCP 执行器未就绪")
+
+        attempt = 0
+        while True:
+            attempt += 1
+            fut = asyncio.run_coroutine_threadsafe(self._coro_list_job_tools(), loop)
+            try:
+                tools = fut.result(timeout=timeout)
+                log_info("MCP", f"list_job_tools_meta(): got {len(tools)} tools (via MCP tool)")
+                return tools
+            except Exception as e:
+                fut.cancel()
+                log_warn("MCP", f"list_job_tools_meta(): attempt#{attempt} failed ({type(e).__name__}: {e})")
+                if attempt >= retries:
+                    log_exception("MCP", "list_job_tools_meta(): exhausted retries", e)
+                    raise
+                time.sleep(MCP_BACKOFF_BASE_SEC * (2 ** (attempt - 1)))
 
     # ---------- 仅在执行线程事件循环中运行的协程 ----------
     async def _coro_list_tools(self) -> List[Dict[str, Any]]:
@@ -215,18 +284,6 @@ class MCPExecutor:
                 out.append(("unknown", str(seg)))
         return out
 
-    # 新增：线程安全同步方法
-    def list_job_tools_meta(self) -> list[dict]:
-        loop = self._loop
-        if loop is None or self._session is None:
-            log_error("MCP", "list_job_tools_meta(): loop/session not ready")
-            raise RuntimeError("MCP 执行器未就绪")
-        fut = asyncio.run_coroutine_threadsafe(self._coro_list_job_tools(), loop)
-        tools = fut.result()
-        log_info("MCP", f"list_job_tools_meta(): got {len(tools)} tools (via MCP tool)")
-        return tools
-
-    # 新增：实际协程——调用自定义 MCP 工具 list_job_tools 并解析
     async def _coro_list_job_tools(self) -> list[dict]:
         assert self._session is not None
         res = await self._session.call_tool("list_job_tools", {})
@@ -247,7 +304,7 @@ class MCPExecutor:
                         return out
         except Exception:
             pass
-        # 2) 兼容：如果服务端以 text 段返回 JSON 字符串
+        # 2) 兼容：text 段里包 JSON
         try:
             texts = [seg.text for seg in res.content if
                      getattr(seg, "type", None) == "text" and getattr(seg, "text", None)]
@@ -266,7 +323,7 @@ class MCPExecutor:
                     return out
         except Exception as e:
             log_warn("MCP", f"_coro_list_job_tools(): text->json parse failed: {e!r}")
-        # 3) 打点调试：看看到底收到了什么
+        # 3) 调试预览
         try:
             preview = []
             for seg in res.content:
@@ -331,6 +388,7 @@ class MCPExecutor:
             loop.run_until_complete(loop.shutdown_asyncgens())
             loop.close()
             log_info("MCP", "Event loop closed")
+
 
 
 # ========================= TaskManager =========================
