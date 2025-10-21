@@ -42,7 +42,7 @@ from mediagent.modules.task_manager import AsyncTaskManager
 # Agent B（你的执行器 / 任务创建编排器）
 from mediagent.agents.task_create_agent import TaskCreationAgentB, AgentBConfig
 # Agent A（新版：仅暴露 converse，并需要 cm/stream_id/task_manager）
-from mediagent.agents.chat_plan_agent import DialogueAgentA, AgentAConfig
+from mediagent.agents.A_test import DialogueAgentA, AgentAConfig
 # 对话管理器
 from mediagent.modules.conversation_manager import ConversationManager
 
