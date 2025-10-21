@@ -166,7 +166,7 @@ class DialogueAgentA:
             tools = [
                 self._tool_emit_user_reply(),
                 self._tool_emit_task_request(),
-                self._tool_emit_task_status_query(),  # 已有
+                self._tool_emit_task_status_query(),   # 已有
                 self._tool_emit_dataset_info_query(),  # 新增：查看数据集信息
             ]
 
@@ -333,18 +333,46 @@ class DialogueAgentA:
 
                 try:
                     if mode == "overview":
+                        # 1) 调管理器
                         res = await dsman.overview()
-                        text = (res.get("text") or "（无返回）")
+                        # 2) 完整工具结果入内部流
+                        await self._append_internal(
+                            conversation_uid, role="tool_result",
+                            text=json.dumps({
+                                "source": "dataset_manager",
+                                "mode": "overview",
+                                "dataset_name": None,
+                                "user_need_text": None,
+                                "result": res
+                            }, ensure_ascii=False)
+                        )
                         ok = bool(res.get("ok"))
-                        meta = {"ok": ok, "mode": mode, "dataset_name": None, "text_len": len(text)}
-                        await self._append_internal(conversation_uid, role="tool_result", text=json.dumps(meta, ensure_ascii=False))
-                        if ok:
-                            await self._append_main(conversation_uid, role="assistant", text=text)
-                            return text
-                        else:
-                            msg = f"读取数据集总览失败：{text}"
-                            await self._append_main(conversation_uid, role="assistant", text=msg)
-                            return msg
+                        text = (res.get("text") or "（无返回）")
+
+                        # 3) 二次加工（主 LLM）
+                        post_prompt = (
+                            "请基于上一个工具结果(result.text)，结合当前对话上下文，"
+                            "向用户输出最终回答："
+                            "• 模式=overview：对全部数据集做全局归纳/对比/排序，突出影像/文本/病理/基因/标注等维度；"
+                            "• 禁止臆造；不要贴回表格源码；"
+                            "• 只调用 emit_user_reply。"
+                        )
+                        await self._append_internal(conversation_uid, role="system", text=post_prompt)
+                        messages2 = await self._build_llm_messages(conversation_uid)
+                        raw2, err2 = await self._call_llm_with_retry(messages2, tools)
+                        if not err2 and raw2:
+                            await self._append_internal(conversation_uid, role="assistant",
+                                                        text=json.dumps(raw2, ensure_ascii=False))
+                            fin_intent, fin_payload, _ = self._parse_llm_decision(raw2)
+                            if fin_intent == "user_reply":
+                                final = (fin_payload.get("content") or "").strip()
+                                if final:
+                                    await self._append_main(conversation_uid, role="assistant", text=final)
+                                    return final
+                        # 4) 兜底：直接原样返回
+                        msg = text if ok else f"读取数据集总览失败：{text}"
+                        await self._append_main(conversation_uid, role="assistant", text=msg)
+                        return msg
 
                     # focus
                     name = (payload.get("dataset_name") or "").strip()
@@ -354,18 +382,47 @@ class DialogueAgentA:
                         await self._append_main(conversation_uid, role="assistant", text=msg)
                         return msg
 
+                    # 1) 调管理器
                     res = await dsman.focus(dataset_name=name, user_need_text=need)
-                    text = (res.get("text") or "（无返回）")
+                    # 2) 完整工具结果入内部流
+                    await self._append_internal(
+                        conversation_uid, role="tool_result",
+                        text=json.dumps({
+                            "source": "dataset_manager",
+                            "mode": "focus",
+                            "dataset_name": name,
+                            "user_need_text": need,
+                            "result": res
+                        }, ensure_ascii=False)
+                    )
                     ok = bool(res.get("ok"))
-                    meta = {"ok": ok, "mode": mode, "dataset_name": name, "text_len": len(text)}
-                    await self._append_internal(conversation_uid, role="tool_result", text=json.dumps(meta, ensure_ascii=False))
-                    if ok:
-                        await self._append_main(conversation_uid, role="assistant", text=text)
-                        return text
-                    else:
-                        msg = f"读取数据集 {name} 失败：{text}"
-                        await self._append_main(conversation_uid, role="assistant", text=msg)
-                        return msg
+                    text = (res.get("text") or "（无返回）")
+
+                    # 3) 二次加工（主 LLM）
+                    post_prompt = (
+                        "请基于上一个工具结果(result.text)，结合当前对话上下文与用户本轮需求，"
+                        "向用户输出最终回答："
+                        "• 模式=focus：严格围绕用户需求(user_need_text)作答；"
+                        "• 若信息不足请点明缺口，并提出最小澄清或下一步建议；"
+                        "• 禁止臆造；不要贴回表格源码；"
+                        "• 只调用 emit_user_reply。"
+                    )
+                    await self._append_internal(conversation_uid, role="system", text=post_prompt)
+                    messages2 = await self._build_llm_messages(conversation_uid)
+                    raw2, err2 = await self._call_llm_with_retry(messages2, tools)
+                    if not err2 and raw2:
+                        await self._append_internal(conversation_uid, role="assistant",
+                                                    text=json.dumps(raw2, ensure_ascii=False))
+                        fin_intent, fin_payload, _ = self._parse_llm_decision(raw2)
+                        if fin_intent == "user_reply":
+                            final = (fin_payload.get("content") or "").strip()
+                            if final:
+                                await self._append_main(conversation_uid, role="assistant", text=final)
+                                return final
+                    # 4) 兜底：直接原样返回
+                    msg = text if ok else f"读取数据集 {name} 失败：{text}"
+                    await self._append_main(conversation_uid, role="assistant", text=msg)
+                    return msg
 
                 except Exception as e:
                     msg = f"数据集查询异常：{e!r}"
