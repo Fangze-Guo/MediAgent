@@ -538,6 +538,166 @@ async def start_nnunet_predict(ctx: Context, in_dir: str, out_dir: str, overwrit
         "started": True,
     }
 
+@job_tool(
+    name="start_n4",
+    description=(
+        "N4 偏置场校正（批量）。\n"
+        "输入（in_dir）：根目录下为病人子目录；每个病人至少包含 C2.nii.gz 与 C2_mask.nii.gz。\n"
+        "输出（out_dir）：与输入层级一致，写出校正后 C2.nii.gz 与对应 C2_mask.nii.gz。\n\n"
+        "【用于 LLM 产出 steps[*] 的规则】\n"
+        "1) tool_name='start_n4'。\n"
+        "2) 常用 source_kind='step'（如接前序配准/预测的产物），也可 'direct'。\n"
+        "3) additional_params 可选：\n"
+        "   - kernel_radius：整数或三元组（如 3 或 [3,3,1]），默认不膨胀。\n"
+        "   - overwrite：bool，默认 false（目标存在则跳过）。\n"
+        "   - save_dilated_mask：bool，默认 false（输出仍保存原始 mask；置 true 保存膨胀后 mask）。\n"
+        "4) 禁止 additional_params 出现 in_dir/out_dir（由系统注入）。\n\n"
+        "【最小示例】\n"
+        "{\n"
+        "  \"step_number\": 11,\n"
+        "  \"tool_name\": \"start_n4\",\n"
+        "  \"source_kind\": \"step\",\n"
+        "  \"source\": 10,\n"
+        "  \"relative\": null,\n"
+        "  \"additional_params\": {\"kernel_radius\": 3, \"overwrite\": false}\n"
+        "}"
+    )
+)
+async def start_n4(
+    ctx: Context,
+    in_dir: str,
+    out_dir: str,
+    kernel_radius: Optional[Any] = None,
+    overwrite: bool = False,
+    save_dilated_mask: bool = False,
+) -> dict:
+    """
+    通过 _launch_and_capture 启动 tools/n4_correct.py 子进程；把参数转为 CLI。
+    - kernel_radius 允许 int / list[int] / str("3,3,1")
+    """
+    args = ["--in-dir", in_dir, "--out-dir", out_dir]
+    # kernel_radius 统一转为 CLI 字符串
+    if kernel_radius is not None:
+        if isinstance(kernel_radius, (list, tuple)):
+            kr_str = ",".join(str(int(x)) for x in kernel_radius)
+        else:
+            kr_str = str(kernel_radius)
+        args += ["--kernel-radius", kr_str]
+
+    if overwrite:
+        args.append("--overwrite")
+    if save_dilated_mask:
+        args.append("--save-dilated-mask")
+
+    ri = await _launch_and_capture("n4_correct.py", *args, out_dir=out_dir)
+    return {
+        "run_id": ri.run_id,
+        "log_path": str(ri.log_path),
+        "status_path": str(ri.status_path),
+        "out_dir": out_dir,
+        "started": True,
+    }
+
+@job_tool(
+    name="start_resample",
+    description=(
+        "重采样与空间规范（批量）。\n"
+        "输入（in_dir）：根目录为病人目录集合；每个病人目录需包含 C2.nii.gz 与 C2_mask.nii.gz。\n"
+        "输出（out_dir）：与输入层级一致；每例输出规则化的 C2.nii.gz 和 C2_mask.nii.gz。\n\n"
+        "固定行为：\n"
+        "1) 体素间距重采样到 1.0×1.0×1.0 mm；图像用 B-Spline，掩膜用最近邻。\n"
+        "2) DICOMOrient 到 LPS；direction 设为 identity；origin 设为 (0,0,0)。\n"
+        "3) 默认不覆盖已有结果；若目标 C2 已存在则整例跳过。\n"
+        "4) 自动跳过以下划线开头目录（_logs/_workspace 等）。\n\n"
+        "【用于 LLM 产出 steps[*] 的规则】\n"
+        "1) tool_name='start_resample'。\n"
+        "2) 常用 source_kind='step'（接 N4 产物），也可 'direct'。\n"
+        "3) additional_params 必须是空对象 {}（本工具无业务参数）。\n"
+        "4) 禁止 additional_params 出现 in_dir/out_dir（由系统注入）。\n"
+        "【最小示例】\n"
+        "{\n"
+        "  \"step_number\": 12,\n"
+        "  \"tool_name\": \"start_resample\",\n"
+        "  \"source_kind\": \"step\",\n"
+        "  \"source\": 11,\n"
+        "  \"relative\": null,\n"
+        "  \"additional_params\": {}\n"
+        "}"
+    )
+)
+async def start_resample(ctx: Context, in_dir: str, out_dir: str) -> dict:
+    """
+    启动 tools/resample_correct.py 子进程（仅 in_dir/out_dir 两个入参）。
+    内部固定：spacing=1mm、overwrite=False、skip_underscore=True。
+    """
+    ri = await _launch_and_capture("resample_correct.py", "--in-dir", in_dir, "--out-dir", out_dir, out_dir=out_dir)
+    return {
+        "run_id": ri.run_id,
+        "log_path": str(ri.log_path),
+        "status_path": str(ri.status_path),
+        "out_dir": out_dir,
+        "started": True,
+    }
+
+@job_tool(
+    name="start_normalize",
+    description=(
+        "强度归一化（基于 MONAI NormalizeIntensity，批量）。\n"
+        "输入（in_dir）：根目录为病人目录集合；每个病人目录需包含 C2.nii.gz 与 C2_mask.nii.gz。\n"
+        "输出（out_dir）：与输入层级一致；输出归一化后的 C2.nii.gz 与原样复制的 C2_mask.nii.gz。\n"
+        "额外：若存在 C0.nii.gz，会原样复制到输出目录（不覆盖）。\n\n"
+        "固定行为：\n"
+        "1) 使用 MONAI NormalizeIntensity 对 C2 做强度归一化（保持空间信息）。\n"
+        "2) C2_mask 原样复制；C0（如存在）原样复制。\n"
+        "3) 默认不覆盖已有结果；自动跳过以下划线开头目录（_logs/_workspace 等）。\n\n"
+        "【用于 LLM 产出 steps[*] 的规则】\n"
+        "1) tool_name='start_normalize'。\n"
+        "2) 常用 source_kind='step'（接 Resample/N4 产物），也可 'direct'。\n"
+        "3) additional_params 必须是空对象 {}（本工具无业务参数）。\n"
+        "4) 禁止 additional_params 出现 in_dir/out_dir（由系统注入）。\n"
+        "【最小示例】\n"
+        "{\n"
+        "  \"step_number\": 13,\n"
+        "  \"tool_name\": \"start_normalize\",\n"
+        "  \"source_kind\": \"step\",\n"
+        "  \"source\": 12,\n"
+        "  \"relative\": null,\n"
+        "  \"additional_params\": {}\n"
+        "}"
+    )
+)
+async def start_normalize(ctx: Context, in_dir: str, out_dir: str) -> dict:
+    """
+    启动 tools/normalize_intensity.py 子进程（仅 in_dir/out_dir 两个入参）。
+    """
+    ri = await _launch_and_capture("normalize_intensity.py", "--in-dir", in_dir, "--out-dir", out_dir, out_dir=out_dir)
+    return {
+        "run_id": ri.run_id,
+        "log_path": str(ri.log_path),
+        "status_path": str(ri.status_path),
+        "out_dir": out_dir,
+        "started": True,
+    }
+
+@job_tool(
+    name="start_qc_plot",
+    description=(
+        "QC 可视化（批量）：为每个病人的 C2/C2_mask 生成“最大掩膜切片 + 全卷强度分布”的 PNG。\n"
+        "输入（in_dir）：根目录为病人目录集合；每个病人需包含 C2.nii.gz 与 C2_mask.nii.gz。\n"
+        "输出（out_dir）：与输入层级一致；每例生成 C2_qc.png 与 C2_qc.json（记录 z_index）。\n"
+        "固定行为：默认不覆盖；跳过以下划线开头目录；实时日志与 summary。"
+    )
+)
+async def start_qc_plot(ctx: Context, in_dir: str, out_dir: str) -> dict:
+    ri = await _launch_and_capture("qc_plot_maxslice.py", "--in-dir", in_dir, "--out-dir", out_dir, out_dir=out_dir)
+    return {
+        "run_id": ri.run_id,
+        "log_path": str(ri.log_path),
+        "status_path": str(ri.status_path),
+        "out_dir": out_dir,
+        "started": True,
+    }
+
 
 # ============================ 内部辅助工具（执行层用） ============================
 @server.tool()
