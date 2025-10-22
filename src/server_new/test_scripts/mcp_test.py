@@ -129,14 +129,15 @@ async def run_tool_and_tail(session: ClientSession, tool: str, payload: dict, la
 
 async def main():
     # 测试路径，可按需修改
-    dicom_dir   = Path(r"D:\mcp_test\0_DICOM")
-    dicom2nii   = Path(r"D:\mcp_test\dicom2nii")
-    reg_out     = Path(r"D:\mcp_test\reg_out")
-    nnunet_out  = Path(r"D:\mcp_test\nnunet_out")  # 含 _logs / _workspace
-    n4_out      = Path(r"D:\mcp_test\n4_out")
-    res_out     = Path(r"D:\mcp_test\res_out")
-    norm_out    = Path(r"D:\mcp_test\norm_out")
-    qc_out      = Path(r"D:\mcp_test\qc_out")      # ★ 新增：QC 输出
+    path = Path(r"D:\project\MediAgent2\src\data")
+    dicom_dir = path / "0_DICOM"
+    dicom2nii = path / "dicom2nii"
+    reg_out = path / "reg_out"
+    nnunet_out = path / "nnunet_out"  # 含 _logs / _workspace
+    n4_out = path / "n4_out"
+    res_out = path / "res_out"
+    norm_out = path / "norm_out"
+    qc_out = path / "qc_out"  # ★ 新增：QC 输出
 
     params = StdioServerParameters(
         command=sys.executable,

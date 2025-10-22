@@ -206,8 +206,9 @@ def _run_nnunet_predict_in_wsl(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            bufsize=1,
-            universal_newlines=True,
+            shell=True,
+            encoding='utf-8',  # 显式指定编码
+            errors='replace'  # 替换无法解码字符防止崩溃
         )
         assert proc.stdout is not None
         for line in proc.stdout:
