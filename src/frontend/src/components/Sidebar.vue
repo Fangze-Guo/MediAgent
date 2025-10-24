@@ -146,7 +146,8 @@ import {
   FileTextOutlined,
   FolderOutlined,
   LogoutOutlined,
-  RobotOutlined
+  RobotOutlined,
+  UnorderedListOutlined
 } from '@ant-design/icons-vue'
 import UserProfileModal from './UserProfileModal.vue'
 
@@ -214,6 +215,11 @@ const items = ref([
     label: '文件管理',
   },
   {
+    key: 'tasks',
+    icon: () => h(UnorderedListOutlined),
+    label: '任务管理',
+  },
+  {
     key: 'app-store',
     icon: () => h(AppstoreOutlined),
     label: '工具仓库',
@@ -224,8 +230,9 @@ const items = ref([
  * 根据当前路由计算应该高亮的菜单项
  * 逻辑：
  * - /conversation/:id → 不高亮（显示对话项高亮）
- * - /app-store → 高亮"App Store"
+ * - /app-store → 高亮"工具仓库"
  * - /files → 高亮"文件管理"
+ * - /tasks → 高亮"任务管理"
  * - / → 高亮"新建对话"
  */
 const selectedKeys = computed(() => {
@@ -241,6 +248,10 @@ const selectedKeys = computed(() => {
 
   if (path === '/files') {
     return ['files']
+  }
+
+  if (path === '/tasks') {
+    return ['tasks']
   }
 
   if (path === '/') {
@@ -262,6 +273,9 @@ const handleMenuClick: MenuProps['onClick'] = ({key}) => {
   } else if (key === 'files') {
     // 跳转到文件管理页面
     router.push('/files')
+  } else if (key === 'tasks') {
+    // 跳转到任务管理页面
+    router.push('/tasks')
   } else if (key === 'app-store') {
     // 跳转到应用商店页面
     router.push('/app-store')

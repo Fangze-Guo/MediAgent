@@ -18,6 +18,7 @@ from .AppStoreController import AppStoreController
 from .ConversationController import ConversationController
 from .FileController import FileController
 from .ModelController import ModelController
+from .TaskController import TaskController
 from .UserController import UserController
 
 
@@ -129,6 +130,7 @@ def create_app() -> FastAPI:
     conversation_controller = ConversationController()
     model_controller = ModelController()
     app_store_controller = AppStoreController()
+    task_controller = TaskController()
 
     # 注册路由
     app.include_router(file_controller.router)
@@ -136,6 +138,7 @@ def create_app() -> FastAPI:
     app.include_router(conversation_controller.router)
     app.include_router(model_controller.router)
     app.include_router(app_store_controller.router)
+    app.include_router(task_controller.router)
 
     # 设置异常处理器
     setup_exception_handlers(app)
@@ -151,4 +154,5 @@ __all__ = [
     'ConversationController',
     'ModelController',
     'AppStoreController',
+    'TaskController',
 ]

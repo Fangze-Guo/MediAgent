@@ -448,8 +448,10 @@ const getTypeName = (fileType: string) => {
 const deleteFileHandler = (file: any) => {
   Modal.confirm({
     title: '确认删除',
-    content: `确定要删除${file.isDirectory ? '目录' : '文件'} "${file.name}" 吗？`,
-    okText: '删除',
+    content: file.isDirectory 
+      ? `确定要删除目录 "${file.name}" 吗？\n此操作将删除目录及其所有内容，且无法恢复！` 
+      : `确定要删除文件 "${file.name}" 吗？此操作无法恢复！`,
+    okText: '确认删除',
     okType: 'danger',
     cancelText: '取消',
     onOk: async () => {

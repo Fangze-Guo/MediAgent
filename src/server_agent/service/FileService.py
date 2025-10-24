@@ -294,7 +294,7 @@ class FileService:
 
     async def deleteFile(self, files_dir: pathlib.Path, file_path: str, user_id: int = None, role: str = 'user') -> bool:
         """
-        删除文件
+        删除文件或目录（支持递归删除非空目录）
 
         Args:
             files_dir: 文件目录
@@ -305,23 +305,21 @@ class FileService:
         Returns:
             删除结果
         """
+        import shutil
+        
         target_path = self._get_safe_path(files_dir, file_path)
         
         # 权限检查：验证用户是否有权限删除
         self._check_delete_permission(target_path, files_dir, user_id, role)
         
         if target_path.is_dir():
-            # 检查目录是否为空
-            if any(target_path.iterdir()):
-                raise ValidationError(
-                    detail="目录不为空，无法删除",
-                    context={"file_path": file_path}
-                )
-            # 删除空目录
-            target_path.rmdir()
+            # 递归删除整个目录（包括所有子文件和子目录）
+            shutil.rmtree(target_path)
+            logger.info(f"成功删除目录: {target_path}")
         else:
             # 删除文件
             target_path.unlink()
+            logger.info(f"成功删除文件: {target_path}")
         return True
 
     # ==================== 创建文件夹 ====================
