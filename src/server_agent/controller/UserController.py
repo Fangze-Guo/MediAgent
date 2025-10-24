@@ -31,10 +31,14 @@ class UserController(BaseController):
         """注册所有路由"""
 
         @self.router.post("/register")
-        async def register(request: UserRegisterRequest) -> BaseResponse[dict[str, int]]:
+        async def register(request: UserRegisterRequest) -> BaseResponse[dict]:
             """用户注册接口"""
-            res: int = await self.userService.register_user(request.user_name, request.password)
-            return ResultUtils.success({"uid": res})
+            uid: int = await self.userService.register_user(request.user_name, request.password)
+            return ResultUtils.success({
+                "uid": uid,
+                "user_name": request.user_name,
+                "message": f"用户 {request.user_name} 注册成功！"
+            })
 
         @self.router.post("/login")
         async def login(request: UserLoginRequest) -> BaseResponse[dict[str, str]]:

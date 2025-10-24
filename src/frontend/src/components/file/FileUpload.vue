@@ -108,59 +108,30 @@
           <FileOutlined />
           已上传文件 ({{ uploadedFiles.length }})
         </h4>
-        <div class="batch-actions">
-          <a-button
-              type="primary"
-              size="small"
-              @click="handleUseAllFiles"
-              :disabled="uploadedFiles.length === 0"
-          >
-            全部使用
-          </a-button>
-          <a-button
-              type="link"
-              size="small"
-              danger
-              @click="handleRemoveAllFiles"
-              :disabled="uploadedFiles.length === 0"
-          >
-            全部删除
-          </a-button>
+        <div class="success-info">
+          <a-tag color="success">上传成功</a-tag>
+          <span class="hint-text">文件已保存到服务器，可关闭此窗口</span>
         </div>
       </div>
       <div class="files-list">
         <div
             v-for="file in uploadedFiles"
             :key="file.id"
-            class="file-item"
+            class="file-item uploaded"
         >
           <div class="file-info">
-            <FileOutlined class="file-icon" />
+            <FileOutlined class="file-icon success-icon" />
             <div class="file-details">
               <div class="file-name" :title="file.name">
                 {{ file.name }}
               </div>
               <div class="file-meta">
-                {{ formatFileSize(file.size) }} • {{ formatTime(file.modifiedTime) }}
+                {{ formatFileSize(file.size) }} • 上传成功
               </div>
             </div>
           </div>
-          <div class="file-actions">
-            <a-button
-                type="link"
-                size="small"
-                @click="handleUseFile(file)"
-            >
-              使用
-            </a-button>
-            <a-button
-                type="link"
-                size="small"
-                danger
-                @click="handleRemoveFile(file.id)"
-            >
-              删除
-            </a-button>
+          <div class="file-status">
+            <a-tag color="success">✓</a-tag>
           </div>
         </div>
       </div>
@@ -202,12 +173,15 @@ interface Props {
   accept?: string
   /** 最大文件大小（MB） */
   maxSize?: number
+  /** 当前路径，用于上传到指定目录 */
+  currentPath?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
   multiple: true,
   accept: 'image/*,.csv,.dcm,.DCM',
-  maxSize: 10
+  maxSize: 10,
+  currentPath: '.'
 })
 
 // Emits
@@ -323,112 +297,110 @@ const addFilesToUploadList = (files: File[]) => {
 }
 
 /**
- * 处理文件上传
+ * 处理文件上传（批量模式，统一提示）
  */
 const handleFiles = async (files: File[]) => {
-  // 验证文件
+  let successCount = 0
+  let failedCount = 0
+  const errors: string[] = []
+
+  // 上传文件
   for (const file of files) {
     if (!isSupportedFileType(file)) {
-      message.error(`不支持的文件类型: ${file.name}`)
+      errors.push(`${file.name}: 不支持的文件类型`)
+      failedCount++
       continue
     }
 
     if (file.size > props.maxSize * 1024 * 1024) {
-      message.error(`文件 ${file.name} 超过大小限制 (${props.maxSize}MB)`)
+      errors.push(`${file.name}: 超过大小限制 (${props.maxSize}MB)`)
+      failedCount++
+      continue
+    }
+
+    const result = await uploadSingleFile(file, true)  // true表示批量模式
+    if (result) {
+      successCount++
+    } else {
+      failedCount++
     }
   }
 
-  // 上传文件
-  for (const file of files) {
-    if (isSupportedFileType(file) && file.size <= props.maxSize * 1024 * 1024) {
-      await uploadSingleFile(file)
+  // 批量上传完成后，统一显示结果
+  if (successCount > 0 && failedCount === 0) {
+    message.success(`成功上传 ${successCount} 个文件`)
+    // 刷新文件列表
+    window.dispatchEvent(new CustomEvent('refresh-file-list'))
+  } else if (successCount > 0 && failedCount > 0) {
+    message.warning(`成功上传 ${successCount} 个文件，失败 ${failedCount} 个`)
+    if (errors.length > 0) {
+      console.error('上传失败详情:', errors)
+    }
+    window.dispatchEvent(new CustomEvent('refresh-file-list'))
+  } else if (failedCount > 0) {
+    message.error(`上传失败，共 ${failedCount} 个文件`)
+    if (errors.length > 0) {
+      console.error('上传失败详情:', errors)
     }
   }
 }
 
 /**
  * 上传单个文件
+ * @param file 要上传的文件
+ * @param isBatch 是否为批量上传模式（批量模式不显示单个文件提示）
+ * @returns 上传是否成功
  */
-const uploadSingleFile = async (file: File) => {
+const uploadSingleFile = async (file: File, isBatch: boolean = false): Promise<boolean> => {
   try {
     uploading.value = true
     uploadProgress.value = 0
     uploadError.value = ''
 
-    // 数据集上传
-    const response = await uploadFile(file, '.', (progress) => {
+    // 数据集上传，使用props.currentPath作为上传目标目录
+    const response = await uploadFile(file, props.currentPath, (progress) => {
       uploadProgress.value = progress
     })
 
     if (response.code === 200) {
       uploadedFiles.value.push(response.data)
       emit('uploadSuccess', response.data)
+      
+      // 非批量模式才显示单个文件成功提示
+      if (!isBatch) {
+        message.success(`文件 ${file.name} 上传成功`)
+        window.dispatchEvent(new CustomEvent('refresh-file-list'))
+      }
+      
+      return true
     } else {
       const errorMsg = response.message || '上传失败'
       uploadError.value = errorMsg
       emit('uploadError', errorMsg)
-      message.error(errorMsg)
+      
+      // 非批量模式才显示单个文件错误提示
+      if (!isBatch) {
+        message.error(errorMsg)
+      }
+      
+      return false
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : '上传失败'
     uploadError.value = errorMessage
     emit('uploadError', errorMessage)
-    message.error(errorMessage)
+    
+    // 非批量模式才显示单个文件错误提示
+    if (!isBatch) {
+      message.error(errorMessage)
+    }
+    
+    return false
   } finally {
     uploading.value = false
     uploadProgress.value = 0
   }
 }
-
-/**
- * 使用文件
- */
-const handleUseFile = (file: FileInfo) => {
-  emit('useFile', file)
-}
-
-/**
- * 删除文件
- */
-const handleRemoveFile = (fileId: string) => {
-  uploadedFiles.value = uploadedFiles.value.filter(f => f.id !== fileId)
-  message.success('文件已删除')
-}
-
-/**
- * 使用所有文件
- */
-const handleUseAllFiles = () => {
-  if (uploadedFiles.value.length === 0) {
-    message.warning('没有可用的文件')
-    return
-  }
-
-  // 触发所有文件的使用事件
-  uploadedFiles.value.forEach(file => {
-    emit('useFile', file)
-  })
-
-  message.success(`已添加 ${uploadedFiles.value.length} 个文件到当前会话`)
-
-  // 批量使用后关闭模态框
-  emit('batchUseComplete')
-}
-
-/**
- * 删除所有文件
- */
-const handleRemoveAllFiles = () => {
-  if (uploadedFiles.value.length === 0) {
-    message.warning('没有可删除的文件')
-    return
-  }
-
-  const fileCount = uploadedFiles.value.length
-  uploadedFiles.value = []
-  message.success(`已删除 ${fileCount} 个文件`)
-}
-
 
 /**
  * 开始上传待上传列表中的文件
@@ -663,6 +635,37 @@ defineExpose({
   display: flex;
   gap: 8px;
   flex-shrink: 0;
+}
+
+.file-status {
+  flex-shrink: 0;
+}
+
+/* 成功信息样式 */
+.success-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hint-text {
+  font-size: 12px;
+  color: #52c41a;
+}
+
+/* 已上传文件项样式优化 */
+.file-item.uploaded {
+  background: #f6ffed;
+  border-color: #b7eb8f;
+}
+
+.file-item.uploaded:hover {
+  border-color: #52c41a;
+  box-shadow: 0 2px 8px rgba(82, 196, 26, 0.15);
+}
+
+.success-icon {
+  color: #52c41a;
 }
 
 .error-message {

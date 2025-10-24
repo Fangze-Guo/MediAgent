@@ -3,6 +3,8 @@
 """
 from __future__ import annotations
 
+import pathlib
+import logging
 from typing import Optional
 
 from src.server_agent.exceptions import (
@@ -11,6 +13,9 @@ from src.server_agent.exceptions import (
 )
 from src.server_agent.mapper import UserMapper
 from src.server_agent.model.vo.UserVO import UserVO
+from constants.CommonConstants import DATASET_PATH
+
+logger = logging.getLogger(__name__)
 
 
 class UserService:
@@ -52,6 +57,16 @@ class UserService:
                 operation="create_user",
                 context={"username": user_name}
             )
+
+        # 3) 自动创建用户私有文件夹 private/{uid}
+        try:
+            dataset_root = pathlib.Path(DATASET_PATH)
+            user_private_folder = dataset_root / "private" / str(user.uid)
+            user_private_folder.mkdir(parents=True, exist_ok=True)
+            logger.info(f"为用户 {user_name}(uid={user.uid}) 创建私有文件夹: {user_private_folder}")
+        except Exception as e:
+            logger.error(f"创建用户私有文件夹失败: {e}")
+            # 不影响注册流程，只记录错误
 
         return user.uid
 

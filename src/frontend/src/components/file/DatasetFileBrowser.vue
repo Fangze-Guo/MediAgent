@@ -29,13 +29,13 @@
           </template>
           刷新
         </a-button>
-        <a-button type="primary" @click="handleUploadClick">
+        <a-button v-if="canWrite" type="primary" @click="handleUploadClick">
           <template #icon>
             <UploadOutlined />
           </template>
           上传到当前目录
         </a-button>
-        <a-button @click="showCreateFolderModal">
+        <a-button v-if="canWrite" @click="showCreateFolderModal">
           <template #icon>
             <FolderAddOutlined />
           </template>
@@ -45,7 +45,7 @@
       <div class="toolbar-right">
         <span class="file-count">共 {{ fileStore.fileList.length }} 个文件</span>
         <a-button
-            v-if="fileStore.selectedCount > 0"
+            v-if="canDelete && fileStore.selectedCount > 0"
             danger
             @click="handleBatchDelete"
         >
@@ -101,6 +101,7 @@
                 <EyeOutlined />
               </a-button>
               <a-button 
+                v-if="canDeleteFile(record)"
                 type="text" 
                 size="small" 
                 title="删除"
@@ -168,8 +169,10 @@ import {
 } from '@ant-design/icons-vue'
 import { formatFileSize, uploadFile, createFolder } from '@/apis/files'
 import { useFileStore } from '@/store/files'
+import { useAuthStore } from '@/store/auth'
 
 const fileStore = useFileStore()
+const authStore = useAuthStore()
 
 const previewVisible = ref(false)
 const previewFile = ref<any>(null)
@@ -244,6 +247,90 @@ const pathParts = computed(() => {
 const canGoUp = computed(() => {
   return parentPath.value !== null && parentPath.value !== undefined
 })
+
+// 权限判断：是否可以写入（上传、创建文件夹）
+const canWrite = computed(() => {
+  const user = authStore.currentUser
+  if (!user) return false
+  
+  // 管理员可以写入任何位置
+  if (user.role === 'admin') return true
+  
+  const path = currentPath.value
+  if (!path || path === '.') return false
+  
+  const parts = path.split('/').filter(p => p)
+  if (parts.length === 0) return false
+  
+  // 在public目录下不允许普通用户写入
+  if (parts[0] === 'public') return false
+  
+  // 在private目录下，只能写入自己的文件夹
+  if (parts[0] === 'private') {
+    if (parts.length < 2) return false
+    const folderUserId = parseInt(parts[1])
+    return folderUserId === user.uid
+  }
+  
+  return false
+})
+
+// 权限判断：是否可以删除
+const canDelete = computed(() => {
+  const user = authStore.currentUser
+  if (!user) return false
+  
+  // 管理员可以删除（除了根目录）
+  if (user.role === 'admin') return true
+  
+  const path = currentPath.value
+  if (!path || path === '.') return false
+  
+  const parts = path.split('/').filter(p => p)
+  if (parts.length === 0) return false
+  
+  // 禁止删除private和public根目录
+  if (parts.length === 1 && (parts[0] === 'private' || parts[0] === 'public')) {
+    return false
+  }
+  
+  // 在public目录下不允许普通用户删除
+  if (parts[0] === 'public') return false
+  
+  // 在private目录下，只能删除自己的文件夹下的内容
+  if (parts[0] === 'private') {
+    if (parts.length < 2) return false
+    const folderUserId = parseInt(parts[1])
+    return folderUserId === user.uid
+  }
+  
+  return false
+})
+
+// 判断单个文件是否可删除
+const canDeleteFile = (file: any) => {
+  const user = authStore.currentUser
+  if (!user) return false
+  
+  // 管理员可以删除大部分文件（除了根目录）
+  if (user.role === 'admin') {
+    // 禁止删除private和public根目录
+    if (file.path === 'private' || file.path === 'public') {
+      return false
+    }
+    return true
+  }
+  
+  // 使用canDelete的基础权限判断
+  if (!canDelete.value) return false
+  
+  // 额外检查：禁止删除private和public根目录
+  if (file.path === 'private' || file.path === 'public') {
+    return false
+  }
+  
+  return true
+}
 
 const getPathUpTo = (index: number) => {
   const parts = pathParts.value.slice(0, index + 1)
@@ -407,8 +494,10 @@ const getImageUrl = (file: any) => {
 }
 
 const handleUploadClick = () => {
-  // 触发全局文件上传事件，使用FileUpload组件
-  window.dispatchEvent(new CustomEvent('open-dataset-file-upload'))
+  // 触发全局文件上传事件，传递当前路径
+  window.dispatchEvent(new CustomEvent('open-dataset-file-upload', {
+    detail: { currentPath: currentPath.value }
+  }))
 }
 
 const uploadSelectedFiles = async (files: File[]) => {

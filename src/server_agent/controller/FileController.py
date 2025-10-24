@@ -5,7 +5,6 @@
 from typing import List
 
 from fastapi import UploadFile, File, Form, Depends, Header
-from fastapi.responses import StreamingResponse
 
 from src.server_agent.common import BaseResponse
 from src.server_agent.common.ResultUtils import ResultUtils
@@ -33,38 +32,72 @@ class FileController(BaseController):
             userVO: UserVO = Depends(self._get_current_user)
         ) -> BaseResponse[FileListVO]:
             """获取数据集文件列表"""
-            fileListVO: FileListVO = await self.fileService.getDataSetFiles(target_path, userVO.uid)
+            fileListVO: FileListVO = await self.fileService.getDataSetFiles(target_path, userVO.uid, userVO.role)
             return ResultUtils.success(fileListVO)
 
         @self.router.post("/upload")
         async def uploadFile(
                 file: UploadFile = File(...),
-                target_dir: str = Form(".")
+                target_dir: str = Form("."),
+                userVO: UserVO = Depends(self._get_current_user)
         ) -> BaseResponse[FileInfo]:
             """上传文件到数据集"""
-            fileInfo: FileInfo = await self.fileService.uploadFileToData(file, target_dir)
-            return ResultUtils.success(fileInfo)
+            try:
+                fileInfo: FileInfo = await self.fileService.uploadFileToData(file, target_dir, userVO.uid, userVO.role)
+                return ResultUtils.success(fileInfo)
+            except Exception as e:
+                # 捕获所有异常并返回详细错误信息
+                error_message = str(e)
+                if hasattr(e, 'detail'):
+                    error_message = e.detail
+                return ResultUtils.error(400, f"文件上传失败: {error_message}")
 
         @self.router.post("/upload-multiple")
         async def uploadMultipleFiles(
                 files: List[UploadFile] = File(...),
-                target_dir: str = Form(".")
+                target_dir: str = Form("."),
+                userVO: UserVO = Depends(self._get_current_user)
         ) -> BaseResponse[List[FileInfo]]:
             """批量上传文件到数据集"""
-            uploaded_files: List[FileInfo] = await self.fileService.uploadMultipleFilesToData(files, target_dir)
-            return ResultUtils.success(uploaded_files)
+            try:
+                uploaded_files: List[FileInfo] = await self.fileService.uploadMultipleFilesToData(files, target_dir, userVO.uid, userVO.role)
+                return ResultUtils.success(uploaded_files)
+            except Exception as e:
+                # 捕获所有异常并返回详细错误信息
+                error_message = str(e)
+                if hasattr(e, 'detail'):
+                    error_message = e.detail
+                return ResultUtils.error(400, f"批量上传失败: {error_message}")
 
         @self.router.post("/delete")
-        async def deleteFile(request: DeleteFileRequest) -> BaseResponse[None]:
+        async def deleteFile(
+            request: DeleteFileRequest,
+            userVO: UserVO = Depends(self._get_current_user)
+        ) -> BaseResponse[None]:
             """删除文件"""
-            await self.fileService.deleteUploadFileById(request.fileId)
-            return ResultUtils.success(None)
+            try:
+                await self.fileService.deleteUploadFileById(request.fileId, userVO.uid, userVO.role)
+                return ResultUtils.success(None)
+            except Exception as e:
+                error_message = str(e)
+                if hasattr(e, 'detail'):
+                    error_message = e.detail
+                return ResultUtils.error(400, f"删除失败: {error_message}")
 
         @self.router.post("/batch-delete")
-        async def batchDeleteFiles(request: BatchDeleteFilesRequest) -> BaseResponse[dict]:
+        async def batchDeleteFiles(
+            request: BatchDeleteFilesRequest,
+            userVO: UserVO = Depends(self._get_current_user)
+        ) -> BaseResponse[dict]:
             """批量删除文件"""
-            result = await self.fileService.batchDeleteUploadFilesById(request.fileIds)
-            return ResultUtils.success(result)
+            try:
+                result = await self.fileService.batchDeleteUploadFilesById(request.fileIds, userVO.uid, userVO.role)
+                return ResultUtils.success(result)
+            except Exception as e:
+                error_message = str(e)
+                if hasattr(e, 'detail'):
+                    error_message = e.detail
+                return ResultUtils.error(400, f"批量删除失败: {error_message}")
 
         @self.router.post("/create-folder")
         async def createFolder(request: CreateFolderRequest) -> BaseResponse[None]:

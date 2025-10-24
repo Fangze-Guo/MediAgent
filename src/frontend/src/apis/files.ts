@@ -118,14 +118,16 @@ export async function uploadFile(
 
             // 监听请求完成
             xhr.addEventListener('load', () => {
-                if (xhr.status === 200) {
-                    try {
-                        const response = JSON.parse(xhr.responseText) as BaseResponse<FileInfo>
+                try {
+                    const response = JSON.parse(xhr.responseText) as BaseResponse<FileInfo>
+                    if (xhr.status === 200) {
                         resolve(response)
-                    } catch (error) {
-                        reject(new Error('解析响应失败'))
+                    } else {
+                        // 非200状态码，也返回响应体（包含详细错误信息）
+                        // 但标记为失败，让调用方能获取到错误信息
+                        resolve(response)
                     }
-                } else {
+                } catch (error) {
                     reject(new Error(`上传失败: ${xhr.status}`))
                 }
             })

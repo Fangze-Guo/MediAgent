@@ -24,51 +24,56 @@ class FileService:
         self.MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB（DICOM文件可能较大）
         self.ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.csv', '.dcm', '.DCM', '.nii', '.nii.gz'}
 
-    async def getDataSetFiles(self, target_path: str, user_id: int = None) -> FileListVO:
+    async def getDataSetFiles(self, target_path: str, user_id: int = None, role: str = 'user') -> FileListVO:
         """
            获取数据集文件列表
 
            Args:
                target_path: 目标路径，相对于 DATASET_PATH 的路径
                user_id: 当前用户ID，用于过滤private文件夹内容
+               role: 用户角色（'user' 或 'admin'）
 
            Returns:
                FileListVO: 文件列表信息
            """
         # 将DATASET_PATH转换为pathlib.Path对象
         dataset_root = pathlib.Path(DATASET_PATH)
-        fileListVO: FileListVO = await self.getFileListVO(dataset_root, target_path, user_id)
+        fileListVO: FileListVO = await self.getFileListVO(dataset_root, target_path, user_id, role)
         return fileListVO
 
 
     # ==================== 上传文件 ====================
 
     @handle_service_exception
-    async def uploadFileToData(self, file: UploadFile, target_dir: str = ".") -> FileInfo:
+    async def uploadFileToData(self, file: UploadFile, target_dir: str = ".", user_id: int = None, role: str = 'user') -> FileInfo:
         """
         上传文件
         
         Args:
             file: 上传的文件
             target_dir: 目标目录
+            user_id: 当前用户ID，用于权限检查
+            role: 用户角色（'user' 或 'admin'）
             
         Returns:
             文件信息
         """
         # 将DATASET_PATH转换为pathlib.Path对象
         dataset_root = pathlib.Path(DATASET_PATH)
-        fileInfo: FileInfo = await self.uploadFile(dataset_root, file, target_dir)
+        fileInfo: FileInfo = await self.uploadFile(dataset_root, file, target_dir, user_id, role)
         return fileInfo
 
 
     @handle_service_exception
-    async def uploadMultipleFilesToData(self, files: List[UploadFile], target_dir: str = ".") -> List[FileInfo]:
+    async def uploadMultipleFilesToData(self, files: List[UploadFile], target_dir: str = ".", user_id: int = None, role: str = 'user') -> List[FileInfo]:
         """
         批量上传文件
         
         Args:
             files: 上传的文件列表
             target_dir: 目标目录
+            user_id: 当前用户ID，用于权限检查
+            role: 用户角色（'user' 或 'admin'）
             
         Returns:
             文件信息列表
@@ -79,7 +84,7 @@ class FileService:
 
         for file in files:
             try:
-                file_info: FileInfo = await self.uploadFile(dataset_root, file, target_dir)
+                file_info: FileInfo = await self.uploadFile(dataset_root, file, target_dir, user_id, role)
                 uploaded_files.append(file_info)
             except Exception as e:
                 # 记录单个文件上传失败，但继续处理其他文件
@@ -88,7 +93,7 @@ class FileService:
 
         return uploaded_files
 
-    async def uploadFile(self, files_dir: pathlib.Path, file: UploadFile, target_dir: str = ".") -> FileInfo:
+    async def uploadFile(self, files_dir: pathlib.Path, file: UploadFile, target_dir: str = ".", user_id: int = None, role: str = 'user') -> FileInfo:
         """
         上传文件
 
@@ -96,6 +101,8 @@ class FileService:
             files_dir: 文件保存的目录
             file: 要上传的文件
             target_dir: 目标子目录
+            user_id: 当前用户ID，用于权限检查
+            role: 用户角色（'user' 或 'admin'）
 
         Returns:
             文件信息
@@ -121,6 +128,9 @@ class FileService:
                 detail="目标路径不是目录",
                 context={"target_path": str(target_path)}
             )
+        
+        # 权限检查：验证用户是否有权限上传到目标目录
+        self._check_write_permission(target_path, files_dir, user_id, role)
 
         # 处理文件名冲突
         original_name = file.filename
@@ -156,7 +166,7 @@ class FileService:
         )
         return file_info
 
-    async def getFileListVO(self, files_dir: pathlib.Path, path: str, user_id: int = None) -> FileListVO:
+    async def getFileListVO(self, files_dir: pathlib.Path, path: str, user_id: int = None, role: str = 'user') -> FileListVO:
         """
         获取文件列表信息
 
@@ -164,6 +174,7 @@ class FileService:
             files_dir: 文件目录
             path: 目录路径
             user_id: 当前用户ID，用于过滤private文件夹内容
+            role: 用户角色（'user' 或 'admin'）
 
         Returns:
             文件列表信息
@@ -177,8 +188,8 @@ class FileService:
                     stat = item.stat()
                     is_directory = item.is_dir()
 
-                    # 检查是否需要过滤private文件夹下的内容
-                    if self._should_filter_item(item, files_dir, user_id):
+                    # 检查是否需要过滤private文件夹下的内容（管理员不过滤）
+                    if self._should_filter_item(item, files_dir, user_id, role):
                         continue
 
                     file_id = f"{abs(hash(str(item)))}"
@@ -225,12 +236,14 @@ class FileService:
     # ==================== 删除文件 ====================
 
     @handle_service_exception
-    async def deleteUploadFileById(self, file_id: str) -> None:
+    async def deleteUploadFileById(self, file_id: str, user_id: int = None, role: str = 'user') -> None:
         """
         根据ID删除上传文件
 
         Args:
             file_id: 文件ID
+            user_id: 当前用户ID
+            role: 用户角色
         """
         # 将DATASET_PATH转换为pathlib.Path对象
         dataset_root = pathlib.Path(DATASET_PATH)
@@ -241,15 +254,17 @@ class FileService:
                 resource_id=file_id,
                 detail="文件不存在"
             )
-        await self.deleteFile(dataset_root, file_path)
+        await self.deleteFile(dataset_root, file_path, user_id, role)
 
     @handle_service_exception
-    async def batchDeleteUploadFilesById(self, file_ids: List[str]) -> Dict[str, Any]:
+    async def batchDeleteUploadFilesById(self, file_ids: List[str], user_id: int = None, role: str = 'user') -> Dict[str, Any]:
         """
         批量根据ID删除上传文件
 
         Args:
             file_ids: 文件ID列表
+            user_id: 当前用户ID
+            role: 用户角色
 
         Returns:
             删除结果统计
@@ -260,7 +275,7 @@ class FileService:
 
         for file_id in file_ids:
             try:
-                await self.deleteUploadFileById(file_id)
+                await self.deleteUploadFileById(file_id, user_id, role)
                 success_count += 1
             except Exception as e:
                 failed_count += 1
@@ -277,18 +292,24 @@ class FileService:
             "failedFiles": failed_files
         }
 
-    async def deleteFile(self, files_dir: pathlib.Path, file_path: str) -> bool:
+    async def deleteFile(self, files_dir: pathlib.Path, file_path: str, user_id: int = None, role: str = 'user') -> bool:
         """
         删除文件
 
         Args:
             files_dir: 文件目录
             file_path: 文件路径
+            user_id: 当前用户ID
+            role: 用户角色
 
         Returns:
             删除结果
         """
         target_path = self._get_safe_path(files_dir, file_path)
+        
+        # 权限检查：验证用户是否有权限删除
+        self._check_delete_permission(target_path, files_dir, user_id, role)
+        
         if target_path.is_dir():
             # 检查目录是否为空
             if any(target_path.iterdir()):
@@ -345,7 +366,178 @@ class FileService:
     # ==================== 🛠️工具方法 ====================
 
     @staticmethod
-    def _should_filter_item(item: pathlib.Path, files_dir: pathlib.Path, user_id: int = None) -> bool:
+    def _check_delete_permission(target_path: pathlib.Path, files_dir: pathlib.Path, user_id: int = None, role: str = 'user'):
+        """
+        检查用户是否有权限删除文件/文件夹
+        
+        权限规则：
+        1. 禁止删除 private 和 public 根目录
+        2. 管理员(admin)：可以删除除根目录外的所有文件
+        3. 普通用户(user)：
+           - public目录：只读，禁止删除
+           - private目录：只能删除自己ID的文件夹下的内容
+        
+        Args:
+            target_path: 目标路径
+            files_dir: 文件根目录
+            user_id: 当前用户ID
+            role: 用户角色（'user' 或 'admin'）
+            
+        Raises:
+            ValidationError: 当用户没有删除权限时
+        """
+        from src.server_agent.exceptions import ValidationError
+        
+        if user_id is None:
+            raise ValidationError(
+                detail="用户未认证，无法删除文件",
+                context={"target_path": str(target_path)}
+            )
+        
+        # 获取相对路径
+        try:
+            relative_path = str(target_path.relative_to(files_dir)).replace('\\', '/')
+        except ValueError:
+            raise ValidationError(
+                detail="非法的目标路径",
+                context={"target_path": str(target_path), "files_dir": str(files_dir)}
+            )
+        
+        path_parts = relative_path.split('/')
+        
+        # 禁止删除 private 和 public 根目录（管理员也不行）
+        if len(path_parts) == 1 and path_parts[0] in ['private', 'public']:
+            raise ValidationError(
+                detail=f"禁止删除 {path_parts[0]} 根目录",
+                context={"relative_path": relative_path}
+            )
+        
+        # 管理员可以删除其他所有文件（除了根目录）
+        if role == 'admin':
+            logger.info(f"管理员用户 {user_id} 删除文件: {relative_path}")
+            return
+        
+        # 普通用户权限检查
+        # 检查是否在public目录下
+        if len(path_parts) >= 1 and path_parts[0] == 'public':
+            raise ValidationError(
+                detail="public目录为只读目录，普通用户不能删除文件",
+                context={"relative_path": relative_path}
+            )
+        
+        # 检查是否在private目录下
+        if len(path_parts) >= 2 and path_parts[0] == 'private':
+            # 检查是否是当前用户的目录
+            folder_name = path_parts[1]
+            try:
+                folder_user_id = int(folder_name)
+                if folder_user_id != user_id:
+                    raise ValidationError(
+                        detail="无权限删除其他用户的私有文件",
+                        context={"user_id": user_id, "target_user_id": folder_user_id}
+                    )
+            except ValueError:
+                raise ValidationError(
+                    detail="private目录下的文件夹名必须是用户ID",
+                    context={"folder_name": folder_name}
+                )
+        else:
+            # 其他目录不允许普通用户删除
+            raise ValidationError(
+                detail="只能删除 private/{用户ID}/ 目录下的文件",
+                context={"relative_path": relative_path}
+            )
+
+    @staticmethod
+    def _check_write_permission(target_path: pathlib.Path, files_dir: pathlib.Path, user_id: int = None, role: str = 'user'):
+        """
+        检查用户是否有权限写入目标目录
+        
+        权限规则：
+        1. 管理员(admin)：可以写入任何目录（包括public和所有private目录）
+        2. 普通用户(user)：
+           - public目录：只读，禁止写入
+           - private目录：只能写入自己ID的文件夹
+        
+        Args:
+            target_path: 目标路径
+            files_dir: 文件根目录
+            user_id: 当前用户ID
+            role: 用户角色（'user' 或 'admin'）
+            
+        Raises:
+            ValidationError: 当用户没有写入权限时
+        """
+        from src.server_agent.exceptions import ValidationError
+        
+        if user_id is None:
+            raise ValidationError(
+                detail="用户未认证，无法上传文件",
+                context={"target_path": str(target_path)}
+            )
+        
+        # 管理员拥有所有权限，跳过权限检查
+        if role == 'admin':
+            logger.info(f"管理员用户 {user_id} 上传文件到 {target_path}")
+            return
+        
+        # 获取相对路径
+        try:
+            relative_path = str(target_path.relative_to(files_dir)).replace('\\', '/')
+        except ValueError:
+            raise ValidationError(
+                detail="非法的目标路径",
+                context={"target_path": str(target_path), "files_dir": str(files_dir)}
+            )
+        
+        # 根目录不允许直接上传
+        if relative_path == '.':
+            raise ValidationError(
+                detail="不能直接上传到根目录，请选择public或private目录",
+                context={"relative_path": relative_path}
+            )
+        
+        path_parts = relative_path.split('/')
+        
+        # 检查是否在public目录下
+        if len(path_parts) >= 1 and path_parts[0] == 'public':
+            raise ValidationError(
+                detail="public目录为只读目录，普通用户不能上传文件",
+                context={"relative_path": relative_path}
+            )
+        
+        # 检查是否在private目录下
+        if len(path_parts) >= 1 and path_parts[0] == 'private':
+            # 必须指定到具体用户ID的目录或其子目录
+            if len(path_parts) < 2:
+                raise ValidationError(
+                    detail="请指定要上传到private下的具体用户文件夹",
+                    context={"relative_path": relative_path}
+                )
+            
+            # 检查是否是当前用户的目录
+            folder_name = path_parts[1]
+            try:
+                folder_user_id = int(folder_name)
+                if folder_user_id != user_id:
+                    raise ValidationError(
+                        detail="无权限上传到其他用户的私有目录",
+                        context={"user_id": user_id, "target_user_id": folder_user_id}
+                    )
+            except ValueError:
+                raise ValidationError(
+                    detail="private目录下的文件夹名必须是用户ID",
+                    context={"folder_name": folder_name}
+                )
+        else:
+            # 其他目录也不允许上传
+            raise ValidationError(
+                detail="只能上传到private/{用户ID}/目录下",
+                context={"relative_path": relative_path}
+            )
+
+    @staticmethod
+    def _should_filter_item(item: pathlib.Path, files_dir: pathlib.Path, user_id: int = None, role: str = 'user') -> bool:
         """
         检查是否应该过滤掉某个文件或文件夹
         
@@ -353,11 +545,16 @@ class FileService:
             item: 当前文件或文件夹路径
             files_dir: 文件根目录
             user_id: 当前用户ID
+            role: 用户角色（'user' 或 'admin'）
             
         Returns:
             bool: True表示应该过滤掉，False表示不过滤
         """
         try:
+            # 管理员可以看到所有文件和文件夹
+            if role == 'admin':
+                return False
+                
             # 如果没有提供用户ID，不进行过滤
             if user_id is None:
                 return False

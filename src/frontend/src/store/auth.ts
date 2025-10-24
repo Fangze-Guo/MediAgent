@@ -72,17 +72,21 @@ export const useAuthStore = defineStore('auth', {
       try {
         const response = await register(userData)
         
-        // 检查是否成功：code为200或者message包含success
-        if (response.code === 200 || (response.message && response.message.includes('success'))) {
-          return { success: true, message: response.message }
+        // 检查是否成功
+        if (response.code === 200) {
+          // 优先使用 data.message，否则使用默认消息
+          const successMessage = response.data?.message || `用户 ${userData.user_name} 注册成功！`
+          return { success: true, message: successMessage }
         } else {
           return { success: false, message: response.message || '注册失败' }
         }
       } catch (error: any) {
         console.error('Register error:', error)
+        // 尝试从后端错误响应中获取详细错误信息
+        const errorMessage = error.response?.data?.message || error.message || '注册失败，请检查网络连接'
         return { 
           success: false, 
-          message: error.response?.data?.message || '注册失败，请检查网络连接' 
+          message: errorMessage
         }
       }
     },
