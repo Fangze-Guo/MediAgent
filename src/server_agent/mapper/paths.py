@@ -18,3 +18,7 @@ def ensure_data_dirs(*subdirs: str) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     for sd in subdirs:
         (DATA_DIR / sd).mkdir(parents=True, exist_ok=True)
+
+def get_db_path() -> Path:
+    """获取数据库文件路径。"""
+    return in_data("db", "app.sqlite3")

@@ -26,6 +26,15 @@ build/
 ### VS Code ###
 .vscode/
 
+# Python 编译文件
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.so
+*.egg
+*.egg-info/
+
 /src/server_agent/.env
 /src/server_agent/configs/model_configs.json
 /src/server_agent/conversations/

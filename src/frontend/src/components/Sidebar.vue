@@ -142,6 +142,7 @@ import {
   AppstoreOutlined,
   BarChartOutlined,
   CommentOutlined,
+  DatabaseOutlined,
   EditOutlined,
   FileTextOutlined,
   FolderOutlined,
@@ -220,6 +221,11 @@ const items = ref([
     label: '任务管理',
   },
   {
+    key: 'datasets',
+    icon: () => h(DatabaseOutlined),
+    label: '数据管理',
+  },
+  {
     key: 'app-store',
     icon: () => h(AppstoreOutlined),
     label: '工具仓库',
@@ -233,6 +239,7 @@ const items = ref([
  * - /app-store → 高亮"工具仓库"
  * - /files → 高亮"文件管理"
  * - /tasks → 高亮"任务管理"
+ * - /datasets → 高亮"数据集管理"
  * - / → 高亮"新建对话"
  */
 const selectedKeys = computed(() => {
@@ -252,6 +259,10 @@ const selectedKeys = computed(() => {
 
   if (path === '/tasks') {
     return ['tasks']
+  }
+
+  if (path === '/datasets') {
+    return ['datasets']
   }
 
   if (path === '/') {
@@ -276,6 +287,9 @@ const handleMenuClick: MenuProps['onClick'] = ({key}) => {
   } else if (key === 'tasks') {
     // 跳转到任务管理页面
     router.push('/tasks')
+  } else if (key === 'datasets') {
+    // 跳转到数据集管理页面
+    router.push('/datasets')
   } else if (key === 'app-store') {
     // 跳转到应用商店页面
     router.push('/app-store')

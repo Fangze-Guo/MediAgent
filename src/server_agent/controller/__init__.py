@@ -16,6 +16,7 @@ from src.server_new.mediagent.modules.task_manager import AsyncTaskManager
 from src.server_new.mediagent.paths import DATA_DIR, in_data, in_mediagent
 from .AppStoreController import AppStoreController
 from .ConversationController import ConversationController
+from .DatasetController import DatasetController
 from .FileController import FileController
 from .ModelController import ModelController
 from .TaskController import TaskController
@@ -131,6 +132,7 @@ def create_app() -> FastAPI:
     model_controller = ModelController()
     app_store_controller = AppStoreController()
     task_controller = TaskController()
+    dataset_controller = DatasetController()
 
     # 注册路由
     app.include_router(file_controller.router)
@@ -139,6 +141,7 @@ def create_app() -> FastAPI:
     app.include_router(model_controller.router)
     app.include_router(app_store_controller.router)
     app.include_router(task_controller.router)
+    app.include_router(dataset_controller.router)
 
     # 设置异常处理器
     setup_exception_handlers(app)
@@ -155,4 +158,5 @@ __all__ = [
     'ModelController',
     'AppStoreController',
     'TaskController',
+    'DatasetController',
 ]

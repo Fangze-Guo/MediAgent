@@ -57,6 +57,15 @@ const routes: RouteRecordRaw[] = [
         }
     },
     {
+        path: '/datasets',
+        name: 'Datasets',
+        component: () => import('@/views/DatasetManageView.vue'),
+        meta: {
+            title: 'MediAgent - 数据集管理',
+            requiresAuth: true
+        }
+    },
+    {
         path: '/settings',
         name: 'Settings',
         component: () => import('@/views/SettingsView.vue'),

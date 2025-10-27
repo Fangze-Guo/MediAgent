@@ -144,6 +144,9 @@ class FileService:
             file_path = files_dir / new_name
             original_name = new_name
 
+        # 确保父文件夹存在（处理包含子文件夹的文件名，如 "C0/file.dcm"）
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
         # 生成文件ID - 使用路径哈希确保唯一性，与文件列表保持一致
         file_id = f"{abs(hash(str(file_path)))}"
 

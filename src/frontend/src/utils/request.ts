@@ -74,6 +74,11 @@ const createAxiosInstance = (): AxiosInstance => {
         config.headers.set('Authorization', `Bearer ${token}`)
       }
       
+      // 如果是 FormData，删除默认的 Content-Type，让浏览器自动设置（包含 boundary）
+      if (config.data instanceof FormData) {
+        config.headers.delete('Content-Type')
+      }
+      
       console.log('发送请求:', config.method?.toUpperCase(), config.url)
       return config
     },
