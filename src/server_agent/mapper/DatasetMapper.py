@@ -2,6 +2,7 @@
 数据集 Mapper - 处理数据集的数据库操作
 """
 import logging
+import secrets
 from typing import List, Optional
 from pathlib import Path
 
@@ -18,11 +19,31 @@ class DatasetMapper(BaseMapper):
     def __init__(self, db_path: Path):
         super().__init__(db_path)
         
+    def _generate_dataset_id(self) -> int:
+        """生成随机数据集ID（10位数）"""
+        return secrets.randbelow(9_000_000_000) + 1_000_000_000
+    
+    async def check_dataset_id_exists(self, dataset_id: int) -> bool:
+        """检查数据集ID是否已存在"""
+        query = "SELECT 1 FROM dataset_catalog WHERE id = ? LIMIT 1"
+        result = await self.execute_query(query, (dataset_id,), fetch_one=True)
+        return result is not None
+    
+    async def generate_unique_dataset_id(self) -> int:
+        """生成唯一的数据集ID"""
+        max_attempts = 100
+        for _ in range(max_attempts):
+            dataset_id = self._generate_dataset_id()
+            if not await self.check_dataset_id_exists(dataset_id):
+                return dataset_id
+        
+        raise RuntimeError(f"Failed to generate unique dataset ID after {max_attempts} attempts")
+        
     async def init_table(self):
         """初始化数据集表"""
         create_table_sql = """
         CREATE TABLE IF NOT EXISTS dataset_catalog (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER PRIMARY KEY,
             dataset_name TEXT NOT NULL,
             case_count INTEGER DEFAULT 0,
             clinical_data_desc TEXT,
@@ -33,6 +54,11 @@ class DatasetMapper(BaseMapper):
             annotation_desc TEXT,
             notes TEXT,
             user_id INTEGER NOT NULL,
+            has_data INT DEFAULT 0,
+            has_description_file INT DEFAULT 0,
+            data_path TEXT,
+            create_time TEXT DEFAULT (datetime('now', 'localtime')),
+            description_file_path TEXT,
             FOREIGN KEY (user_id) REFERENCES users(uid)
         )
         """
@@ -42,14 +68,19 @@ class DatasetMapper(BaseMapper):
     @handle_mapper_exception
     async def create_dataset(self, dataset: DatasetInfo) -> int:
         """创建数据集"""
+        # 生成唯一的数据集ID
+        dataset_id = await self.generate_unique_dataset_id()
+        
         query = """
         INSERT INTO dataset_catalog 
-        (dataset_name, case_count, clinical_data_desc, text_data_desc, 
+        (id, dataset_name, case_count, clinical_data_desc, text_data_desc, 
          imaging_data_desc, pathology_data_desc, genomics_data_desc, 
-         annotation_desc, notes, user_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         annotation_desc, notes, user_id, has_data, has_description_file, 
+         data_path, description_file_path)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         params = (
+            dataset_id,
             dataset.dataset_name,
             dataset.case_count,
             dataset.clinical_data_desc,
@@ -59,13 +90,17 @@ class DatasetMapper(BaseMapper):
             dataset.genomics_data_desc,
             dataset.annotation_desc,
             dataset.notes,
-            dataset.user_id
+            dataset.user_id,
+            dataset.has_data or 0,
+            dataset.has_description_file or 0,
+            dataset.data_path,
+            dataset.description_file_path
         )
         
         async with self.get_connection() as db:
-            cursor = await db.execute(query, params)
+            await db.execute(query, params)
             await db.commit()
-            return cursor.lastrowid
+            return dataset_id
 
     @handle_mapper_exception
     async def get_dataset_by_id(self, dataset_id: int) -> Optional[DatasetInfo]:

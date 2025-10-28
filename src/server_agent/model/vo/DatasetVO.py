@@ -15,6 +15,11 @@ class DatasetVO(BaseModel):
     annotation_desc: Optional[str] = None
     notes: Optional[str] = None
     user_id: int
+    has_data: Optional[int] = 0
+    has_description_file: Optional[int] = 0
+    data_path: Optional[str] = None
+    description_file_path: Optional[str] = None
+    create_time: Optional[str] = None
     
     class Config:
         from_attributes = True

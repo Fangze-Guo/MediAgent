@@ -17,6 +17,11 @@ export interface DatasetInfo {
   annotation_desc?: string
   notes?: string
   user_id?: number
+  has_data?: number
+  has_description_file?: number
+  data_path?: string
+  description_file_path?: string
+  create_time?: string
 }
 
 export interface CreateDatasetRequest {
@@ -108,6 +113,18 @@ export function uploadFilesToDataset(datasetId: number, files: File[]) {
   // 不要手动设置 Content-Type，让 axios 自动处理 multipart/form-data 的 boundary
   return api.post(`/dataset/${datasetId}/upload`, formData, {
     timeout: 300000 // 5分钟超时（大文件上传）
+  })
+}
+
+/**
+ * 上传数据集描述文件（CSV）
+ */
+export function uploadDescriptionFile(datasetId: number, file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+  
+  return api.post(`/dataset/${datasetId}/upload-description`, formData, {
+    timeout: 60000 // 1分钟超时
   })
 }
 

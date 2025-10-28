@@ -61,10 +61,10 @@ class DatasetService:
                 context={"dataset_name": dataset_info.dataset_name},
             )
 
-        # 创建数据集文件夹
+        # 创建数据集文件夹 - 新路径格式：private/{user_id}/dataset/{dataset_name}
         dataset_folder = (
             pathlib.Path(DATASET_PATH)
-            / f"private/{dataset_info.user_id}"
+            / f"private/{dataset_info.user_id}/dataset"
             / dataset_info.dataset_name
         )
         try:
@@ -79,6 +79,9 @@ class DatasetService:
                 detail="创建数据集文件夹失败",
                 context={"error": str(e), "folder": str(dataset_folder)},
             )
+
+        # 设置数据路径
+        dataset_info.data_path = f"private/{dataset_info.user_id}/dataset/{dataset_info.dataset_name}"
 
         # 保存数据集信息到数据库
         dataset_id = await self.dataset_mapper.create_dataset(dataset_info)
@@ -178,12 +181,12 @@ class DatasetService:
         ):
             old_folder = (
                 pathlib.Path(DATASET_PATH)
-                / f"private/{dataset.user_id}"
+                / f"private/{dataset.user_id}/dataset"
                 / dataset.dataset_name
             )
             new_folder = (
                 pathlib.Path(DATASET_PATH)
-                / f"private/{dataset.user_id}"
+                / f"private/{dataset.user_id}/dataset"
                 / update_data["dataset_name"]
             )
 
@@ -195,6 +198,8 @@ class DatasetService:
 
             try:
                 old_folder.rename(new_folder)
+                # 更新 data_path
+                update_data["data_path"] = f"private/{dataset.user_id}/dataset/{update_data['dataset_name']}"
                 logger.info(f"Renamed dataset folder from {old_folder} to {new_folder}")
             except Exception as e:
                 raise ServiceError(
@@ -241,7 +246,7 @@ class DatasetService:
         # 删除数据集文件夹
         dataset_folder = (
             pathlib.Path(DATASET_PATH)
-            / f"private/{dataset.user_id}"
+            / f"private/{dataset.user_id}/dataset"
             / dataset.dataset_name
         )
         try:
@@ -293,8 +298,8 @@ class DatasetService:
                 context={"dataset_id": dataset_id, "user_id": user_id},
             )
 
-        # 构建目标路径
-        target_dir = f"private/{dataset.user_id}/{dataset.dataset_name}"
+        # 构建目标路径 - 新路径格式
+        target_dir = f"private/{dataset.user_id}/dataset/{dataset.dataset_name}"
 
         # 上传文件
         uploaded_files = await self.file_service.uploadMultipleFilesToData(
@@ -304,9 +309,86 @@ class DatasetService:
         # 更新案例数量（假设每个文件是一个案例）
         new_case_count = dataset.case_count + len(uploaded_files)
         await self.dataset_mapper.update_case_count(dataset_id, new_case_count)
+        
+        # 更新 has_data 和 data_path
+        update_data = {
+            "has_data": 1,
+            "data_path": target_dir
+        }
+        await self.dataset_mapper.update_dataset(dataset_id, update_data)
 
         return {
             "uploaded_count": len(uploaded_files),
             "total_case_count": new_case_count,
             "files": uploaded_files,
+        }
+
+    @handle_service_exception
+    async def upload_description_file(
+        self, dataset_id: int, file: UploadFile, user_id: int, role: str = "user"
+    ) -> dict:
+        """
+        上传数据集描述文件（CSV）
+
+        Args:
+            dataset_id: 数据集ID
+            file: CSV描述文件
+            user_id: 用户ID
+            role: 用户角色
+
+        Returns:
+            上传结果
+        """
+        # 获取数据集
+        dataset = await self.dataset_mapper.get_dataset_by_id(dataset_id)
+
+        if not dataset:
+            raise NotFoundError(
+                detail="数据集不存在", context={"dataset_id": dataset_id}
+            )
+
+        # 权限检查
+        if role != "admin" and dataset.user_id != user_id:
+            raise ValidationError(
+                detail="无权上传文件到该数据集",
+                context={"dataset_id": dataset_id, "user_id": user_id},
+            )
+
+        # 验证文件类型
+        if not file.filename.endswith('.csv'):
+            raise ValidationError(
+                detail="只支持上传 CSV 格式的描述文件",
+                context={"filename": file.filename}
+            )
+
+        # 构建目标路径：private/{user_id}/dataset/{dataset_name}/{dataset_id}.csv
+        target_dir = pathlib.Path(DATASET_PATH) / f"private/{dataset.user_id}/dataset/{dataset.dataset_name}"
+        target_file = target_dir / f"{dataset_id}.csv"
+
+        # 确保目录存在
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        # 保存文件
+        try:
+            content = await file.read()
+            with open(target_file, 'wb') as f:
+                f.write(content)
+            logger.info(f"Uploaded description file: {target_file}")
+        except Exception as e:
+            raise ServiceError(
+                detail="保存描述文件失败",
+                context={"error": str(e), "file": str(target_file)}
+            )
+
+        # 更新数据库：设置 has_description_file=1 和 description_file_path
+        description_file_path = f"private/{dataset.user_id}/dataset/{dataset.dataset_name}/{dataset_id}.csv"
+        update_data = {
+            "has_description_file": 1,
+            "description_file_path": description_file_path
+        }
+        await self.dataset_mapper.update_dataset(dataset_id, update_data)
+
+        return {
+            "message": "描述文件上传成功",
+            "file_path": description_file_path
         }

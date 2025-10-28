@@ -150,6 +150,27 @@ class DatasetController(BaseController):
                     error_message = e.detail
                 return ResultUtils.error(400, f"上传文件失败: {error_message}")
 
+        @self.router.post("/{dataset_id}/upload-description")
+        async def upload_description_file(
+            dataset_id: int,
+            file: UploadFile = File(...),
+            userVO: UserVO = Depends(self._get_current_user)
+        ) -> BaseResponse[dict]:
+            """上传数据集描述文件（CSV）"""
+            try:
+                result = await self.dataset_service.upload_description_file(
+                    dataset_id,
+                    file,
+                    userVO.uid,
+                    userVO.role
+                )
+                return ResultUtils.success(result)
+            except Exception as e:
+                error_message = str(e)
+                if hasattr(e, 'detail'):
+                    error_message = e.detail
+                return ResultUtils.error(400, f"上传描述文件失败: {error_message}")
+
     # ==================== 工具方法 ====================
 
     async def _get_current_user(self, authorization: str = Header(None)) -> UserVO:

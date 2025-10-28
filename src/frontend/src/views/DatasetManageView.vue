@@ -50,6 +50,43 @@
           <div class="dataset-info">
             <h3 class="dataset-name">{{ dataset.dataset_name }}</h3>
             <p class="dataset-count">案例数: {{ dataset.case_count }}</p>
+            <div class="dataset-status">
+              <span 
+                class="status-tag" 
+                :class="dataset.has_data ? 'status-success' : 'status-warning'"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+                {{ dataset.has_data ? '已上传数据' : '未上传数据' }}
+              </span>
+              <span 
+                class="status-tag" 
+                :class="dataset.has_description_file ? 'status-success' : 'status-warning'"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                </svg>
+                {{ dataset.has_description_file ? '已上传描述文件' : '未上传描述文件' }}
+              </span>
+            </div>
           </div>
           <div class="dataset-actions">
             <button
@@ -493,7 +530,46 @@
     >
       <div class="modal-content modal-large">
         <div class="modal-header">
-          <h2>{{ selectedDataset?.dataset_name }}</h2>
+          <div class="header-content">
+            <h2>{{ selectedDataset?.dataset_name }}</h2>
+            <div class="dataset-status-inline">
+              <span 
+                class="status-tag" 
+                :class="selectedDataset?.has_data ? 'status-success' : 'status-warning'"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+                {{ selectedDataset?.has_data ? '已上传数据' : '未上传数据' }}
+              </span>
+              <span 
+                class="status-tag" 
+                :class="selectedDataset?.has_description_file ? 'status-success' : 'status-warning'"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                </svg>
+                {{ selectedDataset?.has_description_file ? '已上传描述文件' : '未上传描述文件' }}
+              </span>
+            </div>
+          </div>
           <button class="btn-close" @click="showDetailDialog = false">×</button>
         </div>
         <div class="modal-body">
@@ -847,6 +923,128 @@
                 {{ uploading ? "上传中..." : "开始上传" }}
               </button>
             </div>
+
+            <!-- CSV 描述文件上传 -->
+            <div class="section-card" style="margin-top: 24px">
+              <h3 class="section-title">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                  <polyline points="10 9 9 9 8 9"></polyline>
+                </svg>
+                上传 CSV 描述文件
+                <span v-if="selectedDataset?.has_description_file" class="status-badge">
+                  已上传
+                </span>
+              </h3>
+              
+              <div class="csv-upload-area">
+                <input
+                  type="file"
+                  ref="csvFileInput"
+                  accept=".csv"
+                  @change="handleCsvFileSelect"
+                  style="display: none"
+                />
+                
+                <div class="csv-info" v-if="selectedDataset?.has_description_file">
+                  <div class="info-item">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14 2 14 8 20 8"></polyline>
+                    </svg>
+                    <span>{{ selectedDataset.description_file_path }}</span>
+                  </div>
+                </div>
+
+                <div class="csv-upload-content">
+                  <p class="csv-description">
+                    上传数据集的详细描述文件（CSV 格式），该文件将保存为
+                    <code>{{ selectedDataset?.id }}.csv</code>
+                  </p>
+                  
+                  <div class="csv-file-preview" v-if="csvFile">
+                    <div class="file-preview-item">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                      </svg>
+                      <div class="file-info">
+                        <span class="file-name">{{ csvFile.name }}</span>
+                        <span class="file-size">{{ formatFileSize(csvFile.size) }}</span>
+                      </div>
+                      <button class="btn-icon btn-danger" @click="removeCsvFile">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                        >
+                          <line x1="18" y1="6" x2="6" y2="18"></line>
+                          <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="csv-actions">
+                    <button class="btn-secondary" @click="triggerCsvFileSelect">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                      </svg>
+                      选择 CSV 文件
+                    </button>
+                    <button
+                      v-if="csvFile"
+                      class="btn-primary"
+                      @click="uploadCsvFile"
+                      :disabled="csvUploading"
+                    >
+                      {{ csvUploading ? "上传中..." : "上传描述文件" }}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1029,6 +1227,7 @@ import {
   updateDataset,
   deleteDataset,
   uploadFilesToDataset,
+  uploadDescriptionFile,
   type DatasetInfo,
   type CreateDatasetRequest,
   type UpdateDatasetRequest,
@@ -1050,6 +1249,11 @@ const uploadFiles = ref<File[]>([]);
 const uploading = ref(false);
 const fileInput = ref<HTMLInputElement>();
 const fileInputSingle = ref<HTMLInputElement>();
+
+// CSV 描述文件上传相关状态
+const csvFile = ref<File | null>(null);
+const csvUploading = ref(false);
+const csvFileInput = ref<HTMLInputElement>();
 
 // 文件浏览相关状态
 const showFilesDialog = ref(false);
@@ -1181,13 +1385,14 @@ const selectDataset = (dataset: DatasetInfo) => {
   selectedDataset.value = dataset;
   showDetailDialog.value = true;
   uploadFiles.value = [];
+  csvFile.value = null;
 };
 
 // 查看数据集文件
 const viewDatasetFiles = async (dataset: DatasetInfo) => {
   viewingDataset.value = dataset;
   showFilesDialog.value = true;
-  currentFilePath.value = `private/${authStore.currentUser?.uid}/${dataset.dataset_name}`;
+  currentFilePath.value = `private/${authStore.currentUser?.uid}/dataset/${dataset.dataset_name}`;
   await loadDatasetFiles();
 };
 
@@ -1374,6 +1579,66 @@ const uploadAllFiles = async () => {
   }
 };
 
+// CSV 描述文件上传相关函数
+const triggerCsvFileSelect = () => {
+  csvFileInput.value?.click();
+};
+
+const handleCsvFileSelect = (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  if (target.files && target.files[0]) {
+    const file = target.files[0];
+    if (file.name.endsWith('.csv')) {
+      csvFile.value = file;
+    } else {
+      alert('请选择 CSV 格式的文件');
+      target.value = '';
+    }
+  }
+};
+
+const removeCsvFile = () => {
+  csvFile.value = null;
+  if (csvFileInput.value) {
+    csvFileInput.value.value = '';
+  }
+};
+
+const uploadCsvFile = async () => {
+  if (!selectedDataset.value || !csvFile.value) return;
+
+  csvUploading.value = true;
+  try {
+    const response = await uploadDescriptionFile(
+      selectedDataset.value.id!,
+      csvFile.value
+    );
+    if (response.data.code === 200) {
+      alert('描述文件上传成功！');
+      csvFile.value = null;
+      if (csvFileInput.value) {
+        csvFileInput.value.value = '';
+      }
+      // 刷新数据集列表以更新状态
+      await loadDatasets();
+      // 更新选中的数据集信息
+      const updated = datasets.value.find(
+        (d) => d.id === selectedDataset.value?.id
+      );
+      if (updated) {
+        selectedDataset.value = updated;
+      }
+    } else {
+      alert('上传失败：' + response.data.message);
+    }
+  } catch (error: any) {
+    console.error('上传描述文件失败:', error);
+    alert(error.message || '上传失败');
+  } finally {
+    csvUploading.value = false;
+  }
+};
+
 // 格式化文件大小
 const formatFileSize = (bytes: number): string => {
   if (bytes === 0) return "0 B";
@@ -1553,7 +1818,41 @@ onMounted(() => {
 .dataset-count {
   font-size: 14px;
   color: #6b7280;
-  margin: 0;
+  margin: 0 0 8px 0;
+}
+
+.dataset-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.status-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.status-tag svg {
+  flex-shrink: 0;
+}
+
+.status-success {
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+
+.status-warning {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
 }
 
 .dataset-actions {
@@ -1729,10 +2028,23 @@ onMounted(() => {
   align-items: center;
 }
 
+.header-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .modal-header h2 {
   font-size: 20px;
   font-weight: 600;
   margin: 0;
+}
+
+.dataset-status-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .btn-close {
@@ -2485,5 +2797,133 @@ onMounted(() => {
 
 .files-list::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
+}
+
+/* CSV 描述文件上传样式 */
+.csv-upload-area {
+  background: #f9fafb;
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 12px;
+}
+
+.csv-info {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #e0f2fe;
+  border-left: 3px solid #0284c7;
+  border-radius: 8px;
+}
+
+.info-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #0c4a6e;
+  font-size: 13px;
+}
+
+.info-item svg {
+  flex-shrink: 0;
+}
+
+.csv-upload-content {
+  margin-top: 12px;
+}
+
+.csv-description {
+  font-size: 13px;
+  color: #6b7280;
+  margin-bottom: 16px;
+  line-height: 1.6;
+}
+
+.csv-description code {
+  background: #e5e7eb;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  color: #374151;
+  font-size: 12px;
+}
+
+.csv-file-preview {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.file-preview-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.file-preview-item svg {
+  flex-shrink: 0;
+  color: #10b981;
+}
+
+.file-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.file-info .file-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.file-info .file-size {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.csv-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  background: #d1fae5;
+  color: #065f46;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  margin-left: 8px;
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  background: white;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.btn-secondary:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>
