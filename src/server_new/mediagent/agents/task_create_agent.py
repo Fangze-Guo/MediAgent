@@ -49,9 +49,10 @@ PLAN_JSON_SCHEMA: Dict[str, Any] = {
                     "tool_name": {"type": "string", "minLength": 1, "maxLength": 128},
                     "source_kind": {"type": "string", "enum": sorted(list(SOURCE_KINDS))},
                     "source": {
-                        # dataset: 数据集编号（string）
-                        # step: 前置步骤号（string 或 integer；后续逻辑再校验取整）
-                        # direct: 路径/自定义 scheme（string）
+                        # 语义：
+                        # - 当 source_kind == "dataset": 该数据集的【整数编号 id】（dataset_catalog.id）
+                        # - 当 source_kind == "step":    前置步骤号（小于本步骤号的正整数）
+                        # - 当 source_kind == "direct":  直接的输入目录路径或 URI scheme
                         "oneOf": [
                             {"type": "string", "minLength": 1, "maxLength": 1024},
                             {"type": "integer", "minimum": 1}
@@ -88,6 +89,8 @@ class AgentBConfig:
     # 可选：白名单工具；若为空则以 TaskManager.list_tools() 为准
     allowed_tools: Optional[Set[str]] = None
     # 可选：公共数据集编号白名单（如需）
+    # 现在 source_kind == "dataset" 的 source 是数据集主键 id（整数或数字字符串）
+    # 如果想完全放权给 TaskManager 校验权限，可以传 None
     allowed_datasets: Optional[Set[str]] = None
     # OpenAI 连接（必须把 base_url 指到 OpenAI 兼容网关（含 /v1））
     api_key: Optional[str] = None
@@ -112,9 +115,15 @@ class TaskCreationAgentB:
     - 通过 LLM 产出“严格 JSON”
     - 进行三层控制：
         1) JSON Schema（结构）
-        2) 逻辑校验（步号、依赖、工具白名单、数据集白名单）
+        2) 逻辑校验（步号、依赖、工具白名单、数据集白名单*可选*）
         3) 参数控制（运行时键禁止 + 业务参数白名单策略）
     - 通过后调用 TaskManager.create_task()
+
+    ⚠ dataset 模式的关键点：
+      steps[*].source_kind == "dataset" 时，
+      steps[*].source 必须是一个数据集主键 ID（dataset_catalog.id，整数）。
+      我们不再接受路径或“数据集名称”。
+      TaskManager 会在运行阶段根据该 ID 去 DB 做权限校验并解析实际路径。
     """
 
     def __init__(self, task_manager, config: AgentBConfig):
@@ -239,6 +248,7 @@ class TaskCreationAgentB:
     def _emit_plan_tool(self, allowed_tools: Set[str]) -> Dict[str, Any]:
         """
         返回 OpenAI function-calling 工具定义（用 JSON Schema 限制 arguments）。
+        这里我们在 description 里也明确 dataset/source 的语义，减少模型乱填路径的概率。
         """
         allowed_tools_sorted = sorted(list(allowed_tools))
         return {
@@ -248,6 +258,10 @@ class TaskCreationAgentB:
                 "description": (
                     "输出最终的计划 JSON。严格遵守参数 schema；严禁在 additional_params 中包含 in_dir、out_dir。"
                     "如果不确定，请将 additional_params 置为 {}（不要编造键名）。"
+                    "注意：当 source_kind == 'dataset' 时，source 必须是数据集的整数编号（dataset_id），"
+                    "不是名称、不是路径。"
+                    "当 source_kind == 'step' 时，source 是前置步骤号（必须小于当前步骤号的正整数）。"
+                    "当 source_kind == 'direct' 时，source 可以是一个已有目录的路径/URI。"
                 ),
                 "parameters": {
                     "type": "object",
@@ -261,18 +275,40 @@ class TaskCreationAgentB:
                             "items": {
                                 "type": "object",
                                 "additionalProperties": False,
-                                "required": ["step_number", "tool_name", "source_kind", "source", "additional_params"],
+                                "required": [
+                                    "step_number",
+                                    "tool_name",
+                                    "source_kind",
+                                    "source",
+                                    "additional_params"
+                                ],
                                 "properties": {
                                     "step_number": {"type": "integer", "minimum": 1},
-                                    "tool_name": {"type": "string", "enum": allowed_tools_sorted},
-                                    "source_kind": {"type": "string", "enum": sorted(list(SOURCE_KINDS))},
+                                    "tool_name": {
+                                        "type": "string",
+                                        "enum": allowed_tools_sorted
+                                    },
+                                    "source_kind": {
+                                        "type": "string",
+                                        "enum": sorted(list(SOURCE_KINDS))
+                                    },
                                     "source": {
                                         "oneOf": [
-                                            {"type": "string", "minLength": 1, "maxLength": 1024},
-                                            {"type": "integer", "minimum": 1}
+                                            {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 1024
+                                            },
+                                            {
+                                                "type": "integer",
+                                                "minimum": 1
+                                            }
                                         ]
                                     },
-                                    "relative": {"type": ["string", "null"], "maxLength": 1024},
+                                    "relative": {
+                                        "type": ["string", "null"],
+                                        "maxLength": 1024
+                                    },
                                     "additional_params": {"type": "object"},
                                 },
                             },
@@ -282,9 +318,14 @@ class TaskCreationAgentB:
             },
         }
 
-    async def _call_llm_via_function(self, plan_text: str, allowed_tools: Set[str]) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+    async def _call_llm_via_function(
+        self,
+        plan_text: str,
+        allowed_tools: Set[str]
+    ) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
         """
         通过 /v1/chat/completions + function calling，强制模型调用 emit_plan 并返回其 arguments(JSON 字符串)。
+        system_prompt 里我们强化 dataset/source 的定义。
         """
         tools_summary = self._summarize_tools_for_prompt(allowed_tools)
 
@@ -294,9 +335,15 @@ class TaskCreationAgentB:
 强制约束（重要）：
 1) steps[*].step_number 必须从 1 开始、连续（1,2,3,...）。
 2) steps[*].source_kind ∈ {sorted(list(SOURCE_KINDS))}。
-3) 若 source_kind == "step"，则 steps[*].source 必须是小于当前步骤号的整数（引用前置步骤）。
-4) tool_name 必须在白名单内（见下方列表）。
-5) steps[*].additional_params：若工具描述未要求业务参数，使用 {{}}；**禁止**包含 in_dir/out_dir（运行时注入）。不得发明键名。
+3) 若 source_kind == "step"，则 steps[*].source 必须是小于当前步骤号的正整数（引用前置步骤的结果目录）。
+4) 若 source_kind == "dataset"，则 steps[*].source 必须是该数据集的整数编号 dataset_id（即数据库主键 id），
+   不能是数据集名称、别名、描述、路径或相对路径。
+   例如：source_kind="dataset" 时，source=42 这样的数字是允许的；"customer_logs_may" 之类字符串不允许。
+5) 若 source_kind == "direct"，steps[*].source 可以是一个现有输入目录路径或自定义 URI。
+6) tool_name 必须在白名单内（见下方列表）。
+7) steps[*].additional_params：若工具描述未要求业务参数，使用 {{}}；
+   **禁止**包含 in_dir/out_dir（运行时注入）。不得发明键名。
+8) relative 字段是可选子路径（相对于输入目录）；如果用户没有特别指定子目录/子文件夹，请用 null 或不要加这个字段。
 
 可用工具及说明（仅供你理解，不必逐字复制，也不要据此发明参数键名）：
 {tools_summary}
@@ -374,6 +421,7 @@ class TaskCreationAgentB:
         将工具的描述摘要化给 LLM，用于指导 steps[*] 的生成。
         - 不展示参数 schema
         - 强调 additional_params 默认 {}，且禁止 in_dir/out_dir，禁止发明键名
+        - 我们不告诉 LLM任何关于运行时 out_dir/in_dir 注入细节，避免它尝试自己生成这些字段
         """
         def _clip(s: str, n: int = 600) -> str:
             s = (s or "").strip()
@@ -395,6 +443,7 @@ class TaskCreationAgentB:
             "• 每个步骤必须含 step_number / tool_name / source_kind / source / additional_params；relative 可选。\n"
             "• tool_name 只能取上述工具列表中的名称；不要凭描述‘猜’参数键名。\n"
             "• 若 source_kind=='step'，source=小于当前步骤号的整数（引用前置步骤）。\n"
+            "• 若 source_kind=='dataset'，source=该数据集的整数编号 dataset_id（不能是名称、路径）。\n"
             "• additional_params：除非业务上确有必要，否则使用空对象 {}；严禁包含 in_dir/out_dir。\n"
         )
         return extra_rules + "\n" + ("\n".join(lines) if lines else "(no tools)")
@@ -428,7 +477,12 @@ class TaskCreationAgentB:
                     return False, {"message": f"JsonSchema 校验失败：{ve!r}"}
         else:
             # 轻量兜底
-            if not isinstance(plan_obj, dict) or "steps" not in plan_obj or not isinstance(plan_obj["steps"], list) or not plan_obj["steps"]:
+            if (
+                not isinstance(plan_obj, dict)
+                or "steps" not in plan_obj
+                or not isinstance(plan_obj["steps"], list)
+                or not plan_obj["steps"]
+            ):
                 return False, {"message": "缺少 steps 或 steps 不是非空数组"}
             for i, s in enumerate(plan_obj["steps"], 1):
                 for key in ("step_number", "tool_name", "source_kind", "source", "additional_params"):
@@ -436,25 +490,40 @@ class TaskCreationAgentB:
                         return False, {"message": f"steps[{i}] 缺少字段：{key}"}
             return True, None
 
-    def _validate_logic(self, plan_obj: Dict[str, Any], allowed_tools: Set[str]) -> Tuple[bool, List[Dict[str, Any]]]:
+    def _validate_logic(
+        self,
+        plan_obj: Dict[str, Any],
+        allowed_tools: Set[str]
+    ) -> Tuple[bool, List[Dict[str, Any]]]:
         steps: List[Dict[str, Any]] = plan_obj["steps"]
         errors: List[Dict[str, Any]] = []
 
         # 1) 步号从 1 连续
         numbers = [int(s.get("step_number", -1)) for s in steps]
         if sorted(numbers) != list(range(1, len(numbers) + 1)):
-            errors.append({"type": "step_number", "message": f"step_number 必须从 1 连续：{numbers}"})
+            errors.append({
+                "type": "step_number",
+                "message": f"step_number 必须从 1 连续：{numbers}"
+            })
 
         # 2) 工具白名单、source_kind 枚举
         for s in steps:
             k = int(s["step_number"])
             tool = str(s["tool_name"])
             if tool not in allowed_tools:
-                errors.append({"type": "tool_name", "step": k, "message": f"不在白名单：{tool}"})
+                errors.append({
+                    "type": "tool_name",
+                    "step": k,
+                    "message": f"不在白名单：{tool}"
+                })
 
             sk = str(s["source_kind"])
             if sk not in SOURCE_KINDS:
-                errors.append({"type": "source_kind", "step": k, "message": f"非法 source_kind：{sk}"})
+                errors.append({
+                    "type": "source_kind",
+                    "step": k,
+                    "message": f"非法 source_kind：{sk}"
+                })
 
             # 3) 依赖合法：source_kind=step → source 必须是 < k 的整数
             if sk == "step":
@@ -462,22 +531,39 @@ class TaskCreationAgentB:
                 try:
                     src_num = int(src)
                 except Exception:
-                    errors.append({"type": "source", "step": k, "message": f"step 模式下 source 必须是整数：{src!r}"})
+                    errors.append({
+                        "type": "source",
+                        "step": k,
+                        "message": f"step 模式下 source 必须是整数：{src!r}"
+                    })
                     continue
                 if not (1 <= src_num < k):
-                    errors.append({"type": "source", "step": k, "message": f"非法前置引用：{src_num}（必须在 1..{k-1}）"})
+                    errors.append({
+                        "type": "source",
+                        "step": k,
+                        "message": f"非法前置引用：{src_num}（必须在 1..{k-1}）"
+                    })
 
             # 4) dataset 白名单（可选）
+            #    注意：现在 dataset 模式下 source 是数据集主键 ID（整数）。
+            #    如果 cfg.allowed_datasets=None，就等 TaskManager 去判权限/存在性。
             if sk == "dataset" and self.cfg.allowed_datasets is not None:
                 ds = str(s["source"])
                 if ds not in self.cfg.allowed_datasets:
-                    errors.append({"type": "dataset", "step": k, "message": f"数据集不在白名单：{ds}"})
+                    errors.append({
+                        "type": "dataset",
+                        "step": k,
+                        "message": f"数据集不在白名单：{ds}"
+                    })
 
         return (len(errors) == 0), errors
 
     # -------------------- 参数策略（核心） --------------------
 
-    def _enforce_param_policy(self, plan_obj: Dict[str, Any]) -> Tuple[bool, List[Dict[str, Any]], List[Dict[str, Any]]]:
+    def _enforce_param_policy(
+        self,
+        plan_obj: Dict[str, Any]
+    ) -> Tuple[bool, List[Dict[str, Any]], List[Dict[str, Any]]]:
         """
         应用运行时参数禁止 + 业务参数白名单策略。
         返回 (ok, errors, sanitized_report)
@@ -502,7 +588,12 @@ class TaskCreationAgentB:
                 # 统一删除（比直接报错更稳健），并记录
                 for k in list(rt_hit):
                     add.pop(k, None)
-                sanitized_report.append({"step": step_no, "tool": tool, "removed": sorted(list(rt_hit)), "reason": "runtime_forbidden"})
+                sanitized_report.append({
+                    "step": step_no,
+                    "tool": tool,
+                    "removed": sorted(list(rt_hit)),
+                    "reason": "runtime_forbidden"
+                })
 
             # 2) 白名单策略
             if policy == "allow":
@@ -523,7 +614,10 @@ class TaskCreationAgentB:
                     "type": "param_whitelist",
                     "step": step_no,
                     "tool": tool,
-                    "message": f"出现白名单外参数：{sorted(extra_keys)}；允许的参数：{sorted(list(allowed_keys)) if allowed_keys else []}"
+                    "message": (
+                        f"出现白名单外参数：{sorted(extra_keys)}；允许的参数："
+                        f"{sorted(list(allowed_keys)) if allowed_keys else []}"
+                    )
                 })
             else:
                 # drop（默认）：删除多余参数
@@ -533,7 +627,10 @@ class TaskCreationAgentB:
                     "step": step_no,
                     "tool": tool,
                     "removed": sorted(extra_keys),
-                    "reason": "whitelist_drop" if allowed_keys else "default_drop_no_whitelist"
+                    "reason": (
+                        "whitelist_drop" if allowed_keys
+                        else "default_drop_no_whitelist"
+                    )
                 })
 
         ok = len(errors) == 0

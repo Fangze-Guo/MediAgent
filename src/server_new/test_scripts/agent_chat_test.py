@@ -10,7 +10,7 @@ from typing import Optional, Dict, Any
 # ========= ① 需要你填写/确认的变量（建议使用绝对路径） =========
 from mediagent.paths import in_data, in_mediagent
 
-PUBLIC_DATASETS_ROOT = in_data("files", "public")
+PUBLIC_DATASETS_ROOT = in_data("files")
 WORKSPACE_ROOT       = in_data("files", "private")
 DATABASE_FILE        = in_data("db", "app.sqlite3")
 CONVERSATIONS_ROOT   = in_data("conversations")
@@ -26,7 +26,7 @@ OPENAI_MODEL    = "deepseek-chat"   # 你的模型名称
 # OPENAI_MODEL    = "qwen/qwen3-30b-a3b-2507"   # 你的模型名称
 
 # —— 用户 / 对话标识（可留空以便脚本交互创建）——
-OWNER_UID: str = "6127016735"                 # create_conversation() 需要：必须存在于 users(uid)
+OWNER_UID: str = "5931999430"                 # create_conversation() 需要：必须存在于 users(uid)
 CONVERSATION_UID: Optional[str] = None        # 为空则首轮自动创建
 
 # —— 内部信息流识别码（你分配，用于落盘 <conversation_uid>/<stream_id>.json）——

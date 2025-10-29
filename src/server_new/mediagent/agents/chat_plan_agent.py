@@ -1,4 +1,3 @@
-# agent_a.py —— 面向用户的对话编排器（对话管理器 + 执行器；工具目录来自 task_manager；仅暴露 converse）
 from __future__ import annotations
 
 import json
@@ -13,10 +12,10 @@ try:
 except Exception:  # pragma: no cover
     AsyncOpenAI = None  # 直到真正使用时报错
 
-# 新增：接入数据集管理器
+# 数据集管理器
 try:
     from mediagent.modules import dataset_manager as dsman
-except Exception:  # 若环境尚未就绪，直到调用时才会触发异常
+except Exception:
     dsman = None  # type: ignore
 
 
@@ -25,18 +24,16 @@ except Exception:  # 若环境尚未就绪，直到调用时才会触发异常
 @dataclass
 class AgentAConfig:
     model: str
-    api_key: Optional[str] = None                 # LM Studio/Ollama 等可填占位符
-    base_url: Optional[str] = None                # 例如 "http://127.0.0.1:1234/v1"
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
     request_timeout: float = 60.0
-    max_retries: int = 2                          # 每轮 LLM 调用的重试次数
-    max_tool_rounds: int = 3                      # 连续“工具/任务/查询状态”回合上限
+    max_retries: int = 2
+    max_tool_rounds: int = 3
 
-    # —— 是否在 system 中注入工具目录（只读，帮助模型写出更贴近工具的描述）——
     include_tool_catalog: bool = True
-    tool_catalog_limit: int = 20                  # 最多注入多少条工具
-    tool_desc_maxlen: int = 160                   # 每条工具描述的截断长度（字符数）
+    tool_catalog_limit: int = 20
+    tool_desc_maxlen: int = 160
 
-    # 系统提示
     system_prefix: str = (
         """
 你现在是一个医疗工具助手系统中的核心智能体，负责和用户直接对话，然后根据用户的需求执行对应操作（实际执行会交由其他模块完成）。
@@ -46,50 +43,47 @@ class AgentAConfig:
 2) 若需要创建或推进一项任务，请调用函数 emit_task_request，并把用于创建/推进任务的自然语言描述放到 description；
    在你使用这个功能之前，保证你要先回复一次用户，把你想要生成的创建任务的自然语言描述交给用户审核一遍，用户确认无误之后再正式使用该功能创建任务。
    很多工具的参数是只有输入源的，没有额外参数，不要臆造参数来询问用户，这会对用户造成困扰。
+   特别注意：任何要处理/分析/训练的输入数据，一律必须用“数据集ID(整数)”来指代，而不是数据集名称或路径。
+   如果用户还没有给出具体的数据集ID(整数)，你不能直接创建任务，必须先用 emit_user_reply 向用户确认“你指的是哪个数据集ID？”。
+   例如：不要说“用乳腺MRI数据集”，而应该让用户确认成“用数据集ID=42”。
 3) 若用户想查询某个任务的运行状态，请调用函数 emit_task_status_query，并把任务的 task_uid 放到 task_uid；
 4) 若用户想查看数据集信息，请调用函数 emit_dataset_info_query：
    - 参数 mode: "overview" | "focus"
-   - 当 mode="overview"：查看全部数据集的整体情况（无需其它参数）；
-   - 当 mode="focus"：需同时提供 dataset_name 和 user_need_text（自然语言描述本次具体需求）。
-   若mode为overview，该函数会由后端数据集管理器读取数据库中的数据集表，所有数据集的一些关键概览信息，你根据这些信息进行一些总结，再反馈给用户。
-   若mode为focus，该函数会由后端数据集管理器读取同名 csv/xlsx，并在私有 LLM 侧完成总结后返回短文本，你根据该函数的反馈，结合上下文和用户具体需求做进一步的分析总结，再反馈给用户。
+   - 当 mode="overview"：查看当前用户可访问的数据集整体情况（无需其它参数）。
+   - 当 mode="focus"：需同时提供 dataset_id 和 user_need_text：
+         dataset_id 是数据集的唯一ID（整数），
+         user_need_text 是用户这次具体想了解的问题（自然语言）。
+   说明：
+     * overview 会返回所有可访问数据集的关键信息摘要。
+     * focus 会读取该数据集绑定的描述文件并生成一段简短总结（100~200字左右）。
+     * 你拿到结果后，应该再进行整理，把和用户需求最相关的要点反馈给用户。
 
 禁止输出纯文本，你必须调用以上四个函数之一。对话上下文以系统提供的消息为准。
-有时候用户会想知道你拥有什么功能，不要将上述这几个函数暴露给用户，这些函数只是为了规范输出而设置的。
-后续会将实际可用的工具函数列表暴露给你，这些才是用户真的想知道的内容。
-同时，在调用函数 emit_task_request 来创建任务时，本质上会将你提出的描述提交给一个专门负责创建任务的智能体（后续简称智能体B），由它来生成规范的、可以被解析的输出；
-之后系统会解析智能体B的输出，来进行具体的操作。为了降低智能体B的负担，我虽然不要求你生成的描述格式上规范，但至少保证信息要清晰。
+不要向用户暴露这些函数名，它们只是为了规范输出。
+创建任务时（emit_task_request）会交给后端的“智能体B”做结构化计划。
+你的描述可以是自然语言，不要求固定格式，但必须清晰表达意图、输入来源、关键参数。
 
 【严格约束——避免“画蛇添足”】
 - 不要臆造或扩展任何工具参数键名、字段名或取值；不要凭空给工具加默认值。
 - 如需提到工具，只能使用“工具目录”中出现的名称。
-- 你的任务描述可以写**目的/输入/输出/约束**的自然语言，如果能明确，则具体到参数键名（例如 batch_size、epochs、lr、patch_size 等）。
-- 如果用户明确给了参数（例如“批大小 64”），尝试转换为“参数键名: 值”的格式。
-- 不确定时，不要猜；要么向用户澄清（emit_user_reply），要么在任务描述里标注“需后端根据工具规范补全参数”。
-- 若后端已返回“创建成功”且含 task_uid，你必须立刻 emit_user_reply：
-  • 告知“任务已创建”
-  • 明确给出 task_uid
-
-【任务描述模板（用于 emit_task_request.description）】
-请严格用自然语言短段落，包含：
-- 目的（一句话概述要做什么，然后可以补充上具体的参数）
-- 输入来源（数据/路径/上游结果）
+- 你的任务描述可以写目的 / 输入 / 输出 / 约束，并尽量把用户给的具体参数（如 batch_size=64）写进去。
+- 所有数据集引用必须用“数据集ID(整数)”，例如“使用数据集ID=42 做推理”。
+  绝不要用“用乳腺MRI数据集”这种模糊描述去直接创建任务，先问清楚 ID。
+- 信息不足时，不要瞎猜；要么先 emit_user_reply 让用户补充清晰信息，要么在任务描述里标明“需后端补全此参数”。
 
 【数据集查询使用准则】
-- 当用户想“了解全部数据集的整体情况/都有哪些数据/每个数据集大概包含什么”→ 调用 emit_dataset_info_query，mode="overview"。
-- 当用户针对某个数据集提出定点问题（例如“ISPY2 有没有 ADC？”、“big_test 的缺失值情况？”）→ 调用 emit_dataset_info_query，mode="focus"，并提供：
-  • dataset_name: 数据集名（与文件同名）
-  • user_need_text: 本次具体需求（原样自然语言）
-- 若用户意图为 focus 但缺 dataset_name 或 user_need_text → 先 emit_user_reply 一次性追问补齐所缺字段。
+- 用户问“我有哪些数据集/这些数据集大概是什么内容？”→ emit_dataset_info_query，mode="overview"。
+- 用户针对某个具体数据集提问（如“这个数据集是否包含肿瘤分割标注？”）→ emit_dataset_info_query，mode="focus"，并给出 dataset_id 和 user_need_text。
+- 如果用户模糊地说“帮我看看那个乳腺MRI数据集”，但没明确 dataset_id，你要先 emit_user_reply 询问“是哪个数据集ID？（请给ID数字）以及你具体想了解什么？”
 
 【决策准则】
-- 信息不足则先 emit_user_reply 提问澄清（一次性补齐的具体问题）。
-- 能开始则按需调用：数据集查询→ emit_dataset_info_query；需要创建/推进任务→ emit_task_request；用户问进度→ emit_task_status_query；其余直接答复→ emit_user_reply。
+- 如果信息不足（尤其是缺 dataset_id、缺任务目标、缺 task_uid），请先 emit_user_reply，一次性问清楚缺的具体字段。
+- 信息充分时按需调用：emit_dataset_info_query / emit_task_request / emit_task_status_query / emit_user_reply。
         """.strip()
     )
 
 
-# ============== 松耦合协议（对话管理器 / 执行器 / 任务管理器） ==============
+# ============== 协议接口 ==============
 
 class ConversationManagerLike(Protocol):
     async def add_message_to_main(self, conversation_uid: str, role: str, content: str) -> Dict[str, Any]: ...
@@ -98,14 +92,10 @@ class ConversationManagerLike(Protocol):
 
 
 class ExecutorLike(Protocol):
-    """执行器：至少具备 create_task(user_uid, plan_text)。"""
     async def create_task(self, user_uid: Optional[str], plan_text: str) -> Dict[str, Any]: ...
 
 
 class TaskManagerAsyncLike(Protocol):
-    """
-    你提供的 AsyncTaskManager 关键接口（我们只用到 list_tools 与 get_task_status）。
-    """
     async def list_tools(self) -> List[Dict[str, Any]]: ...
     async def get_task_status(self, task_uid: str) -> Dict[str, Any]: ...
 
@@ -113,13 +103,6 @@ class TaskManagerAsyncLike(Protocol):
 # ============================ 主类 ============================
 
 class DialogueAgentA:
-    """
-    - 初始化需要：executor（执行器）、cm（对话管理器）、stream_id（内部信息流识别码）、
-                 task_manager（获取工具目录/查询任务状态）、数据库文件 db_path、可选 default_user_uid。
-    - 创建/推进任务时：根据 conversation_uid → 查 SQLite(conversations) → 取 owner_uid 作为 user_uid。
-    - 新增：emit_task_status_query → 调用 tm.get_task_status(task_uid)。
-    """
-
     def __init__(
         self,
         executor: ExecutorLike,
@@ -147,13 +130,11 @@ class DialogueAgentA:
             base_url=(self.cfg.base_url or "http://127.0.0.1:1234/v1"),
             timeout=self.cfg.request_timeout,
         )
-        # 工具目录缓存（格式化后的只读文本）
+
         self._tool_catalog_cache: Optional[str] = None
 
-    # -------------------- 唯一外部接口 --------------------
+    # -------------------- 对外主入口 --------------------
     async def converse(self, conversation_uid: str, user_input: str) -> str:
-        """对外唯一入口：直到产出面向用户的最终回复文本才返回。"""
-        # 1) 记录用户消息
         await self._append_main(conversation_uid, role="user", text=user_input)
         await self._append_internal(conversation_uid, role="user", text=user_input)
 
@@ -161,16 +142,14 @@ class DialogueAgentA:
         limit = max(1, self.cfg.max_tool_rounds)
 
         while True:
-            # 2) 组装 LLM 输入（system + 工具目录[可选] + 内部历史）
             messages = await self._build_llm_messages(conversation_uid)
             tools = [
                 self._tool_emit_user_reply(),
                 self._tool_emit_task_request(),
-                self._tool_emit_task_status_query(),   # 已有
-                self._tool_emit_dataset_info_query(),  # 新增：查看数据集信息
+                self._tool_emit_task_status_query(),
+                self._tool_emit_dataset_info_query(),
             ]
 
-            # 3) 调 LLM（带重试）
             raw_resp, err = await self._call_llm_with_retry(messages, tools)
             if err or raw_resp is None:
                 fallback = f"抱歉，本轮解析失败：{err or 'LLM 无返回'}"
@@ -178,16 +157,18 @@ class DialogueAgentA:
                 await self._append_main(conversation_uid, role="assistant", text=fallback)
                 return fallback
 
-            # 4) 记录 LLM 原始输出到内部流
             await self._append_internal(
                 conversation_uid, role="assistant",
                 text=json.dumps(raw_resp, ensure_ascii=False)
             )
 
-            # 5) 解析意图
             intent, payload, perr = self._parse_llm_decision(raw_resp)
             if perr:
-                nudge = "请仅调用 emit_user_reply / emit_task_request / emit_task_status_query / emit_dataset_info_query 之一。" + f"错误：{perr}"
+                nudge = (
+                    "请仅调用 emit_user_reply / emit_task_request / "
+                    "emit_task_status_query / emit_dataset_info_query 之一。"
+                    f"错误：{perr}"
+                )
                 await self._append_internal(conversation_uid, role="system", text=nudge)
                 tool_round += 1
                 if tool_round >= limit:
@@ -196,12 +177,13 @@ class DialogueAgentA:
                     return final_text
                 continue
 
-            # 6) 分流执行
+            # ---------- 普通回复 ----------
             if intent == "user_reply":
                 content = (payload.get("content") or "").strip() or "(空)"
                 await self._append_main(conversation_uid, role="assistant", text=content)
                 return content
 
+            # ---------- 创建/推进任务 ----------
             if intent == "task_request":
                 description = (payload.get("description") or "").strip()
                 if not description:
@@ -214,24 +196,20 @@ class DialogueAgentA:
                         return final_text
                     continue
 
-                # 查询任务归属用户
                 owner_uid = await self._get_owner_uid(conversation_uid)
                 if not owner_uid:
-                    if self.default_user_uid:
-                        owner_uid = self.default_user_uid
-                    else:
-                        msg = "无法确定任务归属用户：未在数据库(conversations)中找到该对话的 owner_uid。"
-                        await self._append_internal(conversation_uid, role="assistant", text=msg)
-                        await self._append_main(conversation_uid, role="assistant", text=msg)
-                        return msg
+                    owner_uid = self.default_user_uid
+                if not owner_uid:
+                    msg = "无法确定任务归属用户：未找到 owner_uid。"
+                    await self._append_internal(conversation_uid, role="assistant", text=msg)
+                    await self._append_main(conversation_uid, role="assistant", text=msg)
+                    return msg
 
-                # 调用执行器创建任务（保持你的现有架构：创建由 executor 负责）
                 try:
                     res = await self.executor.create_task(owner_uid, plan_text=description)
                 except Exception as e:
                     res = {"ok": False, "error": f"执行器异常: {e!r}"}
 
-                # 执行器回执写入内部流
                 await self._append_internal(
                     conversation_uid, role="tool_result",
                     text=json.dumps(res, ensure_ascii=False)
@@ -239,7 +217,6 @@ class DialogueAgentA:
 
                 tool_round += 1
                 if tool_round >= limit:
-                    # 请模型向用户做一句话总结（含 task_uid 如有）
                     summary_prompt = (
                         "请用一句中文向用户说明当前进展："
                         "若任务已成功，给出明确结果（含 task_uid，如有）；"
@@ -249,6 +226,7 @@ class DialogueAgentA:
                     await self._append_internal(conversation_uid, role="system", text=summary_prompt)
                     messages2 = await self._build_llm_messages(conversation_uid)
                     raw2, err2 = await self._call_llm_with_retry(messages2, tools)
+
                     final_text = None
                     if not err2 and raw2:
                         await self._append_internal(
@@ -258,13 +236,16 @@ class DialogueAgentA:
                         fin_intent, fin_payload, _ = self._parse_llm_decision(raw2)
                         if fin_intent == "user_reply":
                             final_text = (fin_payload.get("content") or "").strip()
+
                     if not final_text:
                         final_text = "本轮已达最大尝试次数，请确认需求或稍后再试。"
+
                     await self._append_main(conversation_uid, role="assistant", text=final_text)
                     return final_text
 
-                continue  # 未达上限，继续作为上下文驱动下一轮
+                continue
 
+            # ---------- 查询任务状态 ----------
             if intent == "task_status_query":
                 task_uid = (payload.get("task_uid") or "").strip()
                 if not task_uid:
@@ -277,7 +258,6 @@ class DialogueAgentA:
                         return final_text
                     continue
 
-                # —— 直接调用你提供的异步包装：tm.get_task_status(task_uid) —— #
                 try:
                     result = await self.tm.get_task_status(task_uid)
                 except Exception as e:
@@ -288,7 +268,6 @@ class DialogueAgentA:
                     text=json.dumps(result, ensure_ascii=False)
                 )
 
-                # 让模型基于 tool_result 说一句人话；若失败则用兜底摘要
                 tool_round += 1
                 if tool_round >= limit:
                     final_text = self._summarize_status_for_user(result)
@@ -318,7 +297,7 @@ class DialogueAgentA:
                 await self._append_main(conversation_uid, role="assistant", text=final_text)
                 return final_text
 
-            # ======== 新增分支：数据集信息查询 ========
+            # ---------- 数据集信息查询 ----------
             if intent == "dataset_info_query":
                 mode = str(payload.get("mode") or "").strip().lower()
                 if mode not in {"overview", "focus"}:
@@ -331,96 +310,142 @@ class DialogueAgentA:
                     await self._append_main(conversation_uid, role="assistant", text=msg)
                     return msg
 
+                # 统一拿 user_uid
+                owner_uid_str = await self._get_owner_uid(conversation_uid)
+                if not owner_uid_str:
+                    owner_uid_str = self.default_user_uid
+                if not owner_uid_str:
+                    msg = "数据集查询失败：无法确定当前用户身份（owner_uid）。"
+                    await self._append_main(conversation_uid, role="assistant", text=msg)
+                    return msg
+
+                # dataset_manager 目前期望 user_uid 是 int
+                try:
+                    owner_uid_int = int(owner_uid_str)
+                except Exception:
+                    msg = f"数据集查询失败：无法解析用户ID {owner_uid_str!r} 为整数。"
+                    await self._append_main(conversation_uid, role="assistant", text=msg)
+                    return msg
+
                 try:
                     if mode == "overview":
-                        # 1) 调管理器
-                        res = await dsman.overview()
-                        # 2) 完整工具结果入内部流
+                        # 1) 调 dataset_manager.overview
+                        res = await dsman.overview(
+                            user_uid=owner_uid_int,
+                            db_path=dsman.DATASET_DB_PATH,
+                            limit=None,
+                        )
+
+                        # 2) 记录内部流
                         await self._append_internal(
                             conversation_uid, role="tool_result",
                             text=json.dumps({
                                 "source": "dataset_manager",
                                 "mode": "overview",
-                                "dataset_name": None,
-                                "user_need_text": None,
                                 "result": res
                             }, ensure_ascii=False)
                         )
+
                         ok = bool(res.get("ok"))
                         text = (res.get("text") or "（无返回）")
 
-                        # 3) 二次加工（主 LLM）
+                        # 3) 让 LLM 生成最终对用户回复
                         post_prompt = (
                             "请基于上一个工具结果(result.text)，结合当前对话上下文，"
                             "向用户输出最终回答："
-                            "• 模式=overview：对全部数据集做全局归纳/对比/排序，突出影像/文本/病理/基因/标注等维度；"
-                            "• 禁止臆造；不要贴回表格源码；"
+                            "• 模式=overview：对该用户可访问的全部数据集做全局归纳/对比，"
+                            "  特别强调每个数据集大概包含什么（病例数量/影像/文本/病理/基因/标注），"
+                            "  如果有公共数据集(公共=所有人都可看)，也请提一下。"
+                            "• 禁止臆造；不要贴回原始表格源码；"
                             "• 只调用 emit_user_reply。"
                         )
                         await self._append_internal(conversation_uid, role="system", text=post_prompt)
+
                         messages2 = await self._build_llm_messages(conversation_uid)
                         raw2, err2 = await self._call_llm_with_retry(messages2, tools)
                         if not err2 and raw2:
-                            await self._append_internal(conversation_uid, role="assistant",
-                                                        text=json.dumps(raw2, ensure_ascii=False))
+                            await self._append_internal(
+                                conversation_uid, role="assistant",
+                                text=json.dumps(raw2, ensure_ascii=False)
+                            )
                             fin_intent, fin_payload, _ = self._parse_llm_decision(raw2)
                             if fin_intent == "user_reply":
                                 final = (fin_payload.get("content") or "").strip()
                                 if final:
                                     await self._append_main(conversation_uid, role="assistant", text=final)
                                     return final
-                        # 4) 兜底：直接原样返回
+
+                        # fallback
                         msg = text if ok else f"读取数据集总览失败：{text}"
                         await self._append_main(conversation_uid, role="assistant", text=msg)
                         return msg
 
-                    # focus
-                    name = (payload.get("dataset_name") or "").strip()
+                    # mode == "focus"
+                    dataset_id_raw = (payload.get("dataset_id") or "").strip()
                     need = (payload.get("user_need_text") or "").strip()
-                    if not name or not need:
-                        msg = "请提供完整参数：dataset_name 与 user_need_text。"
+
+                    if not dataset_id_raw or not need:
+                        msg = "请提供完整参数：dataset_id（数字）和 user_need_text（本次具体想了解什么）。"
                         await self._append_main(conversation_uid, role="assistant", text=msg)
                         return msg
 
-                    # 1) 调管理器
-                    res = await dsman.focus(dataset_name=name, user_need_text=need)
-                    # 2) 完整工具结果入内部流
+                    try:
+                        dataset_id_int = int(dataset_id_raw)
+                    except Exception:
+                        msg = f"dataset_id 必须是整数，当前是 {dataset_id_raw!r}"
+                        await self._append_main(conversation_uid, role="assistant", text=msg)
+                        return msg
+
+                    # 1) 调 dataset_manager.focus
+                    res = await dsman.focus(
+                        dataset_id=dataset_id_int,
+                        user_need_text=need,
+                        user_uid=owner_uid_int,
+                        db_path=dsman.DATASET_DB_PATH,
+                    )
+
+                    # 2) 内部流记录
                     await self._append_internal(
                         conversation_uid, role="tool_result",
                         text=json.dumps({
                             "source": "dataset_manager",
                             "mode": "focus",
-                            "dataset_name": name,
+                            "dataset_id": dataset_id_int,
                             "user_need_text": need,
                             "result": res
                         }, ensure_ascii=False)
                     )
+
                     ok = bool(res.get("ok"))
                     text = (res.get("text") or "（无返回）")
 
-                    # 3) 二次加工（主 LLM）
+                    # 3) 让 LLM 生成最终回答
                     post_prompt = (
-                        "请基于上一个工具结果(result.text)，结合当前对话上下文与用户本轮需求，"
+                        "请基于上一个工具结果(result.text)，结合用户本轮的具体问题(user_need_text)，"
                         "向用户输出最终回答："
-                        "• 模式=focus：严格围绕用户需求(user_need_text)作答；"
-                        "• 若信息不足请点明缺口，并提出最小澄清或下一步建议；"
-                        "• 禁止臆造；不要贴回表格源码；"
+                        "• 模式=focus：只围绕这个特定数据集和用户的问题，提炼关键结论。"
+                        "• 若信息不足，请明确指出缺失信息，并给出最小的下一步建议（例如“需要上传临床字段字典”）。"
+                        "• 禁止臆造；不要贴回原始表格源码；"
                         "• 只调用 emit_user_reply。"
                     )
                     await self._append_internal(conversation_uid, role="system", text=post_prompt)
+
                     messages2 = await self._build_llm_messages(conversation_uid)
                     raw2, err2 = await self._call_llm_with_retry(messages2, tools)
                     if not err2 and raw2:
-                        await self._append_internal(conversation_uid, role="assistant",
-                                                    text=json.dumps(raw2, ensure_ascii=False))
+                        await self._append_internal(
+                            conversation_uid, role="assistant",
+                            text=json.dumps(raw2, ensure_ascii=False)
+                        )
                         fin_intent, fin_payload, _ = self._parse_llm_decision(raw2)
                         if fin_intent == "user_reply":
                             final = (fin_payload.get("content") or "").strip()
                             if final:
                                 await self._append_main(conversation_uid, role="assistant", text=final)
                                 return final
-                    # 4) 兜底：直接原样返回
-                    msg = text if ok else f"读取数据集 {name} 失败：{text}"
+
+                    # fallback
+                    msg = text if ok else f"读取数据集 {dataset_id_int} 失败：{text}"
                     await self._append_main(conversation_uid, role="assistant", text=msg)
                     return msg
 
@@ -428,11 +453,15 @@ class DialogueAgentA:
                     msg = f"数据集查询异常：{e!r}"
                     await self._append_main(conversation_uid, role="assistant", text=msg)
                     return msg
-            # ======== 分支结束 ========
 
-            # 7) 兜底
-            await self._append_internal(conversation_uid, role="system",
-                                        text="请仅使用 emit_user_reply / emit_task_request / emit_task_status_query / emit_dataset_info_query。")
+            # ---------- 兜底 ----------
+            await self._append_internal(
+                conversation_uid, role="system",
+                text=(
+                    "请仅使用 emit_user_reply / emit_task_request / "
+                    "emit_task_status_query / emit_dataset_info_query。"
+                )
+            )
             tool_round += 1
             if tool_round >= limit:
                 final_text = "本轮已达最大尝试次数，请确认需求或稍后再试。"
@@ -469,16 +498,26 @@ class DialogueAgentA:
     def _parse_llm_decision(self, resp: dict) -> Tuple[Optional[str], Dict[str, Any], Optional[str]]:
         """
         返回:
-          - intent: "user_reply" | "task_request" | "task_status_query" | "dataset_info_query" | None
-          - payload: {"content": "..."} | {"description": "..."} | {"task_uid": "..."} |
-                     {"mode": "...", "dataset_name": "...", "user_need_text": "..."}
-          - error: 解析错误描述（无错误则为 None）
+          intent:
+            - "user_reply"
+            - "task_request"
+            - "task_status_query"
+            - "dataset_info_query"
+            - None
+
+          payload:
+            - user_reply: {"content": "..."}
+            - task_request: {"description": "..."}
+            - task_status_query: {"task_uid": "..."}
+            - dataset_info_query: {"mode": "...", "dataset_id": "...", "user_need_text": "..."}
+
+          error: 解析错误字符串
         """
         try:
             choices = resp.get("choices") or []
             msg = (choices[0] or {}).get("message") or {}
 
-            # 1) 新版 tool_calls
+            # 1) tool_calls
             for tc in (msg.get("tool_calls") or []):
                 fn = (tc.get("function") or {})
                 name = fn.get("name")
@@ -492,6 +531,7 @@ class DialogueAgentA:
                     args_obj = args
                 else:
                     args_obj = {}
+
                 if name == "emit_user_reply":
                     return "user_reply", {"content": (args_obj.get("content") or "")}, None
                 if name == "emit_task_request":
@@ -501,13 +541,18 @@ class DialogueAgentA:
                 if name == "emit_dataset_info_query":
                     return "dataset_info_query", {
                         "mode": (args_obj.get("mode") or ""),
-                        "dataset_name": (args_obj.get("dataset_name") or ""),
+                        "dataset_id": (args_obj.get("dataset_id") or ""),
                         "user_need_text": (args_obj.get("user_need_text") or ""),
                     }, None
 
-            # 2) 旧版 function_call
+            # 2) function_call (旧格式)
             fc = msg.get("function_call") or {}
-            if fc.get("name") in ("emit_user_reply", "emit_task_request", "emit_task_status_query", "emit_dataset_info_query"):
+            if fc.get("name") in (
+                "emit_user_reply",
+                "emit_task_request",
+                "emit_task_status_query",
+                "emit_dataset_info_query",
+            ):
                 args = fc.get("arguments")
                 if isinstance(args, str):
                     try:
@@ -516,6 +561,7 @@ class DialogueAgentA:
                         args_obj = {"_raw": args}
                 else:
                     args_obj = args or {}
+
                 if fc.get("name") == "emit_user_reply":
                     return "user_reply", {"content": (args_obj.get("content") or "")}, None
                 if fc.get("name") == "emit_task_request":
@@ -524,11 +570,11 @@ class DialogueAgentA:
                     return "task_status_query", {"task_uid": (args_obj.get("task_uid") or "")}, None
                 return "dataset_info_query", {
                     "mode": (args_obj.get("mode") or ""),
-                    "dataset_name": (args_obj.get("dataset_name") or ""),
+                    "dataset_id": (args_obj.get("dataset_id") or ""),
                     "user_need_text": (args_obj.get("user_need_text") or ""),
                 }, None
 
-            # 3) 内容兜底（部分网关把 JSON 塞在 content）
+            # 3) 兜底：content 里塞了 JSON
             content = (msg.get("content") or "").strip()
             if content:
                 try:
@@ -543,7 +589,7 @@ class DialogueAgentA:
                         if obj.get("type") == "dataset_info_query" and "mode" in obj:
                             return "dataset_info_query", {
                                 "mode": str(obj.get("mode") or ""),
-                                "dataset_name": str(obj.get("dataset_name") or ""),
+                                "dataset_id": str(obj.get("dataset_id") or ""),
                                 "user_need_text": str(obj.get("user_need_text") or ""),
                             }, None
                 except Exception:
@@ -565,7 +611,8 @@ class DialogueAgentA:
             return "\n".join(lines).strip()
         return txt
 
-    # -------------------- 工具/函数定义（给 LLM） --------------------
+    # -------------------- 工具定义（给 LLM） --------------------
+
     def _tool_emit_user_reply(self) -> Dict[str, Any]:
         return {
             "type": "function",
@@ -593,8 +640,10 @@ class DialogueAgentA:
             "function": {
                 "name": "emit_task_request",
                 "description": (
-                    "当你认为需要创建或推进任务时调用此函数。把完整的自然语言描述放进 description，"
-                    "描述应清楚表达要做什么、关键输入/输出和期望结果。"
+                    "当你认为需要创建或推进任务时调用此函数。"
+                    "把完整的自然语言描述放进 description，描述里要清楚表达要做什么、关键输入/输出和期望结果。"
+                    "如果涉及到数据集，必须在描述里点名具体的数据集ID(整数)，例如“请基于数据集ID=42进行训练”。"
+                    "如果用户还没告诉你数据集ID，不要创建任务，先用 emit_user_reply 问清楚。"
                 ),
                 "parameters": {
                     "type": "object",
@@ -632,16 +681,19 @@ class DialogueAgentA:
             }
         }
 
-    # 新增：数据集信息查询工具定义
     def _tool_emit_dataset_info_query(self) -> Dict[str, Any]:
+        """
+        - mode = "overview": 只需要 mode
+        - mode = "focus":    需要 dataset_id (整数ID，可作为字符串传) 和 user_need_text
+        """
         return {
             "type": "function",
             "function": {
                 "name": "emit_dataset_info_query",
                 "description": (
-                    "当用户想查看数据集信息时调用："
-                    "mode='overview' → 返回全部数据集的总体情况；"
-                    "mode='focus' → 需要 dataset_name 与 user_need_text，读取同名 csv/xlsx 并在私有LLM中总结，返回短文本。"
+                    "当用户想查看数据集信息时调用：\n"
+                    "mode='overview' → 返回该用户可访问的全部数据集总体情况（不需要额外参数）。\n"
+                    "mode='focus' → 针对某个特定数据集，必须提供 dataset_id(整数) 和 user_need_text(本次想了解的问题)。"
                 ),
                 "parameters": {
                     "type": "object",
@@ -653,27 +705,26 @@ class DialogueAgentA:
                             "enum": ["overview", "focus"],
                             "description": "查询模式：overview 或 focus"
                         },
-                        "dataset_name": {
+                        "dataset_id": {
                             "type": "string",
                             "minLength": 1,
-                            "description": "仅在 mode='focus' 时需要：要查看的数据集名（与文件同名）"
+                            "description": "当 mode='focus' 时必须：要查看的数据集唯一ID（整数，字符串形式也可以）"
                         },
                         "user_need_text": {
                             "type": "string",
                             "minLength": 1,
-                            "description": "仅在 mode='focus' 时需要：本次具体需求的自然语言描述"
+                            "description": "当 mode='focus' 时必须：用户此次具体想问什么（自然语言）"
                         }
                     }
                 }
             }
         }
 
-    # -------------------- 构造对 LLM 的 messages --------------------
+    # -------------------- 构造 LLM messages --------------------
 
     async def _build_llm_messages(self, conversation_uid: str) -> List[Dict[str, str]]:
         msgs: List[Dict[str, str]] = [{"role": "system", "content": self.cfg.system_prefix}]
 
-        # 注入一次精简工具目录（只读）
         if self.cfg.include_tool_catalog:
             if self._tool_catalog_cache is None:
                 self._tool_catalog_cache = await self._get_tool_catalog_text()
@@ -686,7 +737,6 @@ class DialogueAgentA:
                     )
                 })
 
-        # 拼接内部信息流历史
         res = await self.cm.get_messages(conversation_uid, target=self.stream_id)
         if res.get("ok"):
             for it in (res.get("messages") or []):
@@ -720,15 +770,13 @@ class DialogueAgentA:
             return None
         return "\n".join(lines)
 
-    # -------------------- 与 CM 的读写 --------------------
+    # -------------------- log / db helpers --------------------
 
     async def _append_main(self, conversation_uid: str, role: str, text: str) -> None:
         await self.cm.add_message_to_main(conversation_uid, role=role, content=text)
 
     async def _append_internal(self, conversation_uid: str, role: str, text: str) -> None:
         await self.cm.add_message_to_stream(conversation_uid, target=self.stream_id, role=role, content=text)
-
-    # -------------------- DB 查询：根据对话ID拿 owner_uid --------------------
 
     async def _get_owner_uid(self, conversation_uid: str) -> Optional[str]:
         return await asyncio.to_thread(self._lookup_owner_uid_sync, conversation_uid)
@@ -750,32 +798,9 @@ class DialogueAgentA:
         except Exception:
             return None
 
-    # -------------------- 兜底摘要：把 get_task_status 返回压成一句人话 --------------------
+    # -------------------- 状态查询兜底文案 --------------------
 
     def _summarize_status_for_user(self, result: Dict[str, Any]) -> str:
-        """
-        适配你提供的 get_task_status 返回结构：
-        {
-          "ok": True/False,
-          "task_uid": "...",
-          "status": "running|succeeded|failed|queued|created|...",
-          "user_uid": "...",
-          "total_steps": int,
-          "last_completed_step": int,
-          "current_step_number": Optional[int],
-          "current_step_uid": Optional[str],
-          "failed_step_number": Optional[int],
-          "failed_step_uid": Optional[str],
-          "running_step": Optional[{
-              "step_uid": "...",
-              "step_number": int,
-              "tool_name": "...",
-              "status": "running",
-              "run_id": "..."
-          }],
-          "progress": Optional[float in [0,1]]
-        }
-        """
         ok = result.get("ok", False)
         task_uid = result.get("task_uid") or "(未知)"
         if not ok:
@@ -813,7 +838,6 @@ class DialogueAgentA:
             else:
                 failed_hint = f"；失败步骤UID：{failed_uid}"
 
-        # 统一的对用户文案
         status_map = {
             "running": "运行中",
             "succeeded": "已完成",
