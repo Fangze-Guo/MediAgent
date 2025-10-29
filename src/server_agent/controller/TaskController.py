@@ -33,6 +33,7 @@ class TaskController(BaseController):
             status: Optional[str] = Query(None, description="任务状态过滤"),
             limit: int = Query(100, ge=1, le=500, description="返回记录数"),
             offset: int = Query(0, ge=0, description="偏移量"),
+            keyword: Optional[str] = Query(None, description="搜索关键词"),
             userVO: UserVO = Depends(self._get_current_user)
         ) -> BaseResponse[List[TaskVO]]:
             """获取当前用户的任务列表"""
@@ -40,7 +41,8 @@ class TaskController(BaseController):
                 userVO.uid, 
                 status=status, 
                 limit=limit, 
-                offset=offset
+                offset=offset,
+                keyword=keyword
             )
             return ResultUtils.success(tasks)
 
@@ -60,6 +62,24 @@ class TaskController(BaseController):
             """获取任务统计信息"""
             stats = await self.taskService.get_task_statistics(userVO.uid)
             return ResultUtils.success(stats)
+
+        @self.router.put("/update-name/{task_uid}")
+        async def updateTaskName(
+            task_uid: str,
+            task_name: str = Query(..., description="新的任务名称"),
+            userVO: UserVO = Depends(self._get_current_user)
+        ) -> BaseResponse[bool]:
+            """更新任务名称"""
+            try:
+                result = await self.taskService.update_task_name(task_uid, task_name, userVO.uid)
+                if result:
+                    return ResultUtils.success(True)
+                else:
+                    return ResultUtils.error(500, "任务名称更新失败")
+            except ValueError as e:
+                return ResultUtils.error(400, str(e))
+            except Exception as e:
+                return ResultUtils.error(500, f"更新任务名称失败: {str(e)}")
 
         @self.router.delete("/delete/{task_uid}")
         async def deleteTask(

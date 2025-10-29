@@ -1,7 +1,7 @@
 /**
  * 任务管理API接口
  */
-import { get, del } from '@/utils/request'
+import { get, del, put } from '@/utils/request'
 
 /**
  * 通用响应接口
@@ -39,6 +39,12 @@ export interface TaskInfo {
   user_uid: number
   /** 请求JSON */
   request_json: string
+  /** 任务名称 */
+  task_name?: string
+  /** 创建时间 */
+  create_time?: string
+  /** 更新时间 */
+  update_time?: string
   /** 进度百分比 */
   progress_percentage: number
   /** 状态文本 */
@@ -68,15 +74,20 @@ export interface TaskStatistics {
  * @param status 任务状态过滤（可选）
  * @param limit 返回记录数
  * @param offset 偏移量
+ * @param keyword 搜索关键词（可选）
  */
 export const getTaskList = async (
   status?: string,
   limit: number = 100,
-  offset: number = 0
+  offset: number = 0,
+  keyword?: string
 ): Promise<BaseResponse<TaskInfo[]>> => {
   const params: any = { limit, offset }
   if (status) {
     params.status = status
+  }
+  if (keyword) {
+    params.keyword = keyword
   }
   const response = await get('/tasks/list', { params })
   return response.data as BaseResponse<TaskInfo[]>
@@ -97,6 +108,16 @@ export const getTaskDetail = async (taskUid: string): Promise<BaseResponse<TaskI
 export const getTaskStatistics = async (): Promise<BaseResponse<TaskStatistics>> => {
   const response = await get('/tasks/statistics')
   return response.data as BaseResponse<TaskStatistics>
+}
+
+/**
+ * 更新任务名称
+ * @param taskUid 任务ID
+ * @param taskName 新的任务名称
+ */
+export const updateTaskName = async (taskUid: string, taskName: string): Promise<BaseResponse<boolean>> => {
+  const response = await put(`/tasks/update-name/${taskUid}`, null, { params: { task_name: taskName } })
+  return response.data as BaseResponse<boolean>
 }
 
 export const deleteTask = async (taskUid: string): Promise<BaseResponse<boolean>> => {

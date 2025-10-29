@@ -14,6 +14,9 @@ class TaskVO(BaseModel):
     failed_step_uid: Optional[str] = None
     user_uid: int
     request_json: str
+    task_name: Optional[str] = None
+    create_time: Optional[str] = None
+    update_time: Optional[str] = None
     
     # 计算属性
     progress_percentage: float = 0.0  # 进度百分比
@@ -50,6 +53,9 @@ class TaskVO(BaseModel):
             failed_step_uid=task_info.failed_step_uid,
             user_uid=task_info.user_uid,
             request_json=task_info.request_json,
+            task_name=task_info.task_name,
+            create_time=task_info.create_time,
+            update_time=task_info.update_time,
             progress_percentage=round(progress, 2),
             status_text=status_info["text"],
             status_color=status_info["color"]

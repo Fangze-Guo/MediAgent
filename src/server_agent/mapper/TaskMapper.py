@@ -27,6 +27,9 @@ class Task:
     request_json: str = ""
     user_uid: Optional[int] = None
     failed_step_uid: Optional[str] = None
+    task_name: Optional[str] = None
+    create_time: Optional[str] = None
+    update_time: Optional[str] = None
 
 
 class TaskMapper(BaseMapper):
@@ -50,7 +53,8 @@ class TaskMapper(BaseMapper):
         query = """
                 SELECT task_uid, total_steps, status, current_step_number, 
                        current_step_uid, last_completed_step, failed_step_number,
-                       request_json, user_uid, failed_step_uid
+                       request_json, user_uid, failed_step_uid, task_name, 
+                       create_time, update_time
                 FROM tasks
                 WHERE task_uid = ?
                 LIMIT 1
@@ -68,7 +72,10 @@ class TaskMapper(BaseMapper):
                 failed_step_number=result['failed_step_number'],
                 request_json=result['request_json'],
                 user_uid=result['user_uid'],
-                failed_step_uid=result['failed_step_uid']
+                failed_step_uid=result['failed_step_uid'],
+                task_name=result['task_name'] if 'task_name' in result.keys() else None,
+                create_time=result['create_time'] if 'create_time' in result.keys() else None,
+                update_time=result['update_time'] if 'update_time' in result.keys() else None
             )
         return None
 
@@ -87,10 +94,11 @@ class TaskMapper(BaseMapper):
         query = """
                 SELECT task_uid, total_steps, status, current_step_number, 
                        current_step_uid, last_completed_step, failed_step_number,
-                       request_json, user_uid, failed_step_uid
+                       request_json, user_uid, failed_step_uid, task_name, 
+                       create_time, update_time
                 FROM tasks
                 WHERE user_uid = ?
-                ORDER BY task_uid DESC
+                ORDER BY create_time DESC
                 LIMIT ? OFFSET ?
                 """
         results = await self.execute_query(query, (user_uid, limit, offset), fetch_all=True)
@@ -107,7 +115,10 @@ class TaskMapper(BaseMapper):
                 failed_step_number=result['failed_step_number'],
                 request_json=result['request_json'],
                 user_uid=result['user_uid'],
-                failed_step_uid=result['failed_step_uid']
+                failed_step_uid=result['failed_step_uid'],
+                task_name=result['task_name'] if 'task_name' in result.keys() else None,
+                create_time=result['create_time'] if 'create_time' in result.keys() else None,
+                update_time=result['update_time'] if 'update_time' in result.keys() else None
             ))
         
         return tasks
@@ -141,10 +152,11 @@ class TaskMapper(BaseMapper):
         query = """
                 SELECT task_uid, total_steps, status, current_step_number, 
                        current_step_uid, last_completed_step, failed_step_number,
-                       request_json, user_uid, failed_step_uid
+                       request_json, user_uid, failed_step_uid, task_name, 
+                       create_time, update_time
                 FROM tasks
                 WHERE user_uid = ? AND status = ?
-                ORDER BY task_uid DESC
+                ORDER BY create_time DESC
                 LIMIT ?
                 """
         results = await self.execute_query(query, (user_uid, status, limit), fetch_all=True)
@@ -161,10 +173,108 @@ class TaskMapper(BaseMapper):
                 failed_step_number=result['failed_step_number'],
                 request_json=result['request_json'],
                 user_uid=result['user_uid'],
-                failed_step_uid=result['failed_step_uid']
+                failed_step_uid=result['failed_step_uid'],
+                task_name=result['task_name'] if 'task_name' in result.keys() else None,
+                create_time=result['create_time'] if 'create_time' in result.keys() else None,
+                update_time=result['update_time'] if 'update_time' in result.keys() else None
             ))
         
         return tasks
+
+    async def search_tasks(
+        self, 
+        user_uid: int, 
+        keyword: str, 
+        status: Optional[str] = None, 
+        limit: int = 100, 
+        offset: int = 0
+    ) -> List[Task]:
+        """
+        根据关键词搜索任务（在task_name中搜索）
+        
+        Args:
+            user_uid: 用户UID
+            keyword: 搜索关键词
+            status: 任务状态过滤（可选）
+            limit: 返回记录数限制
+            offset: 偏移量
+            
+        Returns:
+            Task 对象列表
+        """
+        # 构建基础查询，在 task_name 中搜索
+        query = """
+                SELECT task_uid, total_steps, status, current_step_number, 
+                       current_step_uid, last_completed_step, failed_step_number,
+                       request_json, user_uid, failed_step_uid, task_name, 
+                       create_time, update_time
+                FROM tasks
+                WHERE user_uid = ? AND (task_name LIKE ? OR task_uid LIKE ?)
+                """
+        
+        params = [user_uid, f'%{keyword}%', f'%{keyword}%']
+        
+        # 如果有状态过滤，添加状态条件
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+        
+        query += " ORDER BY create_time DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+        
+        results = await self.execute_query(query, tuple(params), fetch_all=True)
+
+        tasks = []
+        for result in results:
+            tasks.append(Task(
+                task_uid=result['task_uid'],
+                total_steps=result['total_steps'],
+                status=result['status'],
+                current_step_number=result['current_step_number'],
+                current_step_uid=result['current_step_uid'],
+                last_completed_step=result['last_completed_step'],
+                failed_step_number=result['failed_step_number'],
+                request_json=result['request_json'],
+                user_uid=result['user_uid'],
+                failed_step_uid=result['failed_step_uid'],
+                task_name=result['task_name'] if 'task_name' in result.keys() else None,
+                create_time=result['create_time'] if 'create_time' in result.keys() else None,
+                update_time=result['update_time'] if 'update_time' in result.keys() else None
+            ))
+        
+        return tasks
+
+    async def update_task_name(self, task_uid: str, task_name: str) -> bool:
+        """
+        更新任务名称
+        
+        Args:
+            task_uid: 任务UID
+            task_name: 新的任务名称
+            
+        Returns:
+            是否更新成功
+        """
+        try:
+            query = """
+                    UPDATE tasks 
+                    SET task_name = ?, update_time = datetime('now', 'localtime')
+                    WHERE task_uid = ?
+                    """
+            operations = [
+                {
+                    'query': query,
+                    'params': (task_name, task_uid)
+                }
+            ]
+            result = await self.execute_transaction(operations)
+            
+            if result:
+                logger.info(f"Successfully updated task name: {task_uid} -> {task_name}")
+            return result
+        except Exception as e:
+            logger.error(f"Failed to update task name {task_uid}: {e}")
+            return False
 
     async def delete_task(self, task_uid: str) -> bool:
         """

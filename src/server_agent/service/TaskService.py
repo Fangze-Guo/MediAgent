@@ -4,7 +4,7 @@
 import logging
 from typing import List, Optional
 
-from src.server_agent.mapper.TaskMapper import TaskMapper, Task
+from src.server_agent.mapper.TaskMapper import TaskMapper
 from src.server_agent.model.vo.TaskVO import TaskVO
 from src.server_agent.exceptions import NotFoundError
 
@@ -47,7 +47,8 @@ class TaskService:
         user_uid: int, 
         status: Optional[str] = None,
         limit: int = 100,
-        offset: int = 0
+        offset: int = 0,
+        keyword: Optional[str] = None
     ) -> List[TaskVO]:
         """
         获取用户的所有任务
@@ -57,11 +58,15 @@ class TaskService:
             status: 任务状态过滤（可选）
             limit: 返回记录数限制
             offset: 偏移量
+            keyword: 搜索关键词（可选）
             
         Returns:
             TaskVO 对象列表
         """
-        if status:
+        # 如果有搜索关键词，使用搜索查询
+        if keyword:
+            tasks = await self.taskMapper.search_tasks(user_uid, keyword, status, limit, offset)
+        elif status:
             tasks = await self.taskMapper.find_tasks_by_status(user_uid, status, limit)
         else:
             tasks = await self.taskMapper.find_tasks_by_user(user_uid, limit, offset)
@@ -105,6 +110,34 @@ class TaskService:
             "succeeded": len(succeeded_tasks),
             "failed": len(failed_tasks)
         }
+
+    async def update_task_name(self, task_uid: str, task_name: str, user_uid: int) -> bool:
+        """
+        更新任务名称（需要权限验证）
+        
+        Args:
+            task_uid: 任务UID
+            task_name: 新的任务名称
+            user_uid: 用户UID（用于权限验证）
+            
+        Returns:
+            是否更新成功
+            
+        Raises:
+            NotFoundError: 任务不存在或无权更新
+        """
+        # 先查询任务确认存在并验证权限
+        task = await self.taskMapper.find_task_by_uid(task_uid)
+        
+        if not task:
+            raise NotFoundError(detail=f"任务 {task_uid} 不存在")
+        
+        # 验证任务是否属于当前用户
+        if task.user_uid != user_uid:
+            raise NotFoundError(detail="无权更新此任务")
+        
+        # 执行更新
+        return await self.taskMapper.update_task_name(task_uid, task_name)
 
     async def delete_task(self, task_uid: str, user_uid: int) -> bool:
         """

@@ -1,66 +1,5 @@
 <template>
   <div class="task-manage-container">
-    <!-- 统计卡片区域 -->
-    <div class="statistics-section">
-      <a-row :gutter="16">
-        <a-col :xs="12" :sm="12" :md="8" :lg="8" :xl="4">
-          <div class="stat-card stat-card-total">
-            <div class="stat-icon">
-              <UnorderedListOutlined />
-            </div>
-            <div class="stat-content">
-              <div class="stat-title">总任务</div>
-              <div class="stat-value">{{ statistics.total }}</div>
-            </div>
-          </div>
-        </a-col>
-        <a-col :xs="12" :sm="12" :md="8" :lg="8" :xl="4">
-          <div class="stat-card stat-card-queued">
-            <div class="stat-icon">
-              <HourglassOutlined />
-            </div>
-            <div class="stat-content">
-              <div class="stat-title">排队中</div>
-              <div class="stat-value">{{ statistics.queued }}</div>
-            </div>
-          </div>
-        </a-col>
-        <a-col :xs="12" :sm="12" :md="8" :lg="8" :xl="4">
-          <div class="stat-card stat-card-running">
-            <div class="stat-icon">
-              <SyncOutlined />
-            </div>
-            <div class="stat-content">
-              <div class="stat-title">执行中</div>
-              <div class="stat-value">{{ statistics.running }}</div>
-            </div>
-          </div>
-        </a-col>
-        <a-col :xs="12" :sm="12" :md="12" :lg="12" :xl="4">
-          <div class="stat-card stat-card-succeeded">
-            <div class="stat-icon">
-              <CheckCircleOutlined />
-            </div>
-            <div class="stat-content">
-              <div class="stat-title">已完成</div>
-              <div class="stat-value">{{ statistics.succeeded }}</div>
-            </div>
-          </div>
-        </a-col>
-        <a-col :xs="12" :sm="12" :md="12" :lg="12" :xl="4">
-          <div class="stat-card stat-card-failed">
-            <div class="stat-icon">
-              <ExclamationCircleOutlined />
-            </div>
-            <div class="stat-content">
-              <div class="stat-title">已失败</div>
-              <div class="stat-value">{{ statistics.failed }}</div>
-            </div>
-          </div>
-        </a-col>
-      </a-row>
-    </div>
-
     <!-- 任务列表区域 -->
     <div class="task-list-section">
       <div class="section-header">
@@ -69,6 +8,13 @@
           任务列表
         </h2>
         <div class="section-actions">
+          <a-input-search
+            v-model:value="searchKeyword"
+            placeholder="搜索任务名称"
+            style="width: 240px"
+            @search="handleSearch"
+            allow-clear
+          />
           <a-radio-group v-model:value="statusFilter" button-style="solid" @change="handleFilterChange">
             <a-radio-button value="">全部</a-radio-button>
             <a-radio-button value="queued">排队中</a-radio-button>
@@ -83,94 +29,120 @@
         </div>
       </div>
 
-      <!-- 加载状态 -->
-      <div v-if="loading && tasks.length === 0" class="loading-container">
-        <a-spin size="large" />
-        <p>加载中...</p>
-      </div>
+      <!-- 任务表格 -->
+      <a-table
+        :columns="columns"
+        :data-source="tasks"
+        :loading="loading"
+        :pagination="{
+          current: currentPage,
+          pageSize: pageSize,
+          total: total,
+          showSizeChanger: true,
+          showTotal: (totalCount: number) => `共 ${totalCount} 条任务`,
+          onChange: handlePageChange,
+          onShowSizeChange: handlePageChange
+        }"
+        :row-key="(record: TaskInfo) => record.task_uid"
+        :locale="{ emptyText: '暂无任务' }"
+        class="task-table"
+      >
+        <!-- ID列 -->
+        <template #bodyCell="{ column, record, index }">
+          <template v-if="column.key === 'id'">
+            <span class="task-id-cell">{{ (currentPage - 1) * pageSize + index + 1 }}</span>
+          </template>
 
-      <!-- 空状态 -->
-      <a-empty v-else-if="!loading && tasks.length === 0" description="暂无任务">
-        <template #image>
-          <InboxOutlined style="font-size: 64px; color: #d9d9d9" />
-        </template>
-      </a-empty>
-
-      <!-- 任务列表 -->
-      <div v-else class="task-list">
-        <div
-          v-for="task in tasks"
-          :key="task.task_uid"
-          class="task-item"
-          :class="`task-status-${task.status}`"
-        >
-          <div class="task-header">
-            <div class="task-id">
-              <FileTextOutlined />
-              <span class="task-uid">{{ task.task_uid }}</span>
-            </div>
-            <div class="task-actions">
-              <a-tag :color="task.status_color" class="task-status-tag">
-                {{ task.status_text }}
-              </a-tag>
+          <!-- 任务名称列 -->
+          <template v-else-if="column.key === 'name'">
+            <div class="task-name-cell">
+              <FileTextOutlined style="margin-right: 8px; color: #1890ff;" />
+              <span>{{ record.task_name || record.task_uid }}</span>
               <a-button 
                 type="link" 
-                danger 
-                size="small" 
-                @click.stop="confirmDeleteTask(task)"
-                :disabled="task.status === 'running'"
-                style="padding: 0 4px;"
+                size="small"
+                @click.stop="showEditNameModal(record)"
+                class="edit-name-btn"
+              >
+                <template #icon><EditOutlined /></template>
+              </a-button>
+            </div>
+          </template>
+
+          <!-- 任务代码列 -->
+          <template v-else-if="column.key === 'code'">
+            <a-typography-text copyable :content="record.task_uid" class="task-code-cell">
+              {{ record.task_uid }}
+            </a-typography-text>
+          </template>
+
+          <!-- 任务类型列 -->
+          <template v-else-if="column.key === 'type'">
+            <a-tag color="blue">{{ getTaskType(record) }}</a-tag>
+          </template>
+
+          <!-- 任务状态列 -->
+          <template v-else-if="column.key === 'status'">
+            <a-tag :color="record.status_color">
+              {{ record.status_text }}
+            </a-tag>
+          </template>
+
+          <!-- 创建时间列 -->
+          <template v-else-if="column.key === 'createTime'">
+            <span class="time-cell">{{ record.create_time || '-' }}</span>
+          </template>
+
+          <!-- 更新时间列 -->
+          <template v-else-if="column.key === 'updateTime'">
+            <span class="time-cell">{{ record.update_time || '-' }}</span>
+          </template>
+
+          <!-- 操作列 -->
+          <template v-else-if="column.key === 'action'">
+            <div class="action-buttons">
+              <a-button 
+                type="link" 
+                size="small"
+                @click="showTaskDetail(record)"
+                class="action-btn"
+              >
+                详情
+              </a-button>
+              <a-button 
+                type="link" 
+                danger
+                size="small"
+                @click="confirmDeleteTask(record)"
+                :disabled="record.status === 'running'"
+                class="action-btn"
               >
                 删除
               </a-button>
             </div>
-          </div>
-
-          <div class="task-progress">
-            <div class="progress-info">
-              <span class="progress-text">
-                进度: {{ task.last_completed_step || 0 }} / {{ task.total_steps }}
-              </span>
-              <span class="progress-percentage">{{ task.progress_percentage }}%</span>
-            </div>
-            <a-progress
-              :percent="task.progress_percentage"
-              :show-info="false"
-              :status="getProgressStatus(task.status)"
-              :stroke-color="getProgressColor(task.status)"
-            />
-          </div>
-
-          <div class="task-footer">
-            <div class="task-steps">
-              <div v-if="task.current_step_number" class="step-info">
-                <ClockCircleOutlined />
-                当前步骤: {{ task.current_step_number }}
-              </div>
-              <div v-if="task.failed_step_number" class="step-info error">
-                <CloseCircleOutlined />
-                失败步骤: {{ task.failed_step_number }}
-              </div>
-            </div>
-            <a-button type="link" size="small" @click.stop="showTaskDetail(task)">
-              查看详情
-            </a-button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 分页 -->
-      <div v-if="tasks.length > 0" class="pagination-container">
-        <a-pagination
-          v-model:current="currentPage"
-          v-model:page-size="pageSize"
-          :total="total"
-          :show-size-changer="true"
-          :show-total="(totalCount: number) => `共 ${totalCount} 条任务`"
-          @change="handlePageChange"
-        />
-      </div>
+          </template>
+        </template>
+      </a-table>
     </div>
+
+    <!-- 编辑任务名称模态框 -->
+    <a-modal
+      v-model:open="editNameVisible"
+      title="编辑任务名称"
+      @ok="handleUpdateTaskName"
+      @cancel="editNameVisible = false"
+    >
+      <a-form layout="vertical">
+        <a-form-item label="任务名称">
+          <a-input 
+            v-model:value="editingTaskName" 
+            placeholder="请输入任务名称"
+            :maxlength="100"
+            allow-clear
+          />
+        </a-form-item>
+      </a-form>
+    </a-modal>
 
     <!-- 任务详情模态框 -->
     <a-modal
@@ -305,26 +277,71 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, onUnmounted } from 'vue'
-import { message, Modal } from 'ant-design-vue'
+import { deleteTask, getTaskDetail, getTaskList, getTaskStatistics, updateTaskName, type TaskInfo, type TaskStatistics } from '@/apis/tasks'
 import {
-  UnorderedListOutlined,
-  ReloadOutlined,
-  InboxOutlined,
-  FileTextOutlined,
   ClockCircleOutlined,
-  CloseCircleOutlined,
-  CheckCircleOutlined,
-  SyncOutlined,
-  ExclamationCircleOutlined,
-  HourglassOutlined,
-  DeleteOutlined
+  DeleteOutlined,
+  EditOutlined,
+  FileTextOutlined,
+  ReloadOutlined,
+  UnorderedListOutlined
 } from '@ant-design/icons-vue'
-import { getTaskList, getTaskStatistics, getTaskDetail, deleteTask, type TaskInfo, type TaskStatistics } from '@/apis/tasks'
+import { message, Modal } from 'ant-design-vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
+
+// 表格列定义
+const columns = [
+  {
+    title: 'ID',
+    key: 'id',
+    width: 80,
+    align: 'center'
+  },
+  {
+    title: '任务名称',
+    key: 'name',
+    width: 200,
+  },
+  {
+    title: '任务代码',
+    key: 'code',
+    width: 180,
+  },
+  {
+    title: '任务类型',
+    key: 'type',
+    width: 120,
+    align: 'center'
+  },
+  {
+    title: '任务状态',
+    key: 'status',
+    width: 120,
+    align: 'center'
+  },
+  {
+    title: '创建时间',
+    key: 'createTime',
+    width: 180,
+  },
+  {
+    title: '更新时间',
+    key: 'updateTime',
+    width: 180,
+  },
+  {
+    title: '操作',
+    key: 'action',
+    width: 150,
+    align: 'center',
+    fixed: 'right'
+  }
+]
 
 // 响应式数据
 const loading = ref(false)
 const tasks = ref<TaskInfo[]>([])
+const searchKeyword = ref('')
 const statistics = ref<TaskStatistics>({
   total: 0,
   queued: 0,
@@ -343,6 +360,64 @@ const detailLoading = ref(false)
 const autoRefreshEnabled = ref(false)
 const refreshTimer = ref<number | null>(null)
 const listRefreshTimer = ref<number | null>(null)
+const editNameVisible = ref(false)
+const editingTaskName = ref('')
+const editingTask = ref<TaskInfo | null>(null)
+
+// 处理搜索触发（用户点击搜索按钮/按回车时调用）
+const handleSearch = () => {
+  // 搜索时重置到第一页，避免“搜索后停留在原页码导致无结果”
+  currentPage.value = 1
+  // 调用加载任务列表方法，此时会携带搜索关键词
+  loadTasks()
+}
+
+// 辅助函数：获取任务类型
+const getTaskType = (task: TaskInfo): string => {
+  try {
+    const request = JSON.parse(task.request_json)
+    if (request.steps && request.steps.length > 0) {
+      const tools = request.steps.map((s: any) => s.tool_name).filter(Boolean)
+      if (tools.length > 0) {
+        return '机器学习'
+      }
+    }
+  } catch (e) {
+    // 解析失败
+  }
+  return '机器学习'
+}
+
+// 显示编辑任务名称模态框
+const showEditNameModal = (task: TaskInfo) => {
+  editingTask.value = task
+  editingTaskName.value = task.task_name || task.task_uid
+  editNameVisible.value = true
+}
+
+// 处理更新任务名称
+const handleUpdateTaskName = async () => {
+  if (!editingTask.value || !editingTaskName.value.trim()) {
+    message.warning('请输入任务名称')
+    return
+  }
+
+  try {
+    const response = await updateTaskName(editingTask.value.task_uid, editingTaskName.value.trim())
+    
+    if (response.code === 200) {
+      message.success('任务名称更新成功')
+      editNameVisible.value = false
+      // 刷新任务列表
+      await loadTasks()
+    } else {
+      message.error(response.message || '更新任务名称失败')
+    }
+  } catch (error) {
+    console.error('更新任务名称失败:', error)
+    message.error(`更新任务名称失败: ${error instanceof Error ? error.message : String(error)}`)
+  }
+}
 
 // 加载任务列表
 const loadTasks = async () => {
@@ -350,9 +425,20 @@ const loadTasks = async () => {
     loading.value = true
     const offset = (currentPage.value - 1) * pageSize.value
     
-    console.log('正在加载任务列表...', { status: statusFilter.value, limit: pageSize.value, offset })
+    console.log('正在加载任务列表...', 
+      { status: statusFilter.value, 
+        keyword: searchKeyword.value, 
+        limit: pageSize.value, 
+        offset 
+      }
+    )
     
-    const response = await getTaskList(statusFilter.value || undefined, pageSize.value, offset)
+    const response = await getTaskList(
+      statusFilter.value || undefined,
+       pageSize.value, 
+       offset, 
+       searchKeyword.value || undefined
+    )
     
     console.log('任务列表响应:', response)
     
@@ -774,126 +860,78 @@ onUnmounted(() => {
   color: #666;
 }
 
-/* 任务列表 */
-.task-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+/* 任务表格样式 */
+.task-table {
+  margin-top: 16px;
 }
 
-.task-item {
-  padding: 20px;
-  border: 1px solid #f0f0f0;
-  border-radius: 8px;
-  background: #fafafa;
-  transition: all 0.3s ease;
-  cursor: pointer;
-}
-
-.task-item:hover {
-  border-color: #1890ff;
-  box-shadow: 0 2px 12px rgba(24, 144, 255, 0.15);
+.task-table :deep(.ant-table) {
   background: white;
+  border-radius: 8px;
 }
 
-.task-status-running {
-  border-left: 4px solid #1890ff;
+.task-table :deep(.ant-table-thead > tr > th) {
+  background: #fafafa;
+  font-weight: 600;
+  color: #333;
+  border-bottom: 2px solid #f0f0f0;
 }
 
-.task-status-succeeded {
-  border-left: 4px solid #52c41a;
+.task-table :deep(.ant-table-tbody > tr) {
+  transition: all 0.3s ease;
 }
 
-.task-status-failed {
-  border-left: 4px solid #ff4d4f;
+.task-table :deep(.ant-table-tbody > tr:hover) {
+  background: #f5f9ff;
 }
 
-.task-status-queued {
-  border-left: 4px solid #faad14;
+.task-table :deep(.ant-table-tbody > tr > td) {
+  border-bottom: 1px solid #f0f0f0;
 }
 
-.task-header {
+/* 单元格样式 */
+.task-id-cell {
+  font-weight: 500;
+  color: #666;
+}
+
+.task-name-cell {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.task-id {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 16px;
   font-weight: 500;
   color: #333;
 }
 
-.task-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.edit-name-btn {
+  margin-left: 8px;
+  padding: 0 4px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
 }
 
-.task-uid {
-  font-family: monospace;
+.task-name-cell:hover .edit-name-btn {
+  opacity: 1;
 }
 
-.task-status-tag {
-  font-size: 12px;
-}
-
-.task-progress {
-  margin-bottom: 16px;
-}
-
-.progress-info {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 8px;
-  font-size: 12px;
+.task-code-cell {
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
   color: #666;
 }
 
-.progress-text {
-  font-weight: 500;
-}
-
-.progress-percentage {
-  font-weight: bold;
-  color: #333;
-}
-
-.task-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.task-steps {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.step-info {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
+.time-cell {
+  font-size: 13px;
   color: #666;
 }
 
-.step-info.error {
-  color: #ff4d4f;
-}
-
-/* 分页 */
-.pagination-container {
+.action-buttons {
   display: flex;
   justify-content: center;
-  margin-top: 24px;
-  padding-top: 24px;
-  border-top: 1px solid #f0f0f0;
+  gap: 8px;
+}
+
+.action-btn {
+  padding: 0 8px;
 }
 
 /* 任务详情 */
