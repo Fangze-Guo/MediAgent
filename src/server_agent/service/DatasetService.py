@@ -264,7 +264,7 @@ class DatasetService:
 
     @handle_service_exception
     async def upload_files_to_dataset(
-        self, dataset_id: int, files: List[UploadFile], user_id: int, role: str = "user"
+        self, dataset_id: int, files: List[UploadFile], user_id: int, role: str = "user", file_paths: List[str] = None
     ) -> dict:
         """
         上传文件到数据集
@@ -274,14 +274,19 @@ class DatasetService:
             files: 文件列表
             user_id: 用户ID
             role: 用户角色
+            file_paths: 文件路径列表（包含目录结构）
 
         Returns:
             上传结果
         """
         # 调试日志
         logger.info(f"收到上传请求 - 数据集ID: {dataset_id}, 文件数量: {len(files)}")
-        for i, file in enumerate(files):
-            logger.info(f"文件 {i+1}: {file.filename}, 大小: {file.size}")
+        if file_paths:
+            logger.info(f"接收到文件路径信息: {len(file_paths)} 个路径")
+            for i, path in enumerate(file_paths[:5]):
+                logger.info(f"  路径 {i+1}: {path}")
+        else:
+            logger.warning("未接收到文件路径信息，将使用原文件名")
         
         # 获取数据集
         dataset = await self.dataset_mapper.get_dataset_by_id(dataset_id)
@@ -301,14 +306,10 @@ class DatasetService:
         # 构建目标路径 - 新路径格式
         target_dir = f"private/{dataset.user_id}/dataset/{dataset.dataset_name}"
 
-        # 上传文件
+        # 上传文件（传递路径信息）
         uploaded_files = await self.file_service.uploadMultipleFilesToData(
-            files, target_dir, user_id, role
+            files, target_dir, user_id, role, file_paths
         )
-
-        # 更新案例数量（假设每个文件是一个案例）
-        new_case_count = dataset.case_count + len(uploaded_files)
-        await self.dataset_mapper.update_case_count(dataset_id, new_case_count)
         
         # 更新 has_data 和 data_path
         update_data = {
@@ -319,7 +320,6 @@ class DatasetService:
 
         return {
             "uploaded_count": len(uploaded_files),
-            "total_case_count": new_case_count,
             "files": uploaded_files,
         }
 

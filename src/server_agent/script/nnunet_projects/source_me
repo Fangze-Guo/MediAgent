@@ -1,3 +1,0 @@
-export nnUNet_raw_data_base="/workspace/nnunet_projects/nnUNet_raw"
-export nnUNet_preprocessed="/workspace/nnunet_projects/nnUNet_preprocessed"
-export RESULTS_FOLDER="/workspace/nnunet_projects/nnUNet_trained_models"

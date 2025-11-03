@@ -885,43 +885,129 @@
                   选择文件夹
                 </button>
               </p>
-              <p class="upload-hint">支持批量上传、文件夹拖拽和递归上传</p>
+              <p class="upload-hint">
+                支持拖拽多个文件夹同时上传，或多次点击"选择文件夹"添加。文件将按文件夹分组显示，保持原有目录结构。
+              </p>
             </div>
 
-            <!-- 待上传文件列表 -->
+            <!-- 待上传文件列表 - 按文件夹分组显示 -->
             <div class="file-list" v-if="uploadFiles.length > 0">
-              <h4>待上传文件 ({{ uploadFiles.length }})</h4>
-              <div
-                class="file-item"
-                v-for="(file, index) in uploadFiles"
-                :key="index"
-              >
-                <span class="file-name">{{ file.name }}</span>
-                <span class="file-size">{{ formatFileSize(file.size) }}</span>
-                <button class="btn-icon btn-danger" @click="removeFile(index)">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
+              <div class="file-list-header">
+                <h4>待上传文件 ({{ uploadFiles.length }} 个文件, {{ Object.keys(groupedFiles).length }} 个文件夹)</h4>
+                <div class="file-list-actions">
+                  <button class="btn-secondary" @click="clearAllFiles" :disabled="uploading">
+                    清空列表
+                  </button>
+                  <button
+                    class="btn-primary"
+                    @click="uploadAllFiles"
+                    :disabled="uploading"
                   >
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                  </svg>
-                </button>
+                    {{ uploading ? "上传中..." : "开始上传" }}
+                  </button>
+                </div>
               </div>
-              <button
-                class="btn-primary upload-btn"
-                @click="uploadAllFiles"
-                :disabled="uploading"
-              >
-                {{ uploading ? "上传中..." : "开始上传" }}
-              </button>
+              
+              <!-- 按文件夹分组显示 -->
+              <div class="folder-groups">
+                <div 
+                  class="folder-group"
+                  v-for="(files, folderName) in groupedFiles"
+                  :key="folderName"
+                >
+                  <div class="folder-header" @click="toggleFolder(folderName)">
+                    <div class="folder-info">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        class="folder-icon"
+                      >
+                        <path v-if="expandedFolders[folderName]" d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                        <path v-else d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                      </svg>
+                      <span class="folder-name">{{ folderName || '根目录' }}</span>
+                      <span class="folder-count">({{ files.length }} 个文件)</span>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        class="expand-icon"
+                        :class="{ expanded: expandedFolders[folderName] }"
+                      >
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                      </svg>
+                    </div>
+                    <button 
+                      class="btn-icon btn-danger" 
+                      @click.stop="removeFolder(folderName)"
+                      title="删除整个文件夹"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                      </svg>
+                    </button>
+                  </div>
+                  
+                  <!-- 文件列表（可折叠） -->
+                  <div class="folder-files" v-show="expandedFolders[folderName]">
+                    <div class="folder-files-container">
+                      <div
+                        class="file-item"
+                        v-for="(file, index) in files"
+                        :key="index"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          class="file-icon"
+                        >
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                          <polyline points="14 2 14 8 20 8"></polyline>
+                        </svg>
+                        <span class="file-name" :title="file.relativePath">{{ getFileName(file.relativePath) }}</span>
+                        <span class="file-size">{{ formatFileSize(file.file.size) }}</span>
+                        <button class="btn-icon btn-danger" @click="removeFileFromFolder(folderName, index)">
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                          >
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <!-- CSV 描述文件上传 -->
@@ -1220,7 +1306,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, computed } from "vue";
 import {
   getDatasetList,
   createDataset,
@@ -1249,6 +1335,7 @@ const uploadFiles = ref<File[]>([]);
 const uploading = ref(false);
 const fileInput = ref<HTMLInputElement>();
 const fileInputSingle = ref<HTMLInputElement>();
+const expandedFolders = ref<Record<string, boolean>>({});  // 控制文件夹展开/折叠
 
 // CSV 描述文件上传相关状态
 const csvFile = ref<File | null>(null);
@@ -1273,6 +1360,37 @@ const formData = ref<CreateDatasetRequest>({
   genomics_data_desc: "",
   annotation_desc: "",
   notes: "",
+});
+
+// 计算属性：按文件夹分组文件
+const groupedFiles = computed(() => {
+  const groups: Record<string, Array<{ file: File; relativePath: string }>> = {};
+  
+  uploadFiles.value.forEach((file) => {
+    const relativePath = (file as any).webkitRelativePath || file.name;
+    const parts = relativePath.split('/');
+    
+    // 获取顶级文件夹名（如果有路径的话）
+    const folderName = parts.length > 1 ? parts[0] : '';
+    
+    if (!groups[folderName]) {
+      groups[folderName] = [];
+      // 默认展开新添加的文件夹
+      expandedFolders.value[folderName] = true;
+    }
+    
+    groups[folderName].push({
+      file,
+      relativePath
+    });
+  });
+  
+  // 输出分组摘要
+  if (uploadFiles.value.length > 0) {
+    console.log(`📁 文件分组: ${Object.keys(groups).length} 个文件夹, ${uploadFiles.value.length} 个文件`);
+  }
+  
+  return groups;
 });
 
 // 加载数据集列表
@@ -1473,34 +1591,107 @@ const handleFileSelect = (event: Event) => {
   const target = event.target as HTMLInputElement;
   if (target.files) {
     uploadFiles.value = [...uploadFiles.value, ...Array.from(target.files)];
+    // 重置input的值，允许重复选择相同的文件夹
+    target.value = '';
   }
 };
 
-// 递归读取文件夹中的所有文件
-const readDirectory = async (entry: any): Promise<File[]> => {
+// 递归读取文件夹中的所有文件（带路径信息）
+const readDirectoryRecursive = async (entry: any, basePath: string): Promise<File[]> => {
   const files: File[] = [];
 
   if (entry.isFile) {
-    // 如果是文件，直接获取
+    // 如果是文件，直接获取并附加路径信息
     const file = await new Promise<File>((resolve) => {
       entry.file((file: File) => resolve(file));
     });
+    
+    // 使用 try-catch 确保属性设置成功
+    const relativePath = `${basePath}/${file.name}`;
+    try {
+      Object.defineProperty(file, 'webkitRelativePath', {
+        writable: true,
+        configurable: true,
+        value: relativePath
+      });
+    } catch (e) {
+      console.warn(`无法设置 webkitRelativePath: ${file.name}`, e);
+      // 如果无法设置属性，尝试使用扩展对象
+      (file as any).webkitRelativePath = relativePath;
+    }
+    
     files.push(file);
   } else if (entry.isDirectory) {
     // 如果是文件夹，递归读取
     const dirReader = entry.createReader();
-    const entries = await new Promise<any[]>((resolve) => {
-      dirReader.readEntries((entries: any[]) => resolve(entries));
-    });
+    const newPath = `${basePath}/${entry.name}`;
+    
+    // readEntries 每次最多返回100个条目，需要循环调用直到返回空数组
+    let entries: any[] = [];
+    let batch: any[] = [];
+    
+    do {
+      batch = await new Promise<any[]>((resolve) => {
+        dirReader.readEntries((results: any[]) => resolve(results));
+      });
+      entries = entries.concat(batch);
+    } while (batch.length > 0);
 
     // 递归处理每个条目
     for (const childEntry of entries) {
-      const childFiles = await readDirectory(childEntry);
+      const childFiles = await readDirectoryRecursive(childEntry, newPath);
       files.push(...childFiles);
     }
   }
 
   return files;
+};
+
+// 读取入口（文件或文件夹）
+const readEntry = async (entry: any): Promise<File[]> => {
+  if (entry.isFile) {
+    // 单个文件：路径就是文件名
+    const file = await new Promise<File>((resolve) => {
+      entry.file((file: File) => resolve(file));
+    });
+    
+    try {
+      Object.defineProperty(file, 'webkitRelativePath', {
+        writable: true,
+        configurable: true,
+        value: file.name
+      });
+    } catch (e) {
+      (file as any).webkitRelativePath = file.name;
+    }
+    
+    return [file];
+  } else if (entry.isDirectory) {
+    // 文件夹：使用文件夹名称作为基础路径
+    const dirReader = entry.createReader();
+    const files: File[] = [];
+    
+    // readEntries 每次最多返回100个条目，需要循环调用
+    let entries: any[] = [];
+    let batch: any[] = [];
+    
+    do {
+      batch = await new Promise<any[]>((resolve) => {
+        dirReader.readEntries((results: any[]) => resolve(results));
+      });
+      entries = entries.concat(batch);
+    } while (batch.length > 0);
+
+    // 递归处理文件夹内的每个条目
+    for (const childEntry of entries) {
+      const childFiles = await readDirectoryRecursive(childEntry, entry.name);
+      files.push(...childFiles);
+    }
+    
+    return files;
+  }
+  
+  return [];
 };
 
 // 处理拖拽上传（支持文件夹）
@@ -1511,23 +1702,48 @@ const handleDrop = async (event: DragEvent) => {
 
   const items = event.dataTransfer.items;
   if (items) {
-    // 使用 DataTransferItemList API 支持文件夹
-    const allFiles: File[] = [];
-
-    for (let i = 0; i < items.length; i++) {
+    const itemCount = items.length;
+    console.log(`📥 拖拽了 ${itemCount} 个项目`);
+    
+    // ⚠️ 重要：DataTransferItemList 在异步操作后会失效
+    // 必须先同步提取所有 entries，再进行异步处理
+    const entries: any[] = [];
+    for (let i = 0; i < itemCount; i++) {
       const item = items[i];
       if (item.kind === "file") {
         const entry = item.webkitGetAsEntry();
         if (entry) {
-          const files = await readDirectory(entry);
-          allFiles.push(...files);
+          entries.push(entry);
         }
       }
     }
+    
+    if (entries.length === 0) {
+      console.warn('⚠ 没有找到有效的文件或文件夹');
+      return;
+    }
+    
+    console.log(`📋 开始处理 ${entries.length} 个项目...`);
+    
+    // 现在进行异步处理
+    const allFiles: File[] = [];
+    for (let i = 0; i < entries.length; i++) {
+      try {
+        const entry = entries[i];
+        const files = await readEntry(entry);
+        console.log(`  ✓ ${entry.name}: ${files.length} 个文件`);
+        allFiles.push(...files);
+      } catch (error) {
+        console.error(`❌ 处理 ${entries[i].name} 时出错:`, error);
+        // 继续处理下一个项目
+      }
+    }
 
+    console.log(`✅ 完成！共读取 ${allFiles.length} 个文件\n`);
     uploadFiles.value = [...uploadFiles.value, ...allFiles];
   } else if (event.dataTransfer.files) {
     // 降级方案：只支持文件
+    console.log('使用降级方案读取文件');
     uploadFiles.value = [
       ...uploadFiles.value,
       ...Array.from(event.dataTransfer.files),
@@ -1535,9 +1751,47 @@ const handleDrop = async (event: DragEvent) => {
   }
 };
 
-// 移除文件
-const removeFile = (index: number) => {
-  uploadFiles.value.splice(index, 1);
+// 清空所有文件
+const clearAllFiles = () => {
+  uploadFiles.value = [];
+  expandedFolders.value = {};
+};
+
+// 切换文件夹展开/折叠
+const toggleFolder = (folderName: string | number) => {
+  const key = String(folderName);
+  expandedFolders.value[key] = !expandedFolders.value[key];
+};
+
+// 删除整个文件夹
+const removeFolder = (folderName: string | number) => {
+  const key = String(folderName);
+  uploadFiles.value = uploadFiles.value.filter((file) => {
+    const relativePath = (file as any).webkitRelativePath || file.name;
+    const parts = relativePath.split('/');
+    const topFolder = parts.length > 1 ? parts[0] : '';
+    return topFolder !== key;
+  });
+  delete expandedFolders.value[key];
+};
+
+// 从文件夹中删除单个文件
+const removeFileFromFolder = (folderName: string | number, index: number) => {
+  const key = String(folderName);
+  const group = groupedFiles.value[key];
+  if (group && group[index]) {
+    const fileToRemove = group[index].file;
+    const fileIndex = uploadFiles.value.indexOf(fileToRemove);
+    if (fileIndex !== -1) {
+      uploadFiles.value.splice(fileIndex, 1);
+    }
+  }
+};
+
+// 从路径中提取文件名
+const getFileName = (relativePath: string): string => {
+  const parts = relativePath.split('/');
+  return parts[parts.length - 1];
 };
 
 // 上传所有文件
@@ -2454,6 +2708,142 @@ onMounted(() => {
   border-radius: 8px;
 }
 
+.file-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.file-list-header h4 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.file-list-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.file-list-container {
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.file-list-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.file-list-container::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.file-list-container::-webkit-scrollbar-thumb {
+  background: #cbd5e0;
+  border-radius: 4px;
+}
+
+.file-list-container::-webkit-scrollbar-thumb:hover {
+  background: #a0aec0;
+}
+
+/* 文件夹分组样式 */
+.folder-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.folder-group {
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+}
+
+.folder-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  cursor: pointer;
+  transition: all 0.3s;
+  user-select: none;
+}
+
+.folder-header:hover {
+  background: linear-gradient(135deg, #5568d3 0%, #65408a 100%);
+}
+
+.folder-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  color: white;
+}
+
+.folder-icon {
+  color: white;
+  flex-shrink: 0;
+}
+
+.folder-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: white;
+}
+
+.folder-count {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.expand-icon {
+  color: white;
+  transition: transform 0.3s;
+  flex-shrink: 0;
+}
+
+.expand-icon.expanded {
+  transform: rotate(180deg);
+}
+
+.folder-files {
+  background: #f9fafb;
+}
+
+.folder-files-container {
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.folder-files-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.folder-files-container::-webkit-scrollbar-track {
+  background: #e5e7eb;
+  border-radius: 3px;
+}
+
+.folder-files-container::-webkit-scrollbar-thumb {
+  background: #9ca3af;
+  border-radius: 3px;
+}
+
+.folder-files-container::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
 .file-item {
   display: flex;
   align-items: center;
@@ -2462,24 +2852,37 @@ onMounted(() => {
   background: white;
   border-radius: 6px;
   margin-bottom: 8px;
+  transition: background-color 0.2s;
+}
+
+.file-item:hover {
+  background: #f3f4f6;
 }
 
 .file-item:last-child {
   margin-bottom: 0;
 }
 
+.file-icon {
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
 .file-name {
   flex: 1;
-  font-size: 14px;
+  font-size: 13px;
   color: #374151;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
 }
 
 .file-size {
-  font-size: 13px;
+  font-size: 12px;
   color: #9ca3af;
+  min-width: 80px;
+  text-align: right;
 }
 
 .upload-btn {
@@ -2927,3 +3330,4 @@ onMounted(() => {
   cursor: not-allowed;
 }
 </style>
+
