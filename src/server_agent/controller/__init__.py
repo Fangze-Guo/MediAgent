@@ -36,7 +36,7 @@ class Settings:
         self.data_dir: Path = DATA_DIR
 
         # TaskManager 需要的路径/文件
-        self.PUBLIC_DATASETS_ROOT: Path = in_data("files", "public")
+        self.PUBLIC_DATASETS_ROOT: Path = in_data("files")
         self.WORKSPACE_ROOT: Path = in_data("files", "private")
         self.DATABASE_FILE: Path = in_data("db", "app.sqlite3")
         self.MCPSERVER_FILE: Path = in_mediagent("mcp_server_tools", "mcp_server.py")
