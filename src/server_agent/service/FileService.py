@@ -65,7 +65,7 @@ class FileService:
 
 
     @handle_service_exception
-    async def uploadMultipleFilesToData(self, files: List[UploadFile], target_dir: str = ".", user_id: int = None, role: str = 'user') -> List[FileInfo]:
+    async def uploadMultipleFilesToData(self, files: List[UploadFile], target_dir: str = ".", user_id: int = None, role: str = 'user', file_paths: List[str] = None) -> List[FileInfo]:
         """
         批量上传文件
         
@@ -74,6 +74,7 @@ class FileService:
             target_dir: 目标目录
             user_id: 当前用户ID，用于权限检查
             role: 用户角色（'user' 或 'admin'）
+            file_paths: 文件路径列表（包含目录结构），如 ["DICOM/child1/file.dcm"]
             
         Returns:
             文件信息列表
@@ -82,18 +83,21 @@ class FileService:
         dataset_root = pathlib.Path(DATASET_PATH)
         uploaded_files: List[FileInfo] = []
 
-        for file in files:
+        for i, file in enumerate(files):
             try:
-                file_info: FileInfo = await self.uploadFile(dataset_root, file, target_dir, user_id, role)
+                # 如果提供了路径列表，使用对应的路径；否则使用原文件名
+                custom_path = file_paths[i] if file_paths and i < len(file_paths) else None
+                file_info: FileInfo = await self.uploadFile(dataset_root, file, target_dir, user_id, role, custom_path)
                 uploaded_files.append(file_info)
             except Exception as e:
                 # 记录单个文件上传失败，但继续处理其他文件
-                logging.error(f"文件 {file.filename} 上传失败: {e}")
+                filename = file_paths[i] if file_paths and i < len(file_paths) else file.filename
+                logging.error(f"文件 {filename} 上传失败: {e}")
                 continue
 
         return uploaded_files
 
-    async def uploadFile(self, files_dir: pathlib.Path, file: UploadFile, target_dir: str = ".", user_id: int = None, role: str = 'user') -> FileInfo:
+    async def uploadFile(self, files_dir: pathlib.Path, file: UploadFile, target_dir: str = ".", user_id: int = None, role: str = 'user', custom_path: str = None) -> FileInfo:
         """
         上传文件
 
@@ -103,6 +107,7 @@ class FileService:
             target_dir: 目标子目录
             user_id: 当前用户ID，用于权限检查
             role: 用户角色（'user' 或 'admin'）
+            custom_path: 自定义文件路径（包含子目录），如 "DICOM/child1/file.dcm"
 
         Returns:
             文件信息
@@ -132,20 +137,34 @@ class FileService:
         # 权限检查：验证用户是否有权限上传到目标目录
         self._check_write_permission(target_path, files_dir, user_id, role)
 
-        # 处理文件名冲突
-        original_name = file.filename
-        file_path = target_path / original_name
+        # 处理文件路径
+        if custom_path:
+            # 使用自定义路径（包含目录结构）
+            logger.info(f"使用自定义路径: {custom_path}")
+            file_path = target_path / custom_path
+            original_name = pathlib.Path(custom_path).name
+        else:
+            # 使用原始文件名
+            original_name = file.filename
+            file_path = target_path / original_name
 
         # 如果文件已存在，添加时间戳避免冲突
         if file_path.exists():
             name_without_ext = pathlib.Path(original_name).stem
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             new_name = f"{name_without_ext}_{timestamp}{file_ext}"
-            file_path = files_dir / new_name
+            if custom_path:
+                # 保持目录结构，只修改文件名
+                parent_dir = pathlib.Path(custom_path).parent
+                file_path = target_path / parent_dir / new_name
+            else:
+                file_path = target_path / new_name
             original_name = new_name
+            logger.warning(f"文件名冲突，重命名为: {original_name}")
 
-        # 确保父文件夹存在（处理包含子文件夹的文件名，如 "C0/file.dcm"）
+        # 确保父文件夹存在（处理包含子文件夹的文件名，如 "DICOM/child1/file.dcm"）
         file_path.parent.mkdir(parents=True, exist_ok=True)
+        logger.info(f"保存文件到: {file_path}")
 
         # 生成文件ID - 使用路径哈希确保唯一性，与文件列表保持一致
         file_id = f"{abs(hash(str(file_path)))}"

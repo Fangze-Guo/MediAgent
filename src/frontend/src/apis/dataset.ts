@@ -99,16 +99,20 @@ export function uploadFilesToDataset(datasetId: number, files: File[]) {
   console.log('API uploadFilesToDataset 收到文件:', files.length);
   
   const formData = new FormData()
+  const filePaths: string[] = []
+  
   files.forEach((file, index) => {
-    console.log(`添加到 FormData - 文件 ${index + 1}:`, file.name, file instanceof File);
+    const relativePath = (file as any).webkitRelativePath || file.name
+    console.log(`添加到 FormData - 文件 ${index + 1}:`, file.name, '完整路径:', relativePath);
     formData.append('files', file)
+    filePaths.push(relativePath)
   })
   
-  // 打印 FormData 内容
-  console.log('FormData entries:');
-  for (let pair of formData.entries()) {
-    console.log(pair[0], pair[1]);
-  }
+  // 将路径信息作为 JSON 字符串添加到 FormData
+  formData.append('file_paths', JSON.stringify(filePaths))
+  
+  console.log('文件路径示例:', filePaths.slice(0, 5));
+  console.log('总共', filePaths.length, '个文件');
   
   // 不要手动设置 Content-Type，让 axios 自动处理 multipart/form-data 的 boundary
   return api.post(`/dataset/${datasetId}/upload`, formData, {

@@ -133,15 +133,32 @@ class DatasetController(BaseController):
         async def upload_files_to_dataset(
             dataset_id: int,
             files: List[UploadFile] = File(...),
+            file_paths: str = Form(None),
             userVO: UserVO = Depends(self._get_current_user)
         ) -> BaseResponse[dict]:
             """上传文件到数据集"""
             try:
+                import json
+                import logging
+                
+                # 解析文件路径信息
+                paths_list = None
+                if file_paths:
+                    try:
+                        paths_list = json.loads(file_paths)
+                        logging.info(f"接收到 {len(paths_list)} 个文件路径")
+                        # 打印前5个路径作为示例
+                        for i, path in enumerate(paths_list[:5]):
+                            logging.info(f"  路径 {i+1}: {path}")
+                    except json.JSONDecodeError:
+                        logging.warning("无法解析文件路径JSON，将使用原文件名")
+                
                 result = await self.dataset_service.upload_files_to_dataset(
                     dataset_id, 
                     files, 
                     userVO.uid, 
-                    userVO.role
+                    userVO.role,
+                    paths_list
                 )
                 return ResultUtils.success(result)
             except Exception as e:
