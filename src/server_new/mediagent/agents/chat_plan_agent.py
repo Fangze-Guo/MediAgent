@@ -14,7 +14,7 @@ except Exception:  # pragma: no cover
 
 # 数据集管理器
 try:
-    from mediagent.modules import dataset_manager as dsman
+    from src.server_new.mediagent.modules import dataset_manager as dsman
 except Exception:
     dsman = None  # type: ignore
 

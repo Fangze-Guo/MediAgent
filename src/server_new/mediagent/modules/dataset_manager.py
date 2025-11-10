@@ -49,7 +49,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from mediagent.paths import in_data
+from src.server_new.mediagent.paths import in_data
 
 # ===================== 统一路径基准 =====================
 # 这个根目录是所有 data_path / description_file_path 的相对基准
