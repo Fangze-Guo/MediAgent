@@ -84,7 +84,7 @@ class AgentAConfig:
   - 若后端可推断 → 在任务描述中写明“需后端补全此参数”。
 
 ==============================【数据集查询使用准则】==============================
-- 用户问“我有哪些数据集 / 这些数据集大概是什么内容？” → emit_dataset_info_query，mode="overview"。
+- 用户问“我有哪些数据集 / 这些数据集大概是什么内容？” → emit_dataset_info_query，mode="overview"。该调用返回中包含数据集的id，要同步向用户展示。用户进一步提出需求时可以根据数据集ID来执行操作。
 - 用户针对某个具体数据集提问（如“这个数据集是否包含肿瘤分割标注？”） → emit_dataset_info_query，mode="focus"，并给出 dataset_id 和 user_need_text。
 - 用户模糊提问（如“帮我看看乳腺MRI数据集”）但未给 dataset_id → emit_user_reply 询问“请提供数据集ID数字及你想了解的内容”。
 

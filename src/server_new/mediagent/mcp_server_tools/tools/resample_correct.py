@@ -10,12 +10,14 @@
 - 图像插值：B-Spline；掩膜插值：最近邻
 - 默认不覆盖（若输出 C2 已存在则整例跳过）
 - 自动跳过以下划线开头的目录（_logs/_workspace 等）
-- 额外：若发现 C0.nii.gz，原样复制到输出目录（无覆盖），即使该例被 skip 也尽力传递（passthrough）
+- 兼容两种结构：
+  1) 病例目录直放 C2/C2_mask
+  2) 病例目录下一层（如日期文件夹）中放 C2/C2_mask（会逐个子目录处理）
 """
 
 from __future__ import annotations
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 import argparse
 import json
 import time
@@ -23,7 +25,6 @@ import shutil
 
 import SimpleITK as sitk
 from tqdm import tqdm
-
 
 OUT_SPACING = (1.0, 1.0, 1.0)  # 固定 1mm
 ORIENTATION = "LPS"            # 固定 LPS
@@ -35,20 +36,34 @@ OVERWRITE = False              # 固定不覆盖
 SKIP_UNDERSCORE = True         # 固定跳过以 _ 开头的目录
 EPS = 1e-6                     # spacing 比较容差
 
-
 def _log(msg: str) -> None:
     print(msg, flush=True)
 
+# -------- 兼容大小写文件名的小工具 --------
+def _cand(path: Path, names: List[str]) -> Optional[Path]:
+    for n in names:
+        p = path / n
+        if p.exists():
+            return p
+    return None
+
+def _find_case_in_dir(d: Path) -> Optional[Tuple[Path, Path, Optional[Path]]]:
+    """
+    在目录 d 中寻找一组 (C2, C2_mask, C0)。
+    兼容大小写：C2/c2，C2_mask/c2_mask，C0/c0。
+    仅在同一目录下同时找到 C2 和 C2_mask 时返回该组。
+    """
+    c2  = _cand(d,  ["C2.nii.gz", "c2.nii.gz"])
+    c2m = _cand(d,  ["C2_mask.nii.gz", "c2_mask.nii.gz"])
+    if c2 is None or c2m is None:
+        return None
+    c0  = _cand(d,  ["C0.nii.gz", "c0.nii.gz"])
+    return (c2, c2m, c0)
 
 def _need_resample_spacing(orig_spacing: Tuple[float, float, float]) -> bool:
     return any(abs(os - ns) > EPS for os, ns in zip(orig_spacing, OUT_SPACING))
 
-
-def _resample_one(
-    src_img_path: Path,
-    dst_img_path: Path,
-    is_mask: bool,
-) -> None:
+def _resample_one(src_img_path: Path, dst_img_path: Path, is_mask: bool) -> None:
     img = sitk.ReadImage(str(src_img_path))
     dim = img.GetDimension()
     if dim != 3:
@@ -63,19 +78,13 @@ def _resample_one(
             int(round(osz * osp / nsp))
             for osz, osp, nsp in zip(orig_size, orig_spacing, OUT_SPACING)
         ]
-
         res = sitk.ResampleImageFilter()
         res.SetOutputSpacing(OUT_SPACING)
         res.SetSize(out_size)
         res.SetOutputDirection(img.GetDirection())
         res.SetOutputOrigin(img.GetOrigin())
         res.SetTransform(sitk.Transform())
-
-        if is_mask:
-            res.SetInterpolator(sitk.sitkNearestNeighbor)
-        else:
-            res.SetInterpolator(sitk.sitkBSpline)
-
+        res.SetInterpolator(sitk.sitkNearestNeighbor if is_mask else sitk.sitkBSpline)
         img = res.Execute(img)
 
     # 2) 坐标系规范化：先变换到 LPS
@@ -89,10 +98,9 @@ def _resample_one(
     dst_img_path.parent.mkdir(parents=True, exist_ok=True)
     sitk.WriteImage(img, str(dst_img_path))
 
-
-def _try_copy_c0(c0_src: Path, c0_dst: Path, overwrite: bool, tag: str, name: str) -> None:
+def _try_copy_c0(c0_src: Optional[Path], c0_dst: Path, overwrite: bool, tag: str, name: str) -> None:
     """尽力把 C0 原样传递；不覆盖已有文件（除非 overwrite=True）。"""
-    if not c0_src.exists():
+    if not c0_src or not c0_src.exists():
         return
     try:
         c0_dst.parent.mkdir(parents=True, exist_ok=True)
@@ -104,9 +112,8 @@ def _try_copy_c0(c0_src: Path, c0_dst: Path, overwrite: bool, tag: str, name: st
     except Exception as e:
         _log(f"[RESAMPLE] warn {name}: C0 {tag} failed: {e}")
 
-
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Resample C2 & C2_mask to 1mm LPS/identity/zero-origin (and passthrough C0)")
+    parser = argparse.ArgumentParser(description="Resample C2 & C2_mask to 1mm LPS/identity/zero-origin (and passthrough C0); supports one-level date subfolders.")
     parser.add_argument("--in-dir", required=True, help="输入根目录（含病人子目录）")
     parser.add_argument("--out-dir", required=True, help="输出根目录")
     args = parser.parse_args()
@@ -131,44 +138,92 @@ def main() -> int:
 
     t0 = time.time()
     for patient in tqdm(patients, desc="Resampling", unit="case"):
-        name = patient.name
-        c2  = patient / "C2.nii.gz"
-        c2m = patient / "C2_mask.nii.gz"
-        c0  = patient / "C0.nii.gz"  # ★ 可能存在的 C0
+        patient_name = patient.name
 
-        out_patient = out_dir / name
-        dst_c2  = out_patient / "C2.nii.gz"
-        dst_c2m = out_patient / "C2_mask.nii.gz"
-        dst_c0  = out_patient / "C0.nii.gz"
+        # ① 先尝试在病例目录本身找一组
+        found = _find_case_in_dir(patient)
 
-        if not c2.exists() or not c2m.exists():
-            _log(f"[RESAMPLE] skip {name}: missing C2 or C2_mask")
-            # 即便整例被跳过，也尽力传递 C0（passthrough）
-            _try_copy_c0(c0, dst_c0, overwrite=False, tag="passthrough", name=name)
-            skipped.append(name)
+        # ② 若没找到，就在第一层子目录逐一找（如日期文件夹）
+        subdirs: List[Path] = []
+        if not found:
+            subdirs = [d for d in patient.iterdir() if d.is_dir()]
+            if SKIP_UNDERSCORE:
+                subdirs = [d for d in subdirs if not d.name.startswith("_")]
+
+        # ---- 情况 A：病例根目录就有 C2/C2_mask（按单例处理）----
+        if found:
+            c2, c2m, c0 = found
+            out_patient = out_dir / patient_name
+            dst_c2  = out_patient / "C2.nii.gz"
+            dst_c2m = out_patient / "C2_mask.nii.gz"
+            dst_c0  = out_patient / "C0.nii.gz"
+
+            if not OVERWRITE and dst_c2.exists():
+                _log(f"[RESAMPLE] skip {patient_name}: output exists")
+                _try_copy_c0(c0, dst_c0, overwrite=False, tag="passthrough", name=patient_name)
+                skipped.append(patient_name)
+                continue
+
+            try:
+                _log(f"[RESAMPLE] processing {patient_name}")
+                _resample_one(c2,  dst_c2,  is_mask=False)
+                _resample_one(c2m, dst_c2m, is_mask=True)
+                _try_copy_c0(c0, dst_c0, overwrite=OVERWRITE, tag="copy", name=patient_name)
+                _log(f"[RESAMPLE] done {patient_name} -> {dst_c2}")
+                ok.append(patient_name)
+            except Exception as e:
+                _log(f"[RESAMPLE] fail {patient_name}: {e}")
+                failed.append((patient_name, str(e)))
             continue
 
-        if dst_c2.exists() and not OVERWRITE:
-            # 若目标 C2 已存在，不做重采样；但仍尝试传递 C0
-            if not dst_c2m.exists():
-                _log(f"[RESAMPLE] warn {name}: dst C2 exists but C2_mask missing; this case will be left incomplete (overwrite disabled).")
-            _try_copy_c0(c0, dst_c0, overwrite=False, tag="passthrough", name=name)
-            _log(f"[RESAMPLE] skip {name}: output exists")
-            skipped.append(name)
+        # ---- 情况 B：向下一层子目录逐个处理（每个子目录视为一个“日期实例”）----
+        if subdirs:
+            any_processed = False
+            for sd in sorted(subdirs):
+                tag_name = f"{patient_name}/{sd.name}"
+                found_sd = _find_case_in_dir(sd)
+                if not found_sd:
+                    _log(f"[RESAMPLE] skip {tag_name}: missing C2 or C2_mask")
+                    # 即便该子目录跳过，也尝试传递其 C0
+                    c0_sd = _cand(sd, ["C0.nii.gz", "c0.nii.gz"])
+                    out_sd = out_dir / patient_name / sd.name
+                    _try_copy_c0(c0_sd, out_sd / "C0.nii.gz", overwrite=False, tag="passthrough", name=tag_name)
+                    skipped.append(tag_name)
+                    continue
+
+                c2, c2m, c0 = found_sd
+                out_sd = out_dir / patient_name / sd.name
+                dst_c2  = out_sd / "C2.nii.gz"
+                dst_c2m = out_sd / "C2_mask.nii.gz"
+                dst_c0  = out_sd / "C0.nii.gz"
+
+                if dst_c2.exists() and not OVERWRITE:
+                    if not dst_c2m.exists():
+                        _log(f"[RESAMPLE] warn {tag_name}: dst C2 exists but C2_mask missing (overwrite disabled).")
+                    _try_copy_c0(c0, dst_c0, overwrite=False, tag="passthrough", name=tag_name)
+                    _log(f"[RESAMPLE] skip {tag_name}: output exists")
+                    skipped.append(tag_name)
+                    continue
+
+                try:
+                    _log(f"[RESAMPLE] processing {tag_name}")
+                    _resample_one(c2,  dst_c2,  is_mask=False)
+                    _resample_one(c2m, dst_c2m, is_mask=True)
+                    _try_copy_c0(c0, dst_c0, overwrite=OVERWRITE, tag="copy", name=tag_name)
+                    _log(f"[RESAMPLE] done {tag_name} -> {dst_c2}")
+                    ok.append(tag_name)
+                    any_processed = True
+                except Exception as e:
+                    _log(f"[RESAMPLE] fail {tag_name}: {e}")
+                    failed.append((tag_name, str(e)))
+
+            if not any_processed:
+                _log(f"[RESAMPLE] note {patient_name}: no valid subfolder found")
             continue
 
-        try:
-            _log(f"[RESAMPLE] processing {name}")
-            _resample_one(c2,  dst_c2,  is_mask=False)
-            _resample_one(c2m, dst_c2m, is_mask=True)
-            # 同步传递 C0（原样复制）
-            _try_copy_c0(c0, dst_c0, overwrite=OVERWRITE, tag="copy", name=name)
-
-            _log(f"[RESAMPLE] done {name} -> {dst_c2}")
-            ok.append(name)
-        except Exception as e:
-            _log(f"[RESAMPLE] fail {name}: {e}")
-            failed.append((name, str(e)))
+        # ---- 情况 C：既没在根目录找到，也没有子目录 ----
+        _log(f"[RESAMPLE] skip {patient_name}: no C2/C2_mask found")
+        skipped.append(patient_name)
 
     summary = {
         "ok": ok,
@@ -180,7 +235,6 @@ def main() -> int:
     _log("[RESAMPLE] summary: " + json.dumps(summary, ensure_ascii=False))
     _log(f"[RESAMPLE] total time: {time.time() - t0:.2f}s")
     return 0
-
 
 if __name__ == "__main__":
     import sys

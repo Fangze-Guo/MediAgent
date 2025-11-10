@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 from pathlib import Path
-from typing import Optional, Sequence, Union, Tuple, List
+from typing import Optional, Sequence, Union, Tuple, List, Dict
 import argparse
 import sys
 import json
@@ -17,7 +17,6 @@ from tqdm import tqdm
 KernelT = Optional[Union[int, Sequence[int]]]
 
 def _log(msg: str) -> None:
-    # 让 MCP 侧的 _launch_and_capture 捕获到 stdout 并写入 .ndjson
     print(msg, flush=True)
 
 def _parse_kernel_radius(s: Optional[str], dim: int = 3) -> Optional[Tuple[int, ...]]:
@@ -34,9 +33,7 @@ def _parse_kernel_radius(s: Optional[str], dim: int = 3) -> Optional[Tuple[int, 
         return (v,) * dim
 
 def _binary01(mask: sitk.Image) -> sitk.Image:
-    # 任意非零视为前景，更稳，不受像素类型上界影响
     return sitk.Cast(sitk.NotEqual(mask, 0), sitk.sitkUInt8)
-
 
 def n4_correct_one(
     src_image_path: Path,
@@ -71,9 +68,7 @@ def n4_correct_one(
     else:
         shutil.copy2(src_mask_path, dst_mask_path)
 
-
 def _try_copy_c0(c0_src: Path, c0_dst: Path, overwrite: bool, tag: str, name: str) -> None:
-    """尽力把 C0 原样传递；不覆盖已有文件（除非 overwrite=True）。"""
     if not c0_src.exists():
         return
     try:
@@ -86,6 +81,53 @@ def _try_copy_c0(c0_src: Path, c0_dst: Path, overwrite: bool, tag: str, name: st
     except Exception as e:
         _log(f"[N4] warn {name}: C0 {tag} failed: {e}")
 
+# -------- 新增：查找 c2/c2_mask 的兼容逻辑（支持向下一层） --------
+def _find_cases_one_level(patient_dir: Path) -> List[Dict[str, Path]]:
+    """
+    返回待处理的条目列表。每条包含：
+      - rel: 输出时在病人目录下的相对子路径（"" 表示根层；或子文件夹名）
+      - img: c2/c2.nii.gz 的路径
+      - mask: c2_mask/C2_mask.nii.gz 的路径
+      - c0: 若同层存在 C0 文件则给出其路径，否则可能缺失
+    仅向下一层子目录查找（不会更深）。
+    """
+    entries: List[Dict[str, Path]] = []
+
+    def pick_case(base: Path, rel: str):
+        # 支持大小写：c2/C2；c2_mask/C2_mask；c0/C0
+        img = None
+        mask = None
+        c0 = None
+        for name in ("c2.nii.gz", "C2.nii.gz"):
+            p = base / name
+            if p.exists():
+                img = p
+                break
+        for name in ("c2_mask.nii.gz", "C2_mask.nii.gz"):
+            p = base / name
+            if p.exists():
+                mask = p
+                break
+        for name in ("c0.nii.gz", "C0.nii.gz"):
+            p = base / name
+            if p.exists():
+                c0 = p
+                break
+        if img and mask:
+            d = {"rel": Path(rel), "img": img, "mask": mask}
+            if c0 is not None:
+                d["c0"] = c0
+            entries.append(d)
+
+    # 1) 先尝试根层
+    pick_case(patient_dir, "")
+
+    # 2) 若根层没有，就尝试下一层所有子目录
+    if not entries:
+        for sub in sorted([p for p in patient_dir.iterdir() if p.is_dir()]):
+            pick_case(sub, sub.name)
+
+    return entries
 
 def n4_batch_on_reg_dir(
     reg_dir: Path,
@@ -98,7 +140,6 @@ def n4_batch_on_reg_dir(
     n4_dir = Path(n4_dir)
     n4_dir.mkdir(parents=True, exist_ok=True)
 
-    # ✅ 只处理“非下划线开头”的子目录
     patients = [p for p in reg_dir.iterdir() if p.is_dir() and not p.name.startswith("_")]
 
     ok: List[str] = []
@@ -107,63 +148,64 @@ def n4_batch_on_reg_dir(
 
     _log(f"[N4] start batch: src={reg_dir} -> dst={n4_dir} | overwrite={overwrite} | kernel_radius={kernel_radius} | save_dilated_mask={save_dilated_mask}")
     for patient_dir in tqdm(patients, desc="N4 correcting", unit="case"):
-        name = patient_dir.name
-        c2_path = patient_dir / "C2.nii.gz"
-        c2_mask_path = patient_dir / "C2_mask.nii.gz"
-        c0_path = patient_dir / "C0.nii.gz"  # ★ C0 输入
+        patient = patient_dir.name
 
-        out_patient_dir = n4_dir / name
-        dst_c2_path = out_patient_dir / "C2.nii.gz"
-        dst_c2_mask_path = out_patient_dir / "C2_mask.nii.gz"
-        dst_c0_path = out_patient_dir / "C0.nii.gz"  # ★ C0 输出
-
-        # 必要文件检查（C2 & C2_mask）
-        if not c2_path.exists() or not c2_mask_path.exists():
-            _log(f"[N4] skip {name}: missing C2 or C2_mask")
-            # 即便整例跳过，也尽力传递 C0
-            _try_copy_c0(c0_path, dst_c0_path, overwrite=False, tag="passthrough", name=name)
-            skipped.append(name)
+        # 找出该病例需要处理的“层”（根层或下一层日期目录）
+        cases = _find_cases_one_level(patient_dir)
+        if not cases:
+            _log(f"[N4] skip {patient}: missing C2/C2_mask at root and one-level deeper")
+            skipped.append(patient)
             continue
 
-        # 幂等：目标已存在且不覆盖 -> 跳过，但仍尝试传递 C0
-        if dst_c2_path.exists() and not overwrite:
-            _log(f"[N4] skip {name}: output exists")
-            _try_copy_c0(c0_path, dst_c0_path, overwrite=False, tag="passthrough", name=name)
-            skipped.append(name)
-            continue
+        # 逐个层处理（可能是根层，也可能是多个日期文件夹）
+        for case in cases:
+            rel: Path = case["rel"]
+            img: Path = case["img"]
+            msk: Path = case["mask"]
+            c0_src: Optional[Path] = case.get("c0")
 
-        try:
-            _log(f"[N4] processing {name}")
-            n4_correct_one(
-                src_image_path=c2_path,
-                src_mask_path=c2_mask_path,
-                dst_image_path=dst_c2_path,
-                dst_mask_path=dst_c2_mask_path,
-                kernel_radius=kernel_radius,
-                save_dilated_mask=save_dilated_mask,
-            )
+            out_dir = n4_dir / patient / rel
+            dst_img = out_dir / img.name  # 保持原大小写（C2 或 c2）
+            dst_msk = out_dir / msk.name
 
-            # N4 完成后，同步传递 C0（原样复制）
-            _try_copy_c0(c0_path, dst_c0_path, overwrite=overwrite, tag="copy", name=name)
+            # 幂等控制
+            if dst_img.exists() and not overwrite:
+                _log(f"[N4] skip {patient}/{rel.as_posix() or '.'}: output exists")
+                # 即便跳过，也尽力传递 C0
+                if c0_src is not None:
+                    _try_copy_c0(c0_src, out_dir / c0_src.name, overwrite=False, tag="passthrough", name=f"{patient}/{rel.as_posix() or '.'}")
+                skipped.append(f"{patient}/{rel.as_posix() or '.'}")
+                continue
 
-            _log(f"[N4] done {name} -> {dst_c2_path}")
-            ok.append(name)
-        except Exception as e:
-            _log(f"[N4] fail {name}: {e}")
-            failed.append((name, str(e)))
+            try:
+                _log(f"[N4] processing {patient}/{rel.as_posix() or '.'}")
+                n4_correct_one(
+                    src_image_path=img,
+                    src_mask_path=msk,
+                    dst_image_path=dst_img,
+                    dst_mask_path=dst_msk,
+                    kernel_radius=kernel_radius,
+                    save_dilated_mask=save_dilated_mask,
+                )
+                if c0_src is not None:
+                    _try_copy_c0(c0_src, out_dir / c0_src.name, overwrite=overwrite, tag="copy", name=f"{patient}/{rel.as_posix() or '.'}")
+                _log(f"[N4] done {patient}/{rel.as_posix() or '.'} -> {dst_img}")
+                ok.append(f"{patient}/{rel.as_posix() or '.'}")
+            except Exception as e:
+                _log(f"[N4] fail {patient}/{rel.as_posix() or '.'}: {e}")
+                failed.append((f"{patient}/{rel.as_posix() or '.'}", str(e)))
 
     summary = {
         "ok": ok,
         "skipped": skipped,
         "failed": [{"patient": p, "error": err} for p, err in failed],
-        "counts": {"ok": len(ok), "skipped": len(skipped), "failed": len(failed), "total": len(patients)},
+        "counts": {"ok": len(ok), "skipped": len(skipped), "failed": len(failed), "total_patients": len(patients)},
     }
     _log("[N4] summary: " + json.dumps(summary, ensure_ascii=False))
     return summary
 
-
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Batch N4 bias field correction")
+    parser = argparse.ArgumentParser(description="Batch N4 bias field correction (root or one-level deeper).")
     parser.add_argument("--in-dir", required=True, help="输入根目录（含病人子目录）")
     parser.add_argument("--out-dir", required=True, help="输出根目录")
     parser.add_argument("--kernel-radius", default=None, help="掩膜膨胀半径：整数或以逗号分隔的三元组，如 3 或 3,3,1")
@@ -194,7 +236,6 @@ def main() -> int:
             save_dilated_mask=bool(args.save_dilated_mask),
         )
         _log(f"[N4] total time: {time.time()-t0:.2f}s")
-        # 进程退出码：有失败也允许为 0；如需强制失败=> 设定阈值后 return 非 0
         return 0
     except Exception as e:
         _log(f"[N4] FATAL: {e}")
