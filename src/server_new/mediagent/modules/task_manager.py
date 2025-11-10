@@ -11,7 +11,7 @@ import traceback
 from pathlib import Path
 from queue import Queue, Empty
 from typing import Any, Dict, List, Optional, Tuple, Set, Union
-from mediagent.paths import in_data
+from src.server_new.mediagent.paths import in_data
 
 # ===================== 日志配置（可修改） =====================
 LOG_ENABLED: bool = True  # 是否开启日志输出到文件

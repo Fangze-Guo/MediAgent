@@ -8,7 +8,7 @@ import pathlib
 import shutil
 from typing import List
 
-from constants.CommonConstants import DATASET_PATH
+from src.server_agent.constants.CommonConstants import DATASET_PATH
 from fastapi import UploadFile
 
 from src.server_agent.exceptions import (

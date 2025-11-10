@@ -11,7 +11,7 @@ from typing import Any, Dict, List
 
 import aiosqlite
 
-from mediagent.modules.conversation_manager import ConversationManager
+from src.server_new.mediagent.modules.conversation_manager import ConversationManager
 from src.server_agent.exceptions import NotFoundError, ServiceError, handle_service_exception
 
 logger = logging.getLogger(__name__)

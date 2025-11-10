@@ -1,7 +1,7 @@
 from typing import List, Dict, Any
 
-from common import ResultUtils, BaseResponse
-from model.entity.ConversationInfo import ConversationInfo
+from src.server_agent.common import ResultUtils, BaseResponse
+from src.server_agent.model.entity.ConversationInfo import ConversationInfo
 from src.server_agent.service import ConversationService
 from .base import BaseController
 

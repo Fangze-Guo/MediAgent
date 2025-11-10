@@ -5,7 +5,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 from fastapi import Body
 
-from common import ResultUtils, BaseResponse
+from src.server_agent.common import ResultUtils, BaseResponse
 from src.server_agent.controller.base import BaseController
 from src.server_agent.service.AppStoreService import AppStoreService
 from src.server_agent.exceptions.error_codes import ErrorCode

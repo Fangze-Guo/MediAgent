@@ -1,8 +1,8 @@
 import logging
 from typing import Optional
 
-from mediagent.agents.chat_plan_agent import AgentAConfig
-from mediagent.agents.task_create_agent import AgentBConfig, TaskCreationAgentB
+from src.server_new.mediagent.agents.chat_plan_agent import AgentAConfig
+from src.server_new.mediagent.agents.task_create_agent import AgentBConfig, TaskCreationAgentB
 from src.server_agent.configs.config_provider import ModelSnapshot
 
 

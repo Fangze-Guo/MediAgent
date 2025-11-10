@@ -13,7 +13,7 @@ from src.server_agent.exceptions import (
 )
 from src.server_agent.mapper import UserMapper
 from src.server_agent.model.vo.UserVO import UserVO
-from constants.CommonConstants import DATASET_PATH
+from src.server_agent.constants.CommonConstants import DATASET_PATH
 
 logger = logging.getLogger(__name__)
 

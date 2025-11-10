@@ -10,7 +10,7 @@ from typing import List, Optional, Dict, Any
 
 from fastapi import UploadFile
 
-from constants.CommonConstants import DATASET_PATH
+from src.server_agent.constants.CommonConstants import DATASET_PATH
 from src.server_agent.exceptions import ValidationError, NotFoundError, ServiceError, handle_service_exception
 from src.server_agent.model import FileInfo, FileListVO
 

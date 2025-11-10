@@ -5,9 +5,9 @@ from __future__ import annotations
 
 from fastapi import Depends, Header
 
-from common import ResultUtils, BaseResponse
-from model.dto.user.UserLoginRequest import UserLoginRequest
-from model.vo.UserVO import UserVO
+from src.server_agent.common import ResultUtils, BaseResponse
+from src.server_agent.model.dto.user.UserLoginRequest import UserLoginRequest
+from src.server_agent.model.vo.UserVO import UserVO
 from src.server_agent.exceptions import (
     AuthenticationError
 )
