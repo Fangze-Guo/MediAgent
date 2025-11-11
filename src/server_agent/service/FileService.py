@@ -41,6 +41,23 @@ class FileService:
         fileListVO: FileListVO = await self.getFileListVO(dataset_root, target_path, user_id, role)
         return fileListVO
 
+    async def getTaskFiles(self, target_path: str, user_id: int = None, role: str = 'user') -> FileListVO:
+        """
+           获取任务文件列表
+
+           Args:
+               target_path: 目标路径，相对于 DATASET_PATH 的路径
+               user_id: 当前用户ID，用于过滤private文件夹内容
+               role: 用户角色（'user' 或 'admin'）
+
+           Returns:
+               FileListVO: 文件列表信息
+           """
+        # 将DATASET_PATH转换为pathlib.Path对象
+        dataset_root = pathlib.Path(DATASET_PATH)
+        fileListVO: FileListVO = await self.getFileListVO(dataset_root, target_path, user_id, role)
+        return fileListVO
+
 
     # ==================== 上传文件 ====================
 

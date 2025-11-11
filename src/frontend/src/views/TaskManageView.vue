@@ -3,50 +3,39 @@
     <!-- 任务列表区域 -->
     <div class="task-list-section">
       <div class="section-header">
-        <h2 class="section-title">
+          <h2 class="section-title">
           <UnorderedListOutlined />
-          任务列表
+          Task List
         </h2>
         <div class="section-actions">
-          <a-input-search
-            v-model:value="searchKeyword"
-            placeholder="搜索任务名称"
-            style="width: 240px"
-            @search="handleSearch"
-            allow-clear
-          />
+          <a-input-search v-model:value="searchKeyword" placeholder="Search task name" style="width: 240px" @search="handleSearch"
+            allow-clear />
           <a-radio-group v-model:value="statusFilter" button-style="solid" @change="handleFilterChange">
-            <a-radio-button value="">全部</a-radio-button>
-            <a-radio-button value="queued">排队中</a-radio-button>
-            <a-radio-button value="running">执行中</a-radio-button>
-            <a-radio-button value="succeeded">已完成</a-radio-button>
-            <a-radio-button value="failed">已失败</a-radio-button>
+            <a-radio-button value="">All</a-radio-button>
+            <a-radio-button value="queued">Queued</a-radio-button>
+            <a-radio-button value="running">Running</a-radio-button>
+            <a-radio-button value="succeeded">Succeeded</a-radio-button>
+            <a-radio-button value="failed">Failed</a-radio-button>
           </a-radio-group>
           <a-button @click="loadTasks" :loading="loading">
-            <template #icon><ReloadOutlined /></template>
-            刷新
+            <template #icon>
+              <ReloadOutlined />
+            </template>
+            Refresh
           </a-button>
         </div>
       </div>
 
       <!-- 任务表格 -->
-      <a-table
-        :columns="columns"
-        :data-source="tasks"
-        :loading="loading"
-        :pagination="{
-          current: currentPage,
-          pageSize: pageSize,
-          total: total,
-          showSizeChanger: true,
-          showTotal: (totalCount: number) => `共 ${totalCount} 条任务`,
-          onChange: handlePageChange,
-          onShowSizeChange: handlePageChange
-        }"
-        :row-key="(record: TaskInfo) => record.task_uid"
-        :locale="{ emptyText: '暂无任务' }"
-        class="task-table"
-      >
+      <a-table :columns="columns" :data-source="tasks" :loading="loading" :pagination="{
+        current: currentPage,
+        pageSize: pageSize,
+        total: total,
+        showSizeChanger: true,
+        showTotal: (totalCount: number) => `${totalCount} tasks`,
+        onChange: handlePageChange,
+        onShowSizeChange: handlePageChange
+      }" :row-key="(record: TaskInfo) => record.task_uid" :locale="{ emptyText: '暂无任务' }" class="task-table">
         <!-- ID列 -->
         <template #bodyCell="{ column, record, index }">
           <template v-if="column.key === 'id'">
@@ -58,13 +47,10 @@
             <div class="task-name-cell">
               <FileTextOutlined style="margin-right: 8px; color: #1890ff;" />
               <span>{{ record.task_name || record.task_uid }}</span>
-              <a-button 
-                type="link" 
-                size="small"
-                @click.stop="showEditNameModal(record)"
-                class="edit-name-btn"
-              >
-                <template #icon><EditOutlined /></template>
+              <a-button type="link" size="small" @click.stop="showEditNameModal(record)" class="edit-name-btn">
+                <template #icon>
+                  <EditOutlined />
+                </template>
               </a-button>
             </div>
           </template>
@@ -101,22 +87,18 @@
           <!-- 操作列 -->
           <template v-else-if="column.key === 'action'">
             <div class="action-buttons">
-              <a-button 
-                type="link" 
-                size="small"
-                @click="showTaskDetail(record)"
-                class="action-btn"
-              >
+              <a-button class="btn-icon" @click.stop="viewTaskFiles(record)" title="查看文件">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+              </a-button>
+              <a-button type="link" size="small" @click="showTaskDetail(record)" class="action-btn">
                 详情
               </a-button>
-              <a-button 
-                type="link" 
-                danger
-                size="small"
-                @click="confirmDeleteTask(record)"
-                :disabled="record.status === 'running'"
-                class="action-btn"
-              >
+              <a-button type="link" danger size="small" @click="confirmDeleteTask(record)"
+                :disabled="record.status === 'running'" class="action-btn">
                 删除
               </a-button>
             </div>
@@ -126,32 +108,16 @@
     </div>
 
     <!-- 编辑任务名称模态框 -->
-    <a-modal
-      v-model:open="editNameVisible"
-      title="编辑任务名称"
-      @ok="handleUpdateTaskName"
-      @cancel="editNameVisible = false"
-    >
+    <a-modal v-model:open="editNameVisible" title="编辑任务名称" @ok="handleUpdateTaskName" @cancel="editNameVisible = false">
       <a-form layout="vertical">
         <a-form-item label="任务名称">
-          <a-input 
-            v-model:value="editingTaskName" 
-            placeholder="请输入任务名称"
-            :maxlength="100"
-            allow-clear
-          />
+          <a-input v-model:value="editingTaskName" placeholder="请输入任务名称" :maxlength="100" allow-clear />
         </a-form-item>
       </a-form>
     </a-modal>
 
     <!-- 任务详情模态框 -->
-    <a-modal
-      v-model:open="detailVisible"
-      title="任务详情"
-      width="900px"
-      :footer="null"
-      :destroy-on-close="true"
-    >
+    <a-modal v-model:open="detailVisible" title="任务详情" width="900px" :footer="null" :destroy-on-close="true">
       <div v-if="selectedTask" class="task-detail">
         <!-- 任务基本信息 -->
         <div class="detail-section">
@@ -199,12 +165,8 @@
                 <div class="stat-value error">{{ selectedTask.failed_step_number }}</div>
               </div>
             </div>
-            <a-progress
-              :percent="selectedTask.progress_percentage"
-              :status="getProgressStatus(selectedTask.status)"
-              :stroke-color="getProgressColor(selectedTask.status)"
-              :stroke-width="12"
-            />
+            <a-progress :percent="selectedTask.progress_percentage" :status="getProgressStatus(selectedTask.status)"
+              :stroke-color="getProgressColor(selectedTask.status)" :stroke-width="12" />
           </div>
         </div>
 
@@ -215,21 +177,14 @@
             步骤详情
           </h3>
           <div class="steps-timeline">
-            <div
-              v-for="step in taskSteps"
-              :key="step.step_number"
-              class="step-item"
-              :class="getStepClass(step, selectedTask)"
-            >
+            <div v-for="step in taskSteps" :key="step.step_number" class="step-item"
+              :class="getStepClass(step, selectedTask)">
               <div class="step-number">{{ step.step_number }}</div>
               <div class="step-content">
                 <div class="step-header">
                   <span class="step-tool">{{ step.tool_name }}</span>
-                  <a-tag 
-                    v-if="getStepStatus(step, selectedTask)"
-                    :color="getStepStatusColor(step, selectedTask)"
-                    size="small"
-                  >
+                  <a-tag v-if="getStepStatus(step, selectedTask)" :color="getStepStatusColor(step, selectedTask)"
+                    size="small">
                     {{ getStepStatus(step, selectedTask) }}
                   </a-tag>
                 </div>
@@ -250,29 +205,124 @@
 
         <div class="detail-actions">
           <div class="detail-actions-left">
-            <a-button 
-              danger 
-              @click="confirmDeleteTask(selectedTask)"
-              :disabled="selectedTask.status === 'running'"
-            >
-              <template #icon><DeleteOutlined /></template>
+            <a-button danger @click="confirmDeleteTask(selectedTask)" :disabled="selectedTask.status === 'running'">
+              <template #icon>
+                <DeleteOutlined />
+              </template>
               删除任务
             </a-button>
           </div>
           <div class="detail-actions-right">
             <a-button @click="refreshTaskDetail" :loading="detailLoading">
-              <template #icon><ReloadOutlined /></template>
+              <template #icon>
+                <ReloadOutlined />
+              </template>
               刷新
             </a-button>
-            <a-switch 
-              v-model:checked="autoRefreshEnabled" 
-              checked-children="自动刷新" 
-              un-checked-children="手动刷新"
-            />
+            <a-switch v-model:checked="autoRefreshEnabled" checked-children="自动刷新" un-checked-children="手动刷新" />
           </div>
         </div>
       </div>
     </a-modal>
+
+    <!-- 文件浏览模态框 -->
+    <div class="modal" v-if="showFilesDialog" @click.self="showFilesDialog = false">
+      <div class="modal-content modal-large">
+        <div class="modal-header file-browser-header">
+          <div class="header-title-wrapper">
+            <div class="header-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
+            </div>
+            <div class="header-text">
+              <h2>{{ selectedTask?.task_name }}</h2>
+              <span class="header-subtitle">浏览任务文件</span>
+            </div>
+          </div>
+          <button class="btn-close" @click="showFilesDialog = false">×</button>
+        </div>
+        <div class="modal-body">
+          <!-- 当前路径 -->
+          <div class="file-breadcrumb">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+            <span class="breadcrumb-path">{{ currentFilePath || "/" }}</span>
+            <button v-if="currentFilePath && currentFilePath !== '.'" class="btn-back" @click="goBackFolder"
+              title="返回上级">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+              </svg>
+              返回上级
+            </button>
+          </div>
+
+          <!-- 文件列表 -->
+          <div v-if="filesLoading" class="files-loading">
+            <div class="spinner"></div>
+            <p>加载中...</p>
+          </div>
+
+          <div v-else-if="taskFiles.length === 0" class="empty-files">
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="1">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+            <p>该文件夹为空</p>
+          </div>
+
+          <div v-else class="files-list-container">
+            <!-- 表头 -->
+            <div class="files-list-header">
+              <div class="header-col col-name">名称</div>
+              <div class="header-col col-size">大小</div>
+              <div class="header-col col-time">修改时间</div>
+            </div>
+
+            <!-- 文件列表 -->
+            <div class="files-list">
+              <div v-for="file in taskFiles" :key="file.id" class="file-list-item"
+                :class="{ 'is-directory': file.isDirectory, 'is-file': !file.isDirectory }"
+                @click="file.isDirectory ? openFolder(file) : null">
+                <div class="file-col col-name">
+                  <div class="file-icon-wrapper">
+                    <!-- 文件夹图标 -->
+                    <svg v-if="file.isDirectory" xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+                      viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-folder">
+                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                    <!-- 文件图标 -->
+                    <svg v-else xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                      fill="none" stroke="currentColor" stroke-width="2" class="icon-file">
+                      <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                      <polyline points="13 2 13 9 20 9"></polyline>
+                    </svg>
+                  </div>
+                  <span class="file-name-text" :title="file.name">{{ file.name }}</span>
+                </div>
+                <div class="file-col col-size">
+                  <span v-if="!file.isDirectory">{{ formatFileSize(file.size) }}</span>
+                  <span v-else class="folder-indicator">—</span>
+                </div>
+                <div class="file-col col-time">
+                  {{ formatTime(file.modifiedTime) }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" @click="showFilesDialog = false">
+            关闭
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -288,6 +338,10 @@ import {
 } from '@ant-design/icons-vue'
 import { message, Modal } from 'ant-design-vue'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { getTaskFiles, type FileInfo } from "@/apis/files";
+import { useAuthStore } from "@/store/auth"
+
+const authStore = useAuthStore()
 
 // 表格列定义
 const columns = [
@@ -363,6 +417,12 @@ const listRefreshTimer = ref<number | null>(null)
 const editNameVisible = ref(false)
 const editingTaskName = ref('')
 const editingTask = ref<TaskInfo | null>(null)
+// 任务文件浏览
+const viewingTask = ref<TaskInfo | null>(null)
+const showFilesDialog = ref(false)
+const currentFilePath = ref("")
+const filesLoading = ref(false)
+const taskFiles = ref<FileInfo[]>([])
 
 // 处理搜索触发（用户点击搜索按钮/按回车时调用）
 const handleSearch = () => {
@@ -371,6 +431,51 @@ const handleSearch = () => {
   // 调用加载任务列表方法，此时会携带搜索关键词
   loadTasks()
 }
+
+// 查看任务文件
+const viewTaskFiles = async (currentTask: TaskInfo) => {
+  viewingTask.value = currentTask;
+  showFilesDialog.value = true;
+  currentFilePath.value = `private/${authStore.currentUser?.uid}/workspace/${currentTask.task_uid}`;
+  await loadTaskFiles();
+};
+
+// 返回上级文件夹
+const goBackFolder = async () => {
+  if (!currentFilePath.value || currentFilePath.value === ".") return;
+
+  // 提取上级路径
+  const pathParts = currentFilePath.value.split("/");
+  pathParts.pop();
+  currentFilePath.value = pathParts.length > 0 ? pathParts.join("/") : ".";
+
+  await loadTaskFiles();
+};
+
+// 打开文件夹
+const openFolder = async (file: FileInfo) => {
+  if (!file.isDirectory) return;
+  currentFilePath.value = file.path;
+  await loadTaskFiles();
+};
+
+// 加载数据集文件
+const loadTaskFiles = async () => {
+  if (!currentFilePath.value) return;
+
+  filesLoading.value = true;
+  try {
+    const response = await getTaskFiles(currentFilePath.value);
+    if (response.code === 200) {
+      taskFiles.value = response.data.files;
+    }
+  } catch (error) {
+    console.error("加载文件列表失败:", error);
+    alert("加载文件列表失败");
+  } finally {
+    filesLoading.value = false;
+  }
+};
 
 // 辅助函数：获取任务类型
 const getTaskType = (task: TaskInfo): string => {
@@ -388,6 +493,40 @@ const getTaskType = (task: TaskInfo): string => {
   return '机器学习'
 }
 
+// 格式化文件大小
+const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+};
+
+// 格式化时间
+const formatTime = (timeStr: string): string => {
+  try {
+    const date = new Date(timeStr);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+
+    if (days === 0) {
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      if (hours === 0) {
+        const minutes = Math.floor(diff / (1000 * 60));
+        return minutes === 0 ? "刚刚" : `${minutes}分钟前`;
+      }
+      return `${hours}小时前`;
+    } else if (days < 7) {
+      return `${days}天前`;
+    } else {
+      return date.toLocaleDateString("zh-CN");
+    }
+  } catch {
+    return timeStr;
+  }
+};
+
 // 显示编辑任务名称模态框
 const showEditNameModal = (task: TaskInfo) => {
   editingTask.value = task
@@ -404,7 +543,7 @@ const handleUpdateTaskName = async () => {
 
   try {
     const response = await updateTaskName(editingTask.value.task_uid, editingTaskName.value.trim())
-    
+
     if (response.code === 200) {
       message.success('任务名称更新成功')
       editNameVisible.value = false
@@ -424,28 +563,29 @@ const loadTasks = async () => {
   try {
     loading.value = true
     const offset = (currentPage.value - 1) * pageSize.value
-    
-    console.log('正在加载任务列表...', 
-      { status: statusFilter.value, 
-        keyword: searchKeyword.value, 
-        limit: pageSize.value, 
-        offset 
+
+    console.log('正在加载任务列表...',
+      {
+        status: statusFilter.value,
+        keyword: searchKeyword.value,
+        limit: pageSize.value,
+        offset
       }
     )
-    
+
     const response = await getTaskList(
       statusFilter.value || undefined,
-       pageSize.value, 
-       offset, 
-       searchKeyword.value || undefined
+      pageSize.value,
+      offset,
+      searchKeyword.value || undefined
     )
-    
+
     console.log('任务列表响应:', response)
-    
+
     if (response.code === 200) {
       tasks.value = response.data || []
       console.log(`成功加载 ${tasks.value.length} 个任务`)
-      
+
       // 如果没有任务，不显示错误，而是正常显示空状态
       if (tasks.value.length === 0) {
         console.log('当前没有任务数据')
@@ -466,11 +606,11 @@ const loadTasks = async () => {
 const loadStatistics = async () => {
   try {
     console.log('正在加载任务统计信息...')
-    
+
     const response = await getTaskStatistics()
-    
+
     console.log('统计信息响应:', response)
-    
+
     if (response.code === 200) {
       statistics.value = response.data
       // 更新total用于分页
@@ -515,7 +655,7 @@ const confirmDeleteTask = (task: TaskInfo) => {
 const handleDeleteTask = async (taskUid: string) => {
   try {
     const response = await deleteTask(taskUid)
-    
+
     if (response.code === 200) {
       message.success('任务删除成功')
       // 刷新任务列表和统计信息
@@ -539,7 +679,7 @@ const parseTaskSteps = (requestJson: string): any[] => {
   try {
     const request = JSON.parse(requestJson)
     if (request.steps && Array.isArray(request.steps)) {
-      return request.steps.sort((a: any, b: any) => 
+      return request.steps.sort((a: any, b: any) =>
         (a.step_number || a.stepNumber) - (b.step_number || b.stepNumber)
       )
     }
@@ -554,7 +694,7 @@ const showTaskDetail = async (task: TaskInfo) => {
   selectedTask.value = task
   taskSteps.value = parseTaskSteps(task.request_json)
   detailVisible.value = true
-  
+
   // 如果任务正在运行，启动自动刷新
   if (task.status === 'running') {
     autoRefreshEnabled.value = true
@@ -564,16 +704,16 @@ const showTaskDetail = async (task: TaskInfo) => {
 // 刷新任务详情
 const refreshTaskDetail = async () => {
   if (!selectedTask.value) return
-  
+
   try {
     detailLoading.value = true
     const response = await getTaskDetail(selectedTask.value.task_uid)
-    
+
     if (response.code === 200) {
       selectedTask.value = response.data
       taskSteps.value = parseTaskSteps(response.data.request_json)
       console.log('任务详情已刷新')
-      
+
       // 如果任务已完成，停止自动刷新
       if (response.data.status === 'succeeded' || response.data.status === 'failed') {
         autoRefreshEnabled.value = false
@@ -592,7 +732,7 @@ const getStepStatus = (step: any, task: TaskInfo): string => {
   const lastCompleted = task.last_completed_step || 0
   const currentStep = task.current_step_number
   const failedStep = task.failed_step_number
-  
+
   if (failedStep === stepNumber) {
     return '失败'
   } else if (stepNumber <= lastCompleted) {
@@ -812,6 +952,16 @@ onUnmounted(() => {
   font-size: 28px;
   font-weight: bold;
   color: #333;
+}
+
+.btn-icon {
+  padding: 6px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #6b7280;
+  transition: all 0.2s;
 }
 
 /* 任务列表区域 */
@@ -1102,18 +1252,24 @@ onUnmounted(() => {
 }
 
 @keyframes pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0.8;
   }
 }
 
 @keyframes blink {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0.5;
   }
@@ -1253,5 +1409,355 @@ onUnmounted(() => {
     gap: 12px;
   }
 }
-</style>
 
+/* Modal样式 */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-large {
+  max-width: 800px;
+}
+
+.modal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-body {
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+/* 文件浏览器样式 */
+.file-browser-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20px 24px;
+  border-bottom: none;
+}
+
+.file-browser-header .header-title-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+}
+
+.file-browser-header .header-icon {
+  width: 48px;
+  height: 48px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(10px);
+}
+
+.file-browser-header .header-icon svg {
+  color: white;
+}
+
+.file-browser-header .header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.file-browser-header h2 {
+  color: white;
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.file-browser-header .header-subtitle {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.btn-close {
+  background: none;
+  border: none;
+  font-size: 28px;
+  color: #9ca3af;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.file-browser-header .btn-close {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+}
+
+.file-browser-header .btn-close:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(1.05);
+}
+
+.file-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-radius: 12px;
+  margin-bottom: 24px;
+  border: 1px solid #bae6fd;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.file-breadcrumb svg {
+  color: #0ea5e9;
+  flex-shrink: 0;
+}
+
+.breadcrumb-path {
+  flex: 1;
+  font-size: 14px;
+  color: #0c4a6e;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 6px;
+  border: 1px solid rgba(14, 165, 233, 0.2);
+}
+
+.btn-back {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: white;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.files-loading {
+  text-align: center;
+  padding: 60px 20px;
+  color: #9ca3af;
+}
+
+.empty-files {
+  text-align: center;
+  padding: 60px 20px;
+  color: #9ca3af;
+}
+
+.empty-files svg {
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.empty-files p {
+  font-size: 14px;
+  margin: 0;
+}
+
+/* 文件列表容器 */
+.files-list-container {
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+}
+
+/* 表头 */
+.files-list-header {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  background: linear-gradient(to bottom, #f9fafb, #f3f4f6);
+  border-bottom: 2px solid #e5e7eb;
+  font-weight: 600;
+  font-size: 13px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.header-col {
+  display: flex;
+  align-items: center;
+}
+
+/* 文件列表 */
+.files-list {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.file-list-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f3f4f6;
+  transition: all 0.2s;
+  cursor: default;
+}
+
+.file-list-item:last-child {
+  border-bottom: none;
+}
+
+.file-list-item:hover {
+  background: #f9fafb;
+}
+
+.file-list-item.is-directory {
+  cursor: pointer;
+}
+
+.file-list-item.is-directory:hover {
+  background: linear-gradient(to right, #eff6ff, #f0f9ff);
+  border-left: 3px solid #3b82f6;
+  padding-left: 13px;
+}
+
+.file-list-item.is-directory:hover .icon-folder {
+  color: #3b82f6;
+  transform: scale(1.1);
+}
+
+.file-list-item.is-directory:hover .file-name-text {
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.file-col {
+  display: flex;
+  align-items: center;
+}
+
+.col-name {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 文件图标包装器 */
+.file-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  margin-right: 12px;
+  transition: all 0.2s;
+}
+
+.icon-folder {
+  color: #60a5fa;
+  transition: all 0.2s;
+}
+
+.icon-file {
+  color: #9ca3af;
+}
+
+/* 文件名 */
+.file-name-text {
+  font-size: 14px;
+  color: #374151;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+/* 文件夹指示器 */
+.folder-indicator {
+  color: #d1d5db;
+  font-size: 18px;
+  font-weight: 300;
+}
+
+/* 文件大小和时间 */
+.col-size,
+.col-time {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.col-size {
+  width: 120px;
+  justify-content: flex-end;
+}
+
+.col-time {
+  width: 160px;
+  justify-content: flex-end;
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  background: white;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+</style>

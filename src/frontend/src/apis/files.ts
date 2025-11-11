@@ -76,6 +76,27 @@ export async function getDataSetFiles(path: string = '.'): Promise<FileListRespo
     }
 }
 
+/**
+ * 获取任务文件列表
+ * @param path 要浏览的路径，默认为当前目录
+ * @returns Promise<FileListResponse> 返回文件列表
+ * @throws {Error} 当请求失败时抛出错误
+ *
+ * @example
+ * ```typescript
+ * const files = await getTaskFiles('.')
+ * console.log('任务文件:', files.data.files)
+ * ```
+ */
+export async function getTaskFiles(path: string = '.'): Promise<FileListResponse> {
+    try {
+        const response = await get<FileListResponse>(`/files/task?target_path=${encodeURIComponent(path)}`)
+        return response.data
+    } catch (error) {
+        console.error('获取数据集文件列表失败:', error)
+        throw new Error('获取数据集文件列表失败，请稍后再试')
+    }
+}
 
 /**
  * 上传文件到数据集

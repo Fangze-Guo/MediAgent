@@ -35,6 +35,15 @@ class FileController(BaseController):
             fileListVO: FileListVO = await self.fileService.getDataSetFiles(target_path, userVO.uid, userVO.role)
             return ResultUtils.success(fileListVO)
 
+        @self.router.get("/task")
+        async def getDataSetFiles(
+            target_path: str = ".",
+            userVO: UserVO = Depends(self._get_current_user)
+        ) -> BaseResponse[FileListVO]:
+            """获取任务文件列表"""
+            fileListVO: FileListVO = await self.fileService.getTaskFiles(target_path, userVO.uid, userVO.role)
+            return ResultUtils.success(fileListVO)
+
         @self.router.post("/upload")
         async def uploadFile(
                 file: UploadFile = File(...),
