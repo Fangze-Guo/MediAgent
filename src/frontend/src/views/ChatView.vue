@@ -27,10 +27,10 @@
                            class="thinking-section">
                         <div class="thinking-header">
                           <a-icon type="bulb" />
-                          <span>思考过程 {{ m.parsedContent.thinkingList.length > 1 ? thinkingIdx + 1 : '' }}</span>
+                          <span>{{ t('views_ChatView.thinkingProcess') }} {{ m.parsedContent.thinkingList.length > 1 ? thinkingIdx + 1 : '' }}</span>
                           <a-button type="text" size="small" @click="toggleThinking(idx, thinkingIdx)"
                                     class="toggle-thinking-btn">
-                            {{ m.showThinkingList && m.showThinkingList[thinkingIdx] ? '收起' : '展开' }}
+                            {{ m.showThinkingList && m.showThinkingList[thinkingIdx] ? t('views_ChatView.collapse') : t('views_ChatView.expand') }}
                           </a-button>
                         </div>
                         <!-- 思考内容 -->
@@ -57,7 +57,7 @@
               <div v-if="sending" class="loading-message">
                 <div class="message-content">
                   <a-spin size="small" />
-                  <span style="margin-left: 8px;">AI正在思考...</span>
+                  <span style="margin-left: 8px;">{{ t('views_ChatView.aiThinking') }}</span>
                 </div>
               </div>
             </div>
@@ -80,7 +80,7 @@
               <div class="files-header">
                 <span class="files-title">
                   <FileOutlined />
-                  当前会话文件 ({{ currentSessionFiles.length }})
+                  {{ t('views_ChatView.currentSessionFiles') }} ({{ currentSessionFiles.length }})
                 </span>
               </div>
               <div class="files-list">
@@ -128,28 +128,28 @@
                   <!-- 功能图标 -->
                   <div class="toolbar-icons">
                     <a-button type="text" class="toolbar-icon" @click="handleUploadClick"
-                              title="上传文件">
+                              :title="t('views_ChatView.uploadFile')">
                       <PaperClipOutlined />
                     </a-button>
-                    <a-button type="text" class="toolbar-icon" title="文档管理">
+                    <a-button type="text" class="toolbar-icon" :title="t('views_ChatView.documentManagement')">
                       <FileTextOutlined />
                     </a-button>
-                    <a-button type="text" class="toolbar-icon" title="设置">
+                    <a-button type="text" class="toolbar-icon" :title="t('views_ChatView.settings')">
                       <SettingOutlined />
                     </a-button>
-                    <a-button type="text" class="toolbar-icon" title="语音输入">
+                    <a-button type="text" class="toolbar-icon" :title="t('views_ChatView.voiceInput')">
                       <AudioOutlined />
                     </a-button>
-                    <a-button type="text" class="toolbar-icon" title="工具">
+                    <a-button type="text" class="toolbar-icon" :title="t('views_ChatView.tools')">
                       <AppstoreOutlined />
                     </a-button>
                   </div>
                 </div>
                 <div class="toolbar-right">
-                  <a-button type="text" class="toolbar-icon" title="清空输入">
+                  <a-button type="text" class="toolbar-icon" :title="t('views_ChatView.clearInput')">
                     <DeleteOutlined />
                   </a-button>
-                  <a-button type="text" class="toolbar-icon" title="展开">
+                  <a-button type="text" class="toolbar-icon" :title="t('views_ChatView.expandInput')">
                     <ExpandOutlined />
                   </a-button>
                 </div>
@@ -159,7 +159,7 @@
                 <textarea 
                   v-model="inputMessage" 
                   class="message-input" 
-                  placeholder="输入消息..." 
+                  :placeholder="t('views_ChatView.inputPlaceholder')" 
                   @keydown="handleKeyDown"
                   @input="adjustTextareaHeight"
                   rows="1"
@@ -169,12 +169,12 @@
               <!-- 底部工具栏 -->
               <div class="input-bottom">
                 <div class="input-hint">
-                  <span class="hint-text">按 Enter 发送，Ctrl+Enter 换行</span>
+                  <span class="hint-text">{{ t('views_ChatView.inputHint') }}</span>
                 </div>
                 <div class="send-group">
                   <a-button type="primary" class="send-btn" :loading="sending" @click="sendMessage"
                             :disabled="!inputMessage.trim()">
-                    发送
+                    {{ t('views_ChatView.send') }}
                   </a-button>
                 </div>
               </div>
@@ -187,7 +187,7 @@
     <!-- 文件上传模态框 -->
     <a-modal
         v-model:open="showFileUpload"
-        title="上传文件"
+        :title="t('views_ChatView.uploadFileTitle')"
         width="600px"
         :footer="null"
         @cancel="showFileUpload = false"
@@ -211,6 +211,7 @@
 import { computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
+import { useI18n } from 'vue-i18n'
 import { useConversationsStore } from '@/store/conversations'
 import FileUpload from '@/components/file/FileUpload.vue'
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
@@ -234,6 +235,9 @@ import {
 // 路由相关
 const route = useRoute()
 const router = useRouter()
+
+// 国际化
+const { t } = useI18n()
 
 // 状态管理
 const conversationsStore = useConversationsStore()

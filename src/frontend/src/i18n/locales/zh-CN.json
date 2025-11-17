@@ -1,0 +1,663 @@
+{
+  "common": {
+    "all": "全部",
+    "search": "搜索",
+    "refresh": "刷新",
+    "close": "关闭",
+    "cancel": "取消",
+    "confirm": "确认",
+    "delete": "删除",
+    "edit": "编辑",
+    "add": "添加",
+    "view": "查看",
+    "details": "详情",
+    "back": "返回",
+    "loading": "加载中...",
+    "noData": "无数据",
+    "success": "成功",
+    "error": "错误",
+    "warning": "警告"
+  },
+  "layout": {
+    "sidebar": {
+      "dashboard": "仪表板",
+      "tasks": "任务",
+      "datasets": "数据集",
+      "models": "模型",
+      "appstore": "应用商店",
+      "settings": "设置",
+      "logout": "登出"
+    }
+  },
+  "task": {
+    "title": "任务列表",
+    "searchPlaceholder": "搜索任务名称",
+    "columns": {
+      "id": "ID",
+      "name": "任务名称",
+      "code": "任务代码",
+      "type": "任务类型",
+      "status": "任务状态",
+      "createdAt": "创建时间",
+      "updatedAt": "更新时间",
+      "actions": "操作"
+    },
+    "buttons": {
+      "refresh": "刷新",
+      "details": "详情",
+      "delete": "删除",
+      "viewFiles": "查看文件"
+    },
+    "filters": {
+      "all": "全部",
+      "queued": "排队中",
+      "running": "执行中",
+      "succeeded": "已完成",
+      "failed": "已失败"
+    },
+    "modals": {
+      "details": "任务详情",
+      "editName": "编辑任务名称",
+      "filesBrowser": "浏览任务文件"
+    },
+    "forms": {
+      "taskNameLabel": "任务名称",
+      "taskNamePlaceholder": "请输入任务名称"
+    },
+    "sections": {
+      "basicInfo": "基本信息",
+      "progress": "执行进度",
+      "stepDetails": "步骤详情"
+    },
+    "stats": {
+      "totalSteps": "总步骤",
+      "completed": "已完成",
+      "currentStep": "当前步骤",
+      "failedSteps": "失败步骤"
+    },
+    "steps": {
+      "source": "数据源",
+      "relativePath": "相对路径"
+    },
+    "file": {
+      "name": "名称",
+      "size": "大小",
+      "modifiedTime": "修改时间",
+      "empty": "该文件夹为空"
+    },
+    "time": {
+      "justNow": "刚刚",
+      "minutesAgo": "分钟前",
+      "hoursAgo": "小时前",
+      "daysAgo": "天前"
+    },
+    "messages": {
+      "noTasks": "暂无任务",
+      "deleteConfirm": "确定要删除此任务吗？",
+      "deleteSuccess": "任务删除成功",
+      "deleteFailed": "删除任务失败",
+      "updateNameSuccess": "任务名称更新成功",
+      "updateNameFailed": "更新任务名称失败",
+      "loadFailed": "加载任务列表失败"
+    },
+    "actions": {
+      "deleteTask": "删除任务",
+      "autoRefresh": "自动刷新",
+      "manualRefresh": "手动刷新"
+    }
+  },
+  "dataset": {
+    "title": "数据管理",
+    "createButton": "创建数据集",
+    "columns": {
+      "name": "名称",
+      "caseCount": "案例数",
+      "uploadStatus": "上传状态",
+      "actions": "操作"
+    },
+    "buttons": {
+      "viewFiles": "查看文件",
+      "edit": "编辑",
+      "delete": "删除"
+    },
+    "messages": {
+      "dataUploaded": "已上传数据",
+      "dataNotUploaded": "未上传数据",
+      "descriptionUploaded": "已上传描述文件",
+      "descriptionNotUploaded": "未上传描述文件"
+    },
+    "tabs": {
+      "clinicalData": "临床数据",
+      "textData": "文本数据",
+      "imageData": "影像数据",
+      "pathologyData": "病理数据",
+      "genomicData": "基因组数据"
+    }
+  },
+  "login": {
+    "title": "登录",
+    "username": "用户名",
+    "password": "密码",
+    "loginButton": "登录",
+    "remember": "记住我",
+    "forgotPassword": "忘记密码？"
+  },
+  "model": {
+    "title": "模型",
+    "selectModel": "选择模型",
+    "configuration": "配置"
+  },
+  "components_FeaturesMarkdown": {
+    "editTitle": "编辑功能特点",
+    "cancel": "取消",
+    "save": "保存",
+    "undo": "撤销",
+    "redo": "重做",
+    "bold": "粗体",
+    "italic": "斜体",
+    "code": "代码",
+    "list": "列表",
+    "heading": "标题",
+    "link": "链接",
+    "image": "图片",
+    "preview": "预览效果",
+    "title": "功能特点",
+    "edit": "编辑",
+    "emptyDescription": "暂无功能特点介绍",
+    "addFeatures": "添加功能特点",
+    "placeholder": "请输入功能特点的Markdown内容...\n\n💡 提示：\n• 支持粘贴图片（Ctrl+V）\n• 支持拖拽图片到此处\n• 点击工具栏的图片按钮上传\n• 图片使用简短占位符，预览区可查看实际效果\n• Ctrl+Z 撤销，Ctrl+Shift+Z 重做",
+    "dropImage": "释放以上传图片",
+    "enterContent": "请输入功能特点内容",
+    "saveSuccess": "功能特点保存成功",
+    "saveFailed": "保存功能特点失败",
+    "uploadFailed": "图片上传失败",
+    "imageDataLost": "图片数据丢失"
+  },
+  "components_DatasetFileBrowser": {
+      "pathNavigation": {
+        "datasetDir": "数据集目录",
+        "parentDir": "返回上级",
+        "refresh": "刷新",
+        "uploadToCurrent": "上传到当前目录",
+        "createFolder": "新建文件夹",
+        "totalFiles": "共 {count} 个文件",
+        "batchDelete": "批量删除 ({count})"
+      },
+      "fileList": {
+        "name": "名称",
+        "type": "类型",
+        "size": "大小",
+        "modifiedTime": "修改时间",
+        "actions": "操作",
+        "typeDirectory": "文件夹",
+        "typeImage": "图片",
+        "typeText": "文本",
+        "typeOthers": "其他",
+        "preview": "预览",
+        "delete": "删除"
+      },
+      "previewModal": {
+        "title": "文件预览",
+        "fileSize": "文件大小",
+        "fileType": "文件类型",
+        "modifiedTime": "修改时间"
+      },
+      "createFolderModal": {
+        "title": "新建文件夹",
+        "label": "文件夹名称",
+        "placeholder": "请输入文件夹名称",
+        "create": "创建",
+        "cancel": "取消"
+      },
+      "createFolderRules": {
+        "required": "请输入文件夹名称",
+        "length": "文件夹名称长度必须为 1-50 个字符",
+        "pattern": "文件夹名称不能包含特殊字符"
+      },
+      "messages": {
+        "loadFailed": "获取文件列表失败",
+        "createSuccess": "文件夹创建成功",
+        "createFailed": "创建文件夹失败"
+      },
+      "deleteFile": {
+        "confirmTitle": "确认删除",
+        "confirmDirMessage": "确定要删除目录 '{fileName}' 吗？此操作将删除该目录及其所有内容，且无法恢复！",
+        "confirmFileMessage": "确定要删除文件 '{fileName}' 吗？此操作无法恢复！",
+        "cancel": "取消",
+        "dirDeleteSuccess": "目录删除成功",
+        "fileDeleteSuccess": "文件删除成功",
+        "deleteFailed": "删除失败"
+      },
+      "batchDelete": {
+        "selectPrompt": "请选择要删除的文件",
+        "confirmTitle": "确认批量删除",
+        "confirmMessage": "确定要删除选中的 {count} 个文件吗？",
+        "delete": "删除",
+        "cancel": "取消",
+        "success": "成功删除 {count} 个文件",
+        "failed": "批量删除失败"
+      },
+      "upload": {
+        "failed": "上传失败",
+        "success": "成功上传 {count} 个文件",
+        "failedWithMessage": "上传失败：{message}",
+        "unknownError": "未知错误"
+      }
+    },
+  "components_FileUpload": {
+      "dropzoneText": "点击或拖拽文件到此处上传",
+      "dropzoneHint": "可同时选择多个文件进行批量上传",
+      "uploading": "正在上传...",
+      "pendingFiles": "待上传文件 ({count})",
+      "startUpload": "开始上传",
+      "clearList": "清空列表",
+      "remove": "移除",
+      "uploadedFiles": "已上传文件 ({count})",
+      "uploadSuccess": "上传成功",
+      "uploadSuccessHint": "文件已保存到服务器，您可以关闭此窗口",
+      "supportedFormats": "支持多文件上传：图片文件（JPG、PNG、GIF、WebP）、CSV 文件、DICOM 文件（.dcm）",
+      "messages": {
+        "unsupportedType": "{fileName}：不支持的文件类型",
+        "sizeExceeded": "文件 {fileName} 超过大小限制（{maxSize}MB）",
+        "filesAdded": "{count} 个文件已添加到上传列表",
+        "allSuccess": "成功上传 {successCount} 个文件",
+        "partialSuccess": "成功上传 {successCount} 个文件，失败 {failedCount} 个",
+        "failureDetails": "上传失败详情：",
+        "allFailed": "上传失败，共 {failedCount} 个文件",
+        "fileSuccess": "文件 {fileName} 上传成功",
+        "uploadFailed": "上传失败",
+        "noFiles": "没有要上传的文件",
+        "fileRemoved": "文件已从上传列表中移除",
+        "listCleared": "已清空 {count} 个待上传文件"
+      }
+    },
+  "components_GlobalFileUpload": {
+      "title": "上传文件",
+      "uploadFailed": "上传失败：{error}"
+    },
+  "components_LanguageSwitcher": {
+      "1": "中文"
+    },
+  "components_ModelConfigModal": {
+      "1": "当前模型",
+      "2": "所有模型",
+      "3": "添加模型",
+      "4": "刷新",
+      "5": "阿里云",
+      "6": "在线",
+      "7": "维护中",
+      "8": "离线",
+      "9": "日常对话",
+      "10": "文本创作",
+      "11": "代码生成",
+      "12": "数学问题",
+      "13": "逻辑推理",
+      "14": "复杂分析",
+      "15": "模型配置管理",
+      "16": "isEdit ? '编辑模型配置' : '添加模型配置'",
+      "17": "模型ID",
+      "18": "[{ required: true, message: '请输入模型ID' }]",
+      "19": "模型名称",
+      "20": "[{ required: true, message: '请输入模型名称' }]",
+      "21": "描述",
+      "22": "提供商",
+      "23": "[{ required: true, message: '请选择提供商' }]",
+      "24": "阿里云",
+      "25": "API基础URL",
+      "26": "[{ required: true, message: '请输入API基础URL' }]",
+      "27": "状态",
+      "28": "标签",
+      "29": "输入标签",
+      "30": "日常对话",
+      "31": "文本创作",
+      "32": "代码生成",
+      "33": "数学问题",
+      "34": "逻辑推理",
+      "35": "复杂分析"
+    },
+  "components_ModelSelector": {
+      "1": "选择模型",
+      "2": "{{ provider.models.length }}个模型"
+    },
+  "components_Sidebar": {
+      "historyTitle": "历史对话",
+      "delete": "删除",
+      "userName": "{userName}",
+      "editProfile": "编辑资料",
+      "logout": "退出登录",
+      "home": "新建对话",
+      "files": "文件管理",
+      "tasks": "任务管理",
+      "datasets": "数据集管理",
+      "appStore": "工具仓库",
+      "logoutConfirm": {
+        "title": "确认退出",
+        "content": "确定要退出登录吗？",
+        "okText": "退出",
+        "cancelText": "取消",
+        "successMessage": "已退出登录"
+      }
+    },
+  "components_UserProfileModal": {
+      "changeAvatar": "更换头像",
+      "uploadAvatar": "上传头像",
+      "uploadInstructions": "头像上传说明：",
+      "supportedFormats": "支持 JPG、PNG、GIF 格式",
+      "maxSize": "文件大小不超过 2MB",
+      "recommendedSize": "建议尺寸：200x200 像素",
+      "storageFormat": "头像将以 Base64 格式存储",
+      "title": "编辑资料",
+      "username": "用户名",
+      "usernamePlaceholder": "请输入用户名",
+      "userId": "用户ID",
+      "userIdNote": "系统自动生成",
+      "role": "角色",
+      "removeAvatar": "移除头像",
+      "roleAdmin": "管理员",
+      "roleUser": "普通用户",
+      "roleUnknown": "未知",
+      "cancel": "取消",
+      "save": "保存",
+      "usernameLength": "用户名长度必须为 2-20 个字符",
+      "usernamePattern": "用户名只能包含字母、数字、下划线和中文",
+      "selectImage": "请选择图片文件",
+      "imageTooLarge": "图片大小不能超过 2MB",
+      "uploadSuccess": "头像上传成功",
+      "readFailed": "读取头像失败",
+      "uploadFailed": "头像上传失败，请重试",
+      "removeSuccess": "头像已移除",
+      "updateSuccess": "个人信息更新成功",
+      "checkInput": "请检查输入信息",
+      "saveFailed": "保存失败，请重试"
+    },
+  "views_AppDetailView": {
+      "backToStore": "返回工具仓库",
+      "loading": "正在加载应用信息...",
+      "providedBy": "由 {author} 提供",
+      "ratings": "({count} 个评分)",
+      "users": "{count} 位用户",
+      "installed": "已添加到 MediAgent",
+      "addToMediAgent": "添加至 MediAgent",
+      "share": "分享",
+      "overview": "概述",
+      "tags": "标签",
+      "relatedApps": "相关应用",
+      "notFound": "未找到该应用",
+      "backButton": "返回工具仓库",
+      "details": "详情",
+      "version": "版本",
+      "lastUpdated": "上次更新日期",
+      "size": "大小",
+      "language": "语言",
+      "category": "分类"
+    },
+  "views_AppStoreView": {
+      "logoText": "MediAgent 工具仓库",
+      "searchPlaceholder": "搜索应用、主题等",
+      "loading": "正在加载应用...",
+      "emptyText": "没有找到相关应用",
+      "emptyHint": "请尝试其他搜索词或查看其他分类",
+      "recommendedTools": "推荐工具",
+      "resultsCount": "{count} 个应用",
+      "users": "{count} 位用户",
+      "installed": "已安装",
+      "addToMediAgent": "添加至 MediAgent",
+      "allCategory": "全部",
+      "loadCategoriesFailed": "加载分类失败",
+      "loadAppsFailed": "加载应用失败"
+    },
+    "views_ChatView": {
+      "thinkingProcess": "思考过程",
+      "collapse": "收起",
+      "expand": "展开",
+      "aiThinking": "AI正在思考...",
+      "currentSessionFiles": "当前会话文件",
+      "uploadFile": "上传文件",
+      "documentManagement": "文档管理",
+      "settings": "设置",
+      "voiceInput": "语音输入",
+      "tools": "工具",
+      "clearInput": "清空输入",
+      "expandInput": "展开",
+      "inputPlaceholder": "输入消息...",
+      "inputHint": "按 Enter 发送，Ctrl+Enter 换行",
+      "send": "发送",
+      "uploadFileTitle": "上传文件"
+    },
+    "views_DatasetManageView": {
+      "title": "数据管理",
+      "createButton": "创建数据集",
+      "emptyState": "还没有数据集",
+      "loading": "加载中...",
+      "caseCount": "案例数: {count}",
+      "dataUploaded": "已上传数据",
+      "dataNotUploaded": "未上传数据",
+      "descriptionUploaded": "已上传描述文件",
+      "descriptionNotUploaded": "未上传描述文件",
+      "viewFiles": "查看文件",
+      "edit": "编辑",
+      "delete": "删除",
+      "dataTypes": {
+        "clinical": "临床数据",
+        "text": "文本数据",
+        "imaging": "影像数据",
+        "pathology": "病理数据",
+        "genomics": "基因组数据",
+        "annotation": "标注信息"
+      },
+      "dialog": {
+        "createTitle": "创建数据集",
+        "editTitle": "编辑数据集",
+        "basicInfo": "基本信息",
+        "datasetName": "数据集名称",
+        "quantity": "数量",
+        "dataDescription": "数据描述",
+        "otherInfo": "其他信息",
+        "remarks": "备注",
+        "cancel": "取消",
+        "save": "保存",
+        "create": "创建"
+      },
+      "descriptions": {
+        "clinical": "临床数据描述",
+        "text": "文本数据描述",
+        "imaging": "影像数据描述",
+        "pathology": "病理数据描述",
+        "genomics": "基因组数据描述",
+        "annotation": "标注信息描述"
+      },
+      "placeholders": {
+        "clinical": "例如：患者年龄、性别、病史等临床信息",
+        "text": "例如：诊断报告、病历记录等文本信息",
+        "imaging": "例如：MRI T1、T2序列，DICOM格式",
+        "pathology": "例如：病理切片、组织学分级等",
+        "genomics": "例如：基因测序数据、突变信息等",
+        "annotation": "例如：病灶分割标注、分类标签等",
+        "remarks": "其他需要说明的信息"
+      }
+    },
+  "views_FileManageView": {
+      "title": "数据集文件管理",
+      "searchPlaceholder": "搜索文件...",
+      "refresh": "刷新",
+      "uploadFiles": "上传文件",
+      "loadFailed": "获取文件列表失败"
+    },
+  "views_HomeView": {
+      "welcome": "欢迎使用 MediAgent",
+      "subtitle": "输入你的问题，开始与助手对话。",
+      "startConversation": "开始对话",
+      "programming": "💻 编程",
+      "writing": "✍️ 写作助手",
+      "imageGen": "🖼️ 图片生成",
+      "musicGen": "🎵 音乐生成",
+      "translation": "🔄 翻译",
+      "ppt": "📊 PPT",
+      "uploadFiles": "📁 上传文件",
+      "more": "➕ 更多",
+      "placeholder": "发送消息或选择技能"
+    },
+    "views_LoginView": {
+      "welcome": "欢迎！",
+      "welcomeSubtitle": "为您提供专业的医学分析服务！",
+      "login": "登录",
+      "register": "注册",
+      "loginSubtitle": "欢迎回来！请登录您的账户。",
+      "registerSubtitle": "创建新账户开始使用。",
+      "username": "用户名",
+      "password": "密码",
+      "confirmPassword": "确认密码",
+      "usernamePlaceholder": "请输入用户名",
+      "passwordPlaceholder": "请输入密码",
+      "confirmPasswordPlaceholder": "请确认密码",
+      "loginButton": "登录",
+      "registerButton": "注册",
+      "orLoginWith": "或使用以下方式登录",
+      "rules": {
+        "usernameRequired": "请输入用户名",
+        "usernameLength": "用户名长度在 3 到 20 个字符",
+        "passwordRequired": "请输入密码",
+        "passwordLength": "密码至少 6 个字符",
+        "confirmPasswordRequired": "请确认密码",
+        "passwordMismatch": "两次输入的密码不一致"
+      },
+      "messages": {
+        "loginSuccess": "登录成功！",
+        "loginFailed": "登录失败",
+        "loginFailedNetwork": "登录失败，请检查网络连接",
+        "registerSuccess": "用户 {username} 注册成功！",
+        "registerFailed": "注册失败",
+        "registerFailedNetwork": "注册失败，请检查网络连接"
+      }
+    },
+  "views_NotFoundView": {
+      "title": "页面未找到",
+      "message": "抱歉，您访问的页面不存在或已被移除。",
+      "backHome": "返回首页"
+    },
+  "views_SettingsView": {
+      "title": "设置",
+      "subtitle": "管理你的 MediAgent 偏好设置",
+      "chatSettings": "聊天设置",
+      "autoScroll": "自动滚动到底部",
+      "messageTime": "消息时间显示",
+      "relativeTime": "相对时间",
+      "absoluteTime": "绝对时间",
+      "interfaceSettings": "界面设置",
+      "theme": "主题",
+      "lightTheme": "浅色",
+      "darkTheme": "深色",
+      "followSystem": "跟随系统",
+      "dataManagement": "数据管理",
+      "exportHistory": "导出聊天记录",
+      "export": "导出",
+      "clearData": "清除所有数据",
+      "clear": "清除"
+    },
+  "views_TaskManageView": {
+      "title": "任务列表",
+      "searchPlaceholder": "搜索任务名称",
+      "refresh": "刷新",
+      "status": {
+        "all": "全部",
+        "queued": "排队中",
+        "running": "执行中",
+        "succeeded": "已完成",
+        "failed": "已失败"
+      },
+      "columns": {
+        "id": "ID",
+        "name": "任务名称",
+        "code": "任务编号",
+        "type": "任务类型",
+        "status": "任务状态",
+        "createTime": "创建时间",
+        "updateTime": "更新时间",
+        "actions": "操作"
+      },
+      "actions": {
+        "viewDetails": "查看详情",
+        "editName": "编辑名称",
+        "viewFiles": "查看文件",
+        "delete": "删除"
+      },
+      "editNameModal": {
+        "title": "编辑任务名称",
+        "label": "任务名称"
+      },
+      "detailsModal": {
+        "title": "任务详情",
+        "basicInfo": "基本信息",
+        "progressInfo": "进度信息",
+        "stepDetails": "步骤详情"
+      },
+      "basicInfo": {
+        "taskId": "任务ID",
+        "taskName": "任务名称",
+        "taskCode": "任务编号",
+        "taskType": "任务类型",
+        "taskStatus": "任务状态",
+        "createTime": "创建时间",
+        "updateTime": "更新时间",
+        "requestInfo": "请求信息"
+      },
+      "progressInfo": {
+        "totalSteps": "总步骤数",
+        "completedSteps": "已完成步骤",
+        "currentStep": "当前步骤",
+        "failedStep": "失败步骤"
+      },
+      "stepDetails": {
+        "stepNumber": "步骤 {number}",
+        "dataSource": "数据源",
+        "relativePath": "相对路径"
+      },
+      "stepStatus": {
+        "completed": "已完成",
+        "running": "运行中",
+        "pending": "等待中",
+        "failed": "已失败"
+      },
+      "taskStatus": {
+        "running": "进行中",
+        "succeeded": "已完成",
+        "failed": "失败",
+        "queued": "排队中"
+      },
+      "taskType": {
+        "machineLearning": "机器学习",
+        "dataProcessing": "数据处理",
+        "unknown": "未知"
+      },
+      "fileBrowser": {
+        "title": "任务文件浏览",
+        "fileList": "文件列表",
+        "backToParent": "返回上级",
+        "loading": "加载中...",
+        "empty": "该文件夹为空",
+        "name": "名称",
+        "size": "大小",
+        "modifiedTime": "修改时间",
+        "close": "关闭"
+      },
+      "messages": {
+        "loadFailed": "加载任务列表失败",
+        "statsFailed": "加载统计信息失败",
+        "confirmDelete": "确认删除任务",
+        "confirmDeleteMessage": "确定要删除任务 '{taskUid}' 吗？此操作不可恢复。",
+        "deleteSuccess": "任务删除成功",
+        "deleteFailed": "删除任务失败",
+        "updateSuccess": "任务名称更新成功",
+        "updateFailed": "更新任务名称失败",
+        "enterName": "请输入任务名称",
+        "fileListFailed": "加载文件列表失败",
+        "loadSuccess": "成功加载 {count} 个任务"
+      },
+      "detailActions": {
+        "deleteTask": "删除任务",
+        "refresh": "刷新",
+        "autoRefresh": "自动刷新",
+        "manualRefresh": "手动刷新"
+      }
+    }
+  }

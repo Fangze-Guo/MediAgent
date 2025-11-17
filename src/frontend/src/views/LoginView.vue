@@ -16,8 +16,8 @@
 
           <!-- 欢迎文字 -->
           <div class="welcome-text">
-            <h2 class="welcome-title">Welcome!</h2>
-            <p class="welcome-subtitle">智能医疗助手，为您提供专业的医学分析服务</p>
+            <h2 class="welcome-title">{{ t('views_LoginView.welcome') }}</h2>
+            <p class="welcome-subtitle">{{ t('views_LoginView.welcomeSubtitle') }}</p>
           </div>
 
           <!-- 装饰插图 -->
@@ -40,9 +40,9 @@
         <div class="form-container">
           <!-- 表单头部 -->
           <div class="form-header">
-            <h2 class="form-title">{{ activeTab === 'login' ? 'Login' : 'Register' }}</h2>
+            <h2 class="form-title">{{ activeTab === 'login' ? t('views_LoginView.login') : t('views_LoginView.register') }}</h2>
             <p class="form-subtitle">{{
-                activeTab === 'login' ? 'Please login to continue' : 'Create your account'
+                activeTab === 'login' ? t('views_LoginView.loginSubtitle') : t('views_LoginView.registerSubtitle')
               }}</p>
           </div>
 
@@ -52,13 +52,13 @@
                 :class="['tab-button', { active: activeTab === 'login' }]"
                 @click="activeTab = 'login'"
             >
-              登录
+              {{ t('views_LoginView.login') }}
             </button>
             <button
                 :class="['tab-button', { active: activeTab === 'register' }]"
                 @click="activeTab = 'register'"
             >
-              注册
+              {{ t('views_LoginView.register') }}
             </button>
           </div>
 
@@ -76,7 +76,7 @@
             <a-form-item name="user_name" class="form-item">
               <a-input
                   v-model:value="loginForm.user_name"
-                  placeholder="请输入用户名"
+                  :placeholder="t('views_LoginView.usernamePlaceholder')"
                   size="large"
                   :disabled="loading"
                   class="form-input"
@@ -94,7 +94,7 @@
             <a-form-item name="password" class="form-item">
               <a-input-password
                   v-model:value="loginForm.password"
-                  placeholder="请输入密码"
+                  :placeholder="t('views_LoginView.passwordPlaceholder')"
                   size="large"
                   :disabled="loading"
                   class="form-input"
@@ -118,7 +118,7 @@
                   :loading="loading"
                   class="submit-button"
               >
-                {{ loading ? '登录中...' : 'LOGIN' }}
+                {{ loading ? t('common.loading') : t('views_LoginView.loginButton').toUpperCase() }}
               </a-button>
             </a-form-item>
           </a-form>
@@ -136,7 +136,7 @@
             <a-form-item name="user_name" class="form-item">
               <a-input
                   v-model:value="registerForm.user_name"
-                  placeholder="请输入用户名"
+                  :placeholder="t('views_LoginView.usernamePlaceholder')"
                   size="large"
                   :disabled="loading"
                   class="form-input"
@@ -154,7 +154,7 @@
             <a-form-item name="password" class="form-item">
               <a-input-password
                   v-model:value="registerForm.password"
-                  placeholder="请输入密码"
+                  :placeholder="t('views_LoginView.passwordPlaceholder')"
                   size="large"
                   :disabled="loading"
                   class="form-input"
@@ -172,7 +172,7 @@
             <a-form-item name="confirmPassword" class="form-item">
               <a-input-password
                   v-model:value="registerForm.confirmPassword"
-                  placeholder="请再次输入密码"
+                  :placeholder="t('views_LoginView.confirmPasswordPlaceholder')"
                   size="large"
                   :disabled="loading"
                   class="form-input"
@@ -196,7 +196,7 @@
                   :loading="loading"
                   class="submit-button"
               >
-                {{ loading ? '注册中...' : 'REGISTER' }}
+                {{ loading ? t('common.loading') : t('views_LoginView.registerButton').toUpperCase() }}
               </a-button>
             </a-form-item>
           </a-form>
@@ -206,7 +206,7 @@
             <div class="divider">
               <span></span>
             </div>
-            <div class="social-subtitle">Login With</div>
+            <div class="social-subtitle">{{ t('views_LoginView.orLoginWith') }}</div>
             <div class="social-buttons">
               <button class="social-btn facebook" @click="">
                 <svg viewBox="0 0 24 24" width="20" height="20">
@@ -272,13 +272,15 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { reactive, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/store/auth'
+import { useI18n } from 'vue-i18n'
 import type { LoginRequest, RegisterRequest } from '@/types/auth'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const { t } = useI18n()
 
 // 当前激活的标签页：登录或注册
 const activeTab = ref<'login' | 'register'>('login')
@@ -305,40 +307,40 @@ const registerForm = reactive<RegisterRequest & { confirmPassword: string }>({
 })
 
 // 登录表单验证规则
-const loginRules = {
+const loginRules = computed(() => ({
   user_name: [
-    {required: true, message: '请输入用户名', trigger: 'blur'},
-    {min: 3, max: 20, message: '用户名长度在 3 到 20 个字符', trigger: 'blur'}
+    {required: true, message: t('views_LoginView.rules.usernameRequired'), trigger: 'blur'},
+    {min: 3, max: 20, message: t('views_LoginView.rules.usernameLength'), trigger: 'blur'}
   ],
   password: [
-    {required: true, message: '请输入密码', trigger: 'blur'},
-    {min: 6, message: '密码至少 6 个字符', trigger: 'blur'}
+    {required: true, message: t('views_LoginView.rules.passwordRequired'), trigger: 'blur'},
+    {min: 6, message: t('views_LoginView.rules.passwordLength'), trigger: 'blur'}
   ]
-}
+}))
 
 // 注册表单验证规则
-const registerRules = {
+const registerRules = computed(() => ({
   user_name: [
-    {required: true, message: '请输入用户名', trigger: 'blur'},
-    {min: 3, max: 20, message: '用户名长度在 3 到 20 个字符', trigger: 'blur'}
+    {required: true, message: t('views_LoginView.rules.usernameRequired'), trigger: 'blur'},
+    {min: 3, max: 20, message: t('views_LoginView.rules.usernameLength'), trigger: 'blur'}
   ],
   password: [
-    {required: true, message: '请输入密码', trigger: 'blur'},
-    {min: 6, message: '密码至少 6 个字符', trigger: 'blur'}
+    {required: true, message: t('views_LoginView.rules.passwordRequired'), trigger: 'blur'},
+    {min: 6, message: t('views_LoginView.rules.passwordLength'), trigger: 'blur'}
   ],
   confirmPassword: [
-    {required: true, message: '请确认密码', trigger: 'blur'},
+    {required: true, message: t('views_LoginView.rules.confirmPasswordRequired'), trigger: 'blur'},
     {
       validator: (_: any, value: string) => {
         if (value !== registerForm.password) {
-          return Promise.reject(new Error('两次输入的密码不一致'))
+          return Promise.reject(new Error(t('views_LoginView.rules.passwordMismatch')))
         }
         return Promise.resolve()
       },
       trigger: 'blur'
     }
   ]
-}
+}))
 
 /**
  * 处理用户登录
@@ -353,7 +355,7 @@ async function handleLogin() {
     const result = await authStore.userLogin(loginForm)
     if (result.success) {
       // 登录成功，显示成功提示并立即跳转到首页
-      loginSuccessMessage.value = result.message || '登录成功！'
+      loginSuccessMessage.value = result.message || t('views_LoginView.messages.loginSuccess')
       await router.push('/')
     } else {
       // 登录失败，显示错误信息
@@ -361,7 +363,7 @@ async function handleLogin() {
     }
   } catch (error: any) {
     // 网络错误或其他异常，使用后端返回的错误信息
-    errorMessage.value = error.response?.data?.message || error.message || '登录失败，请重试'
+    errorMessage.value = error.response?.data?.message || error.message || t('views_LoginView.messages.loginFailed')
   } finally {
     loading.value = false
   }
@@ -398,7 +400,7 @@ async function handleRegister() {
   } catch (error: any) {
     console.error('Register error in component:', error) // 调试信息
     // 网络错误或其他异常，使用后端返回的错误信息
-    errorMessage.value = error.response?.data?.message || error.message || '注册失败，请重试'
+    errorMessage.value = error.response?.data?.message || error.message || t('views_LoginView.messages.registerFailed')
   } finally {
     loading.value = false
   }

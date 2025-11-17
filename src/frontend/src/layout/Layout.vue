@@ -11,9 +11,12 @@
       <Sidebar />
     </a-layout-sider>
     <a-layout class="site-layout">
-      <a-layout-header style="background: #fff; padding: 0">
-        <menu-unfold-outlined v-if="collapsed" class="trigger" @click="toggle()" />
-        <menu-fold-outlined v-else class="trigger" @click="toggle()" />
+      <a-layout-header style="background: #fff; padding: 0 16px; display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 16px;">
+          <menu-unfold-outlined v-if="collapsed" class="trigger" @click="toggle()" />
+          <menu-fold-outlined v-else class="trigger" @click="toggle()" />
+        </div>
+        <LanguageSwitcher />
       </a-layout-header>
       <a-layout-content class="app-content">
         <Suspense>
@@ -33,6 +36,7 @@
 <script lang="ts" setup>
 import { ref, onMounted, watch } from 'vue'
 import Sidebar from '@/components/Sidebar.vue'
+import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
 import { MenuUnfoldOutlined, MenuFoldOutlined } from '@ant-design/icons-vue'
 import { useConversationsStore } from '@/store/conversations'
 import { useAuthStore } from '@/store/auth'

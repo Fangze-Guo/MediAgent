@@ -1,18 +1,8 @@
 <template>
-  <a-modal
-    v-model:open="visible"
-    title="上传文件"
-    width="600px"
-    :footer="null"
-    @cancel="handleClose"
-    @after-close="handleAfterClose"
-  >
-    <FileUpload
-      ref="fileUploadRef"
-      :current-path="currentPath"
-      @upload-success="handleUploadSuccess"
-      @upload-error="handleUploadError"
-    />
+  <a-modal v-model:open="visible" :title="t('components_GlobalFileUpload.title')" width="800px" :footer="null"
+    @cancel="handleClose" @after-close="handleAfterClose">
+    <FileUpload ref="fileUploadRef" :current-path="currentPath" @upload-success="handleUploadSuccess"
+      @upload-error="handleUploadError" />
   </a-modal>
 </template>
 
@@ -20,6 +10,10 @@
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { message } from 'ant-design-vue'
 import FileUpload from './FileUpload.vue'
+import { useI18n } from 'vue-i18n'
+
+// 国际化
+const { t } = useI18n()
 
 // 响应式数据
 const visible = ref(false)
@@ -35,12 +29,12 @@ const handleOpenUpload = (event: Event) => {
   } else {
     currentPath.value = '.'
   }
-  
+
   // 打开前先重置状态，确保是干净的界面
   if (fileUploadRef.value) {
     fileUploadRef.value.resetUploadState()
   }
-  
+
   nextTick(() => {
     visible.value = true
   })
@@ -75,7 +69,7 @@ const handleUploadSuccess = () => {
 
 // 文件上传失败回调
 const handleUploadError = (error: string) => {
-  message.error(`上传失败: ${error}`)
+  message.error(t('components_GlobalFileUpload.uploadFailed', { error }))
 }
 
 // 组件挂载时添加事件监听

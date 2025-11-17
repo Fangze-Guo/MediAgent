@@ -6,7 +6,7 @@
         <a-breadcrumb-item>
           <a @click="navigateToPath('.')">
             <HomeOutlined style="margin-right: 4px;" />
-            数据集目录
+            {{ t('components_DatasetFileBrowser.pathNavigation.datasetDir') }}
           </a>
         </a-breadcrumb-item>
         <a-breadcrumb-item v-for="(part, index) in pathParts" :key="index">
@@ -21,59 +21,51 @@
           <template #icon>
             <ArrowUpOutlined />
           </template>
-          上级目录
+          {{ t('components_DatasetFileBrowser.pathNavigation.parentDir') }}
         </a-button>
         <a-button @click="refresh" :loading="fileStore.loading">
           <template #icon>
             <ReloadOutlined />
           </template>
-          刷新
+          {{ t('components_DatasetFileBrowser.pathNavigation.refresh') }}
         </a-button>
         <a-button v-if="canWrite" type="primary" @click="handleUploadClick">
           <template #icon>
             <UploadOutlined />
           </template>
-          上传到当前目录
+          {{ t('components_DatasetFileBrowser.pathNavigation.uploadToCurrent') }}
         </a-button>
         <a-button v-if="canWrite" @click="showCreateFolderModal">
           <template #icon>
             <FolderAddOutlined />
           </template>
-          创建文件夹
+          {{ t('components_DatasetFileBrowser.pathNavigation.createFolder') }}
         </a-button>
       </div>
       <div class="toolbar-right">
-        <span class="file-count">共 {{ fileStore.fileList.length }} 个文件</span>
-        <a-button
-            v-if="canDelete && fileStore.selectedCount > 0"
-            danger
-            @click="handleBatchDelete"
-        >
+        <span class="file-count">{{ t('components_DatasetFileBrowser.pathNavigation.totalFiles', {
+          count:
+            fileStore.fileList.length
+        }) }}</span>
+        <a-button v-if="canDelete && fileStore.selectedCount > 0" danger @click="handleBatchDelete">
           <template #icon>
             <DeleteOutlined />
           </template>
-          批量删除 ({{ fileStore.selectedCount }})
+          {{ t('components_DatasetFileBrowser.pathNavigation.batchDelete', { count: fileStore.selectedCount }) }}
         </a-button>
       </div>
     </div>
 
     <div class="file-list" @drop="handleDrop" @dragover="handleDragOver" @dragenter="handleDragEnter"
-         @dragleave="handleDragLeave" :class="{ 'drag-over': isDragOver }">
-      <a-table
-          :data-source="dataSource"
-          :columns="columns"
-          :pagination="false"
-          :loading="fileStore.loading"
-          :row-selection="{ selectedRowKeys: fileStore.selectedFileIds, onChange: onSelectChange }"
-          size="middle"
-          class="file-table"
-      >
+      @dragleave="handleDragLeave" :class="{ 'drag-over': isDragOver }">
+      <a-table :data-source="dataSource" :columns="columns" :pagination="false" :loading="fileStore.loading"
+        :row-selection="{ selectedRowKeys: fileStore.selectedFileIds, onChange: onSelectChange }" size="middle"
+        class="file-table">
         <template #bodyCell="{ column, record }">
           <template v-if="column.dataIndex === 'name'">
             <div class="file-name-cell" :class="{ 'clickable': record.isDirectory }" @click="handleItemClick(record)">
-              <component
-                  :is="getFileIcon(record.type)"
-                  class="file-icon" :class="{ 'directory-icon': record.isDirectory }" />
+              <component :is="getFileIcon(record.type)" class="file-icon"
+                :class="{ 'directory-icon': record.isDirectory }" />
               <span class="file-name" :title="record.name">{{ record.name }}</span>
             </div>
           </template>
@@ -91,23 +83,13 @@
           </template>
           <template v-else-if="column.dataIndex === 'actions'">
             <div class="actions">
-              <a-button 
-                v-if="!record.isDirectory"
-                type="text" 
-                size="small" 
-                title="预览"
-                @click="previewFileHandler(record)"
-              >
+              <a-button v-if="!record.isDirectory" type="text" size="small"
+                :title="t('components_DatasetFileBrowser.fileList.preview')" @click="previewFileHandler(record)">
                 <EyeOutlined />
               </a-button>
-              <a-button 
-                v-if="canDeleteFile(record)"
-                type="text" 
-                size="small" 
-                title="删除"
-                danger
-                @click="deleteFileHandler(record)"
-              >
+              <a-button v-if="canDeleteFile(record)" type="text" size="small"
+                :title="t('components_DatasetFileBrowser.fileList.delete')" danger
+                @click="deleteFileHandler(record)">
                 <DeleteOutlined />
               </a-button>
             </div>
@@ -116,35 +98,36 @@
       </a-table>
     </div>
 
-    <a-modal v-model:open="previewVisible" title="文件预览" width="800px" :footer="null">
+    <!-- 文件预览模态框 -->
+    <a-modal v-model:open="previewVisible" :title="t('components_DatasetFileBrowser.previewModal.title')"
+      width="800px" :footer="null">
       <div v-if="previewFile" class="file-preview">
         <div v-if="isImageFile(previewFile)" class="image-preview">
-          <img 
-            :src="getImageUrl(previewFile)" 
-            :alt="previewFile.name"
-            style="max-width: 100%; max-height: 500px; object-fit: contain;"
-          />
+          <img :src="getImageUrl(previewFile)" :alt="previewFile.name"
+            style="max-width: 100%; max-height: 500px; object-fit: contain;" />
         </div>
         <div v-else class="file-info">
           <FileOutlined style="font-size: 48px; color: #1890ff; margin-bottom: 16px;" />
           <h3>{{ previewFile.name }}</h3>
-          <p>文件大小: {{ formatFileSize(previewFile.size) }}</p>
-          <p>文件类型: {{ previewFile.type }}</p>
-          <p>修改时间: {{ new Date(previewFile.modifiedTime).toLocaleString('zh-CN') }}</p>
+          <p>{{ t('components_DatasetFileBrowser.previewModal.fileSize') }}: {{ formatFileSize(previewFile.size) }}
+          </p>
+          <p>{{ t('components_DatasetFileBrowser.previewModal.fileType') }}: {{ previewFile.type }}</p>
+          <p>{{ t('components_DatasetFileBrowser.previewModal.modifiedTime') }}: {{ new
+            Date(previewFile.modifiedTime).toLocaleString('zh-CN') }}</p>
         </div>
       </div>
     </a-modal>
 
     <!-- 创建文件夹模态框 -->
-    <a-modal
-        v-model:open="createFolderVisible"
-        title="创建文件夹"
-        @ok="handleCreateFolder"
-        :confirm-loading="createFolderLoading"
-    >
+    <a-modal v-model:open="createFolderVisible"
+      :title="t('components_DatasetFileBrowser.createFolderModal.title')"
+      :okText="t('components_DatasetFileBrowser.createFolderModal.create')"
+      :cancelText="t('components_DatasetFileBrowser.createFolderModal.cancel')" @ok="handleCreateFolder"
+      :confirm-loading="createFolderLoading">
       <a-form :model="createFolderForm" :rules="createFolderRules" ref="createFolderFormRef">
-        <a-form-item label="文件夹名称" name="folderName">
-          <a-input v-model:value="createFolderForm.folderName" placeholder="请输入文件夹名称" />
+        <a-form-item :label="t('components_DatasetFileBrowser.createFolderModal.label')" name="folderName">
+          <a-input v-model:value="createFolderForm.folderName"
+            :placeholder="t('components_DatasetFileBrowser.createFolderModal.placeholder')" />
         </a-form-item>
       </a-form>
     </a-modal>
@@ -170,6 +153,10 @@ import {
 import { formatFileSize, uploadFile, createFolder } from '@/apis/files'
 import { useFileStore } from '@/store/files'
 import { useAuthStore } from '@/store/auth'
+import { useI18n } from 'vue-i18n'
+
+// 国际化
+const { t } = useI18n()
 
 const fileStore = useFileStore()
 const authStore = useAuthStore()
@@ -189,42 +176,42 @@ const createFolderForm = ref({
 const createFolderFormRef = ref()
 const createFolderRules = {
   folderName: [
-    { required: true, message: '请输入文件夹名称', trigger: 'blur' },
-    { min: 1, max: 50, message: '文件夹名称长度应在1-50个字符之间', trigger: 'blur' },
-    { pattern: /^[^<>:"/\\|?*]+$/, message: '文件夹名称不能包含特殊字符', trigger: 'blur' }
+    { required: true, message: t('components_DatasetFileBrowser.createFolderRules.required'), trigger: 'blur' },
+    { min: 1, max: 50, message: t('components_DatasetFileBrowser.createFolderRules.length'), trigger: 'blur' },
+    { pattern: /^[^<>:"/\\|?*]+$/, message: t('components_DatasetFileBrowser.createFolderRules.pattern'), trigger: 'blur' }
   ]
 }
 
 // 列定义
-const columns = [
+const columns = computed(() => [
   {
-    title: '名称',
+    title: t('components_DatasetFileBrowser.fileList.name'),
     dataIndex: 'name',
     key: 'name',
     sorter: (a: any, b: any) => a.name.localeCompare(b.name),
   },
   {
-    title: '类型',
+    title: t('components_DatasetFileBrowser.fileList.type'),
     dataIndex: 'type',
     key: 'type',
     width: 120,
   },
   {
-    title: '大小',
+    title: t('components_DatasetFileBrowser.fileList.size'),
     dataIndex: 'size',
     key: 'size',
     width: 120,
     sorter: (a: any, b: any) => a.size - b.size,
   },
   {
-    title: '修改时间',
+    title: t('components_DatasetFileBrowser.fileList.modifiedTime'),
     dataIndex: 'modifiedTime',
     key: 'modifiedTime',
     width: 180,
     sorter: (a: any, b: any) => new Date(a.modifiedTime).getTime() - new Date(b.modifiedTime).getTime(),
   },
-  {title: '操作', dataIndex: 'actions', key: 'actions', width: 150},
-]
+  { title: t('components_DatasetFileBrowser.fileList.actions'), dataIndex: 'actions', key: 'actions', width: 150 },
+])
 
 // 数据源
 const dataSource = computed(() => fileStore.filteredFiles.map(f => ({
@@ -252,26 +239,26 @@ const canGoUp = computed(() => {
 const canWrite = computed(() => {
   const user = authStore.currentUser
   if (!user) return false
-  
+
   // 管理员可以写入任何位置
   if (user.role === 'admin') return true
-  
+
   const path = currentPath.value
   if (!path || path === '.') return false
-  
+
   const parts = path.split('/').filter(p => p)
   if (parts.length === 0) return false
-  
+
   // 在public目录下不允许普通用户写入
   if (parts[0] === 'public') return false
-  
+
   // 在private目录下，只能写入自己的文件夹
   if (parts[0] === 'private') {
     if (parts.length < 2) return false
     const folderUserId = parseInt(parts[1])
     return folderUserId === user.uid
   }
-  
+
   return false
 })
 
@@ -279,31 +266,31 @@ const canWrite = computed(() => {
 const canDelete = computed(() => {
   const user = authStore.currentUser
   if (!user) return false
-  
+
   // 管理员可以删除（除了根目录）
   if (user.role === 'admin') return true
-  
+
   const path = currentPath.value
   if (!path || path === '.') return false
-  
+
   const parts = path.split('/').filter(p => p)
   if (parts.length === 0) return false
-  
+
   // 禁止删除private和public根目录
   if (parts.length === 1 && (parts[0] === 'private' || parts[0] === 'public')) {
     return false
   }
-  
+
   // 在public目录下不允许普通用户删除
   if (parts[0] === 'public') return false
-  
+
   // 在private目录下，只能删除自己的文件夹下的内容
   if (parts[0] === 'private') {
     if (parts.length < 2) return false
     const folderUserId = parseInt(parts[1])
     return folderUserId === user.uid
   }
-  
+
   return false
 })
 
@@ -311,7 +298,7 @@ const canDelete = computed(() => {
 const canDeleteFile = (file: any) => {
   const user = authStore.currentUser
   if (!user) return false
-  
+
   // 管理员可以删除大部分文件（除了根目录）
   if (user.role === 'admin') {
     // 禁止删除private和public根目录
@@ -320,15 +307,15 @@ const canDeleteFile = (file: any) => {
     }
     return true
   }
-  
+
   // 使用canDelete的基础权限判断
   if (!canDelete.value) return false
-  
+
   // 额外检查：禁止删除private和public根目录
   if (file.path === 'private' || file.path === 'public') {
     return false
   }
-  
+
   return true
 }
 
@@ -361,7 +348,7 @@ const fetchFiles = async (path: string = '.') => {
       parentPath.value = fileStore.parentPath
     }
   } catch (e) {
-    message.error('获取文件列表失败')
+    message.error(t('components_DatasetFileBrowser.messages.loadFailed'))
   }
 }
 
@@ -380,18 +367,17 @@ const handleCreateFolder = async () => {
   try {
     await createFolderFormRef.value?.validate()
     createFolderLoading.value = true
-    
+
     const result = await createFolder(createFolderForm.value.folderName, currentPath.value)
     if (result.code === 200) {
-      message.success('文件夹创建成功')
+      message.success(t('components_DatasetFileBrowser.messages.createSuccess'))
       createFolderVisible.value = false
       await refresh()
     } else {
-      message.error(result.message || '创建文件夹失败')
+      message.error(result.message || t('components_DatasetFileBrowser.messages.createFailed'))
     }
   } catch (error) {
-    console.error('创建文件夹失败:', error)
-    message.error('创建文件夹失败')
+    message.error(t('components_DatasetFileBrowser.messages.createFailed'))
   } finally {
     createFolderLoading.value = false
   }
@@ -436,47 +422,47 @@ const getTypeColor = (fileType: string) => {
 
 // 获取类型名称
 const getTypeName = (fileType: string) => {
-  if (fileType === 'directory') return '目录'
-  if (fileType.startsWith('image/')) return '图片'
+  if (fileType === 'directory') return t('components_DatasetFileBrowser.fileList.typeDirectory')
+  if (fileType.startsWith('image/')) return t('components_DatasetFileBrowser.fileList.typeImage')
   if (fileType.includes('csv')) return 'CSV'
   if (fileType.includes('excel')) return 'Excel'
   if (fileType.includes('dicom') || fileType.includes('application/dicom')) return 'DICOM'
-  if (fileType.includes('text')) return '文本'
-  return '其他'
+  if (fileType.includes('text')) return t('components_DatasetFileBrowser.fileList.typeText')
+  return t('components_DatasetFileBrowser.fileList.typeOthers')
 }
 
 const deleteFileHandler = (file: any) => {
   Modal.confirm({
-    title: '确认删除',
-    content: file.isDirectory 
-      ? `确定要删除目录 "${file.name}" 吗？\n此操作将删除目录及其所有内容，且无法恢复！` 
-      : `确定要删除文件 "${file.name}" 吗？此操作无法恢复！`,
-    okText: '确认删除',
+    title: t('components_DatasetFileBrowser.deleteFile.confirmTitle'),
+    content: file.isDirectory
+      ? t('components_DatasetFileBrowser.deleteFile.confirmDirMessage', { fileName: file.name })
+      : t('components_DatasetFileBrowser.deleteFile.confirmFileMessage', { fileName: file.name }),
+    okText: t('components_DatasetFileBrowser.deleteFile.confirmTitle'),
     okType: 'danger',
-    cancelText: '取消',
+    cancelText: t('components_DatasetFileBrowser.deleteFile.cancel'),
     onOk: async () => {
       const ok = await fileStore.removeFile(file.id)
-      if (ok) message.success(`${file.isDirectory ? '目录' : '文件'}删除成功`)
-      else message.error(fileStore.error || '删除失败')
+      if (ok) message.success(`${file.isDirectory ? t('components_DatasetFileBrowser.deleteFile.dirDeleteSuccess') : t('components_DatasetFileBrowser.deleteFile.fileDeleteSuccess')}`)
+      else message.error(fileStore.error || t('components_DatasetFileBrowser.deleteFile.deleteFailed'))
     }
   })
 }
 
 const handleBatchDelete = () => {
   if (fileStore.selectedCount === 0) {
-    message.warning('请选择要删除的文件')
+    message.warning(t('components_DatasetFileBrowser.batchDelete.selectPrompt'))
     return
   }
   Modal.confirm({
-    title: '确认批量删除',
-    content: `确定要删除选中的 ${fileStore.selectedCount} 个文件吗？`,
-    okText: '删除',
+    title: t('components_DatasetFileBrowser.batchDelete.confirmTitle'),
+    content: t('components_DatasetFileBrowser.batchDelete.confirmMessage', { count: fileStore.selectedCount }),
+    okText: t('components_DatasetFileBrowser.batchDelete.delete'),
     okType: 'danger',
-    cancelText: '取消',
+    cancelText: t('components_DatasetFileBrowser.batchDelete.cancel'),
     onOk: async () => {
       const result = await fileStore.removeFiles(fileStore.selectedFileIds)
-      if (result.success) message.success(`成功删除 ${result.deletedCount} 个文件`)
-      else message.error(fileStore.error || '批量删除失败')
+      if (result.success) message.success(t('components_DatasetFileBrowser.batchDelete.success', { count: result.deletedCount }))
+      else message.error(fileStore.error || t('components_DatasetFileBrowser.batchDelete.failed'))
     }
   })
 }
@@ -492,7 +478,9 @@ const isImageFile = (file: any) => {
 
 const getImageUrl = (file: any) => {
   const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
-  return `${baseURL}/files/serve/${file.id}`
+  // 正确编码文件路径（file.id 是相对路径，可能包含斜杠和特殊字符）
+  const encodedPath = file.id.split('/').map((part: string) => encodeURIComponent(part)).join('/')
+  return `${baseURL}/files/serve/${encodedPath}`
 }
 
 const handleUploadClick = () => {
@@ -509,12 +497,14 @@ const uploadSelectedFiles = async (files: File[]) => {
       if (result.code === 200) {
         await refresh()
       } else {
-        throw new Error(result.message || '上传失败')
+        throw new Error(result.message || t('components_DatasetFileBrowser.uploadSelectedFiles.1'))
       }
     }
-    message.success(`成功上传 ${files.length} 个文件`)
+    message.success(t('components_DatasetFileBrowser.uploadSelectedFiles.2', { count: files.length }))
   } catch (error) {
-    message.error(`上传失败: ${error instanceof Error ? error.message : '未知错误'}`)
+    message.error(t('components_DatasetFileBrowser.uploadSelectedFiles.3', {
+      message: (error as Error).message || t('components_DatasetFileBrowser.uploadSelectedFiles.4')
+    }))
   }
 }
 

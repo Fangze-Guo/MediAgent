@@ -1,47 +1,47 @@
 <template>
   <div class="settings-page">
     <div class="settings-header">
-      <h1>设置</h1>
-      <p>管理你的 MediAgent 偏好设置</p>
+      <h1>{{ t('views_SettingsView.title') }}</h1>
+      <p>{{ t('views_SettingsView.subtitle') }}</p>
     </div>
     
     <div class="settings-content">
       <div class="settings-section">
-        <h2>聊天设置</h2>
+        <h2>{{ t('views_SettingsView.chatSettings') }}</h2>
         <div class="setting-item">
-          <label>自动滚动到底部</label>
+          <label>{{ t('views_SettingsView.autoScroll') }}</label>
           <input type="checkbox" checked />
         </div>
         <div class="setting-item">
-          <label>消息时间显示</label>
+          <label>{{ t('views_SettingsView.messageTime') }}</label>
           <select>
-            <option>相对时间</option>
-            <option>绝对时间</option>
+            <option>{{ t('views_SettingsView.relativeTime') }}</option>
+            <option>{{ t('views_SettingsView.absoluteTime') }}</option>
           </select>
         </div>
       </div>
       
       <div class="settings-section">
-        <h2>界面设置</h2>
+        <h2>{{ t('views_SettingsView.interfaceSettings') }}</h2>
         <div class="setting-item">
-          <label>主题</label>
+          <label>{{ t('views_SettingsView.theme') }}</label>
           <select>
-            <option>浅色</option>
-            <option>深色</option>
-            <option>跟随系统</option>
+            <option>{{ t('views_SettingsView.lightTheme') }}</option>
+            <option>{{ t('views_SettingsView.darkTheme') }}</option>
+            <option>{{ t('views_SettingsView.followSystem') }}</option>
           </select>
         </div>
       </div>
       
       <div class="settings-section">
-        <h2>数据管理</h2>
+        <h2>{{ t('views_SettingsView.dataManagement') }}</h2>
         <div class="setting-item">
-          <label>导出聊天记录</label>
-          <button class="btn-secondary">导出</button>
+          <label>{{ t('views_SettingsView.exportHistory') }}</label>
+          <button class="btn-secondary">{{ t('views_SettingsView.export') }}</button>
         </div>
         <div class="setting-item">
-          <label>清除所有数据</label>
-          <button class="btn-danger">清除</button>
+          <label>{{ t('views_SettingsView.clearData') }}</label>
+          <button class="btn-danger">{{ t('views_SettingsView.clear') }}</button>
         </div>
       </div>
     </div>
@@ -49,7 +49,9 @@
 </template>
 
 <script setup lang="ts">
-// 静态展示，无需逻辑
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 </script>
 
 <style scoped>

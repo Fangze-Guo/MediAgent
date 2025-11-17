@@ -1,7 +1,7 @@
 <template>
   <div class="dataset-manage">
     <div class="page-header">
-      <h1 class="page-title">数据管理</h1>
+      <h1 class="page-title">{{ t('views_DatasetManageView.title') }}</h1>
       <button class="btn-primary" @click="showCreateDialog = true">
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -17,7 +17,7 @@
           <line x1="12" y1="5" x2="12" y2="19"></line>
           <line x1="5" y1="12" x2="19" y2="12"></line>
         </svg>
-        创建数据集
+        {{ t('views_DatasetManageView.createButton') }}
       </button>
     </div>
 
@@ -49,7 +49,7 @@
           </div>
           <div class="dataset-info">
             <h3 class="dataset-name">{{ dataset.dataset_name }}</h3>
-            <p class="dataset-count">案例数: {{ dataset.case_count }}</p>
+            <p class="dataset-count">{{ t('views_DatasetManageView.caseCount', { count: dataset.case_count }) }}</p>
             <div class="dataset-status">
               <span 
                 class="status-tag" 
@@ -66,7 +66,7 @@
                 >
                   <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
                 </svg>
-                {{ dataset.has_data ? '已上传数据' : '未上传数据' }}
+                {{ dataset.has_data ? t('views_DatasetManageView.dataUploaded') : t('views_DatasetManageView.dataNotUploaded') }}
               </span>
               <span 
                 class="status-tag" 
@@ -84,7 +84,7 @@
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                   <polyline points="14 2 14 8 20 8"></polyline>
                 </svg>
-                {{ dataset.has_description_file ? '已上传描述文件' : '未上传描述文件' }}
+                {{ dataset.has_description_file ? t('views_DatasetManageView.descriptionUploaded') : t('views_DatasetManageView.descriptionNotUploaded') }}
               </span>
             </div>
           </div>
@@ -92,7 +92,7 @@
             <button
               class="btn-icon"
               @click.stop="viewDatasetFiles(dataset)"
-              title="查看文件"
+:title="t('views_DatasetManageView.viewFiles')"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -112,7 +112,7 @@
             <button
               class="btn-icon"
               @click.stop="editDataset(dataset)"
-              title="编辑"
+:title="t('views_DatasetManageView.edit')"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -136,7 +136,7 @@
             <button
               class="btn-icon btn-danger"
               @click.stop="confirmDeleteDataset(dataset)"
-              title="删除"
+:title="t('views_DatasetManageView.delete')"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -163,7 +163,7 @@
             <span
               class="data-tag clinical"
               v-if="dataset.clinical_data_desc"
-              title="临床数据"
+              :title="t('views_DatasetManageView.dataTypes.clinical')"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -179,12 +179,12 @@
                 ></path>
                 <polyline points="14 2 14 8 20 8"></polyline>
               </svg>
-              临床数据
+              {{ t('views_DatasetManageView.dataTypes.clinical') }}
             </span>
             <span
               class="data-tag text"
               v-if="dataset.text_data_desc"
-              title="文本数据"
+              :title="t('views_DatasetManageView.dataTypes.text')"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -200,12 +200,12 @@
                 <line x1="21" y1="14" x2="3" y2="14"></line>
                 <line x1="17" y1="18" x2="3" y2="18"></line>
               </svg>
-              文本数据
+              {{ t('views_DatasetManageView.dataTypes.text') }}
             </span>
             <span
               class="data-tag imaging"
               v-if="dataset.imaging_data_desc"
-              title="影像数据"
+              :title="t('views_DatasetManageView.dataTypes.imaging')"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -220,12 +220,12 @@
                 <circle cx="8.5" cy="8.5" r="1.5"></circle>
                 <polyline points="21 15 16 10 5 21"></polyline>
               </svg>
-              影像数据
+              {{ t('views_DatasetManageView.dataTypes.imaging') }}
             </span>
             <span
               class="data-tag pathology"
               v-if="dataset.pathology_data_desc"
-              title="病理数据"
+              :title="t('views_DatasetManageView.dataTypes.pathology')"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -240,12 +240,12 @@
                 <line x1="12" y1="8" x2="12" y2="12"></line>
                 <line x1="12" y1="16" x2="12.01" y2="16"></line>
               </svg>
-              病理数据
+              {{ t('views_DatasetManageView.dataTypes.pathology') }}
             </span>
             <span
               class="data-tag genomics"
               v-if="dataset.genomics_data_desc"
-              title="基因组数据"
+              :title="t('views_DatasetManageView.dataTypes.genomics')"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -258,12 +258,12 @@
               >
                 <path d="M12 2v20M2 12h20"></path>
               </svg>
-              基因组数据
+              {{ t('views_DatasetManageView.dataTypes.genomics') }}
             </span>
             <span
               class="data-tag annotation"
               v-if="dataset.annotation_desc"
-              title="标注信息"
+              :title="t('views_DatasetManageView.dataTypes.annotation')"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -278,7 +278,7 @@
                   d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
                 ></path>
               </svg>
-              标注信息
+              {{ t('views_DatasetManageView.dataTypes.annotation') }}
             </span>
           </div>
 
@@ -306,13 +306,13 @@
           d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
         ></path>
       </svg>
-      <p>还没有数据集</p>
+      <p>{{ t('views_DatasetManageView.emptyState') }}</p>
     </div>
 
     <!-- 加载状态 -->
     <div class="loading-state" v-if="loading">
       <div class="spinner"></div>
-      <p>加载中...</p>
+      <p>{{ t('views_DatasetManageView.loading') }}</p>
     </div>
 
     <!-- 创建/编辑数据集对话框 -->
@@ -323,16 +323,16 @@
     >
       <div class="modal-content">
         <div class="modal-header">
-          <h2>{{ showEditDialog ? "编辑数据集" : "创建数据集" }}</h2>
+          <h2>{{ showEditDialog ? t('views_DatasetManageView.dialog.editTitle') : t('views_DatasetManageView.dialog.createTitle') }}</h2>
           <button class="btn-close" @click="closeDialogs">×</button>
         </div>
         <div class="modal-body">
           <!-- 基本信息 -->
           <div class="form-section">
-            <h4 class="section-title">基本信息</h4>
+            <h4 class="section-title">{{ t('views_DatasetManageView.dialog.basicInfo') }}</h4>
             <div class="form-row">
               <div class="form-group">
-                <label>数据集名称 <span class="required">*</span></label>
+                <label>{{ t('views_DatasetManageView.dialog.datasetName') }} <span class="required">*</span></label>
                 <input
                   v-model="formData.dataset_name"
                   type="text"
@@ -340,7 +340,7 @@
                 />
               </div>
               <div class="form-group form-group-small">
-                <label>数量</label>
+                <label>{{ t('views_DatasetManageView.dialog.quantity') }}</label>
                 <input
                   v-model.number="formData.case_count"
                   type="number"
@@ -353,7 +353,7 @@
 
           <!-- 数据描述 -->
           <div class="form-section">
-            <h4 class="section-title">数据描述</h4>
+            <h4 class="section-title">{{ t('views_DatasetManageView.dialog.dataDescription') }}</h4>
             <div class="form-group">
               <label>
                 <svg
@@ -371,12 +371,12 @@
                   ></path>
                   <polyline points="14 2 14 8 20 8"></polyline>
                 </svg>
-                临床数据描述
+                {{ t('views_DatasetManageView.descriptions.clinical') }}
               </label>
               <textarea
                 v-model="formData.clinical_data_desc"
                 rows="2"
-                placeholder="例如：患者年龄、性别、病史等临床信息"
+                :placeholder="t('views_DatasetManageView.placeholders.clinical')"
               ></textarea>
             </div>
             <div class="form-group">
@@ -394,12 +394,12 @@
                   <line x1="17" y1="10" x2="3" y2="10"></line>
                   <line x1="21" y1="6" x2="3" y2="6"></line>
                 </svg>
-                文本数据描述
+                {{ t('views_DatasetManageView.descriptions.text') }}
               </label>
               <textarea
                 v-model="formData.text_data_desc"
                 rows="2"
-                placeholder="例如：诊断报告、病历记录等文本信息"
+                :placeholder="t('views_DatasetManageView.placeholders.text')"
               ></textarea>
             </div>
             <div class="form-group">
@@ -417,12 +417,12 @@
                   <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                   <circle cx="8.5" cy="8.5" r="1.5"></circle>
                 </svg>
-                影像数据描述
+                {{ t('views_DatasetManageView.descriptions.imaging') }}
               </label>
               <textarea
                 v-model="formData.imaging_data_desc"
                 rows="2"
-                placeholder="例如：MRI T1、T2序列，DICOM格式"
+                :placeholder="t('views_DatasetManageView.placeholders.imaging')"
               ></textarea>
             </div>
             <div class="form-group">
@@ -440,12 +440,12 @@
                   <circle cx="12" cy="12" r="10"></circle>
                   <line x1="12" y1="8" x2="12" y2="12"></line>
                 </svg>
-                病理数据描述
+                {{ t('views_DatasetManageView.descriptions.pathology') }}
               </label>
               <textarea
                 v-model="formData.pathology_data_desc"
                 rows="2"
-                placeholder="例如：病理切片、组织学分级等"
+                :placeholder="t('views_DatasetManageView.placeholders.pathology')"
               ></textarea>
             </div>
             <div class="form-group">
@@ -462,12 +462,12 @@
                 >
                   <path d="M12 2v20M2 12h20"></path>
                 </svg>
-                基因组数据描述
+                {{ t('views_DatasetManageView.descriptions.genomics') }}
               </label>
               <textarea
                 v-model="formData.genomics_data_desc"
                 rows="2"
-                placeholder="例如：基因测序数据、突变信息等"
+                :placeholder="t('views_DatasetManageView.placeholders.genomics')"
               ></textarea>
             </div>
             <div class="form-group">
@@ -486,37 +486,37 @@
                     d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
                   ></path>
                 </svg>
-                标注信息描述
+                {{ t('views_DatasetManageView.descriptions.annotation') }}
               </label>
               <textarea
                 v-model="formData.annotation_desc"
                 rows="2"
-                placeholder="例如：病灶分割标注、分类标签等"
+                :placeholder="t('views_DatasetManageView.placeholders.annotation')"
               ></textarea>
             </div>
           </div>
 
           <!-- 其他信息 -->
           <div class="form-section">
-            <h4 class="section-title">其他信息</h4>
+            <h4 class="section-title">{{ t('views_DatasetManageView.dialog.otherInfo') }}</h4>
             <div class="form-group">
-              <label>备注</label>
+              <label>{{ t('views_DatasetManageView.dialog.remarks') }}</label>
               <textarea
                 v-model="formData.notes"
                 rows="2"
-                placeholder="其他需要说明的信息"
+                :placeholder="t('views_DatasetManageView.placeholders.remarks')"
               ></textarea>
             </div>
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn-secondary" @click="closeDialogs">取消</button>
+          <button class="btn-secondary" @click="closeDialogs">{{ t('views_DatasetManageView.dialog.cancel') }}</button>
           <button
             class="btn-primary"
             @click="showEditDialog ? updateDatasetInfo() : createDatasetInfo()"
             :disabled="!formData.dataset_name"
           >
-            {{ showEditDialog ? "保存" : "创建" }}
+            {{ showEditDialog ? t('views_DatasetManageView.dialog.save') : t('views_DatasetManageView.dialog.create') }}
           </button>
         </div>
       </div>
@@ -548,7 +548,7 @@
                 >
                   <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
                 </svg>
-                {{ selectedDataset?.has_data ? '已上传数据' : '未上传数据' }}
+                {{ selectedDataset?.has_data ? t('views_DatasetManageView.dataUploaded') : t('views_DatasetManageView.dataNotUploaded') }}
               </span>
               <span 
                 class="status-tag" 
@@ -566,7 +566,7 @@
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                   <polyline points="14 2 14 8 20 8"></polyline>
                 </svg>
-                {{ selectedDataset?.has_description_file ? '已上传描述文件' : '未上传描述文件' }}
+                {{ selectedDataset?.has_description_file ? t('views_DatasetManageView.descriptionUploaded') : t('views_DatasetManageView.descriptionNotUploaded') }}
               </span>
             </div>
           </div>
@@ -591,7 +591,7 @@
                 </svg>
               </div>
               <div class="stat-content">
-                <div class="stat-label">数量</div>
+                <div class="stat-label">{{ t('views_DatasetManageView.dialog.quantity') }}</div>
                 <div class="stat-value">{{ selectedDataset?.case_count }}</div>
               </div>
             </div>
@@ -614,7 +614,7 @@
                 ></path>
                 <polyline points="13 2 13 9 20 9"></polyline>
               </svg>
-              数据集详细信息
+              {{ t('views_DatasetManageView.dialog.dataDescription') }}
             </h3>
 
             <div class="data-cards">
@@ -640,7 +640,7 @@
                       <polyline points="14 2 14 8 20 8"></polyline>
                     </svg>
                   </div>
-                  <h4>临床数据</h4>
+                  <h4>{{ t('views_DatasetManageView.dataTypes.clinical') }}</h4>
                 </div>
                 <p class="data-card-content">
                   {{ selectedDataset.clinical_data_desc }}
@@ -669,7 +669,7 @@
                       <line x1="17" y1="18" x2="3" y2="18"></line>
                     </svg>
                   </div>
-                  <h4>文本数据</h4>
+                  <h4>{{ t('views_DatasetManageView.dataTypes.text') }}</h4>
                 </div>
                 <p class="data-card-content">
                   {{ selectedDataset.text_data_desc }}
@@ -704,7 +704,7 @@
                       <polyline points="21 15 16 10 5 21"></polyline>
                     </svg>
                   </div>
-                  <h4>影像数据</h4>
+                  <h4>{{ t('views_DatasetManageView.dataTypes.imaging') }}</h4>
                 </div>
                 <p class="data-card-content">
                   {{ selectedDataset.imaging_data_desc }}
@@ -732,7 +732,7 @@
                       <line x1="12" y1="16" x2="12.01" y2="16"></line>
                     </svg>
                   </div>
-                  <h4>病理数据</h4>
+                  <h4>{{ t('views_DatasetManageView.dataTypes.pathology') }}</h4>
                 </div>
                 <p class="data-card-content">
                   {{ selectedDataset.pathology_data_desc }}
@@ -758,7 +758,7 @@
                       <path d="M12 2v20M2 12h20"></path>
                     </svg>
                   </div>
-                  <h4>基因组数据</h4>
+                  <h4>{{ t('views_DatasetManageView.dataTypes.genomics') }}</h4>
                 </div>
                 <p class="data-card-content">
                   {{ selectedDataset.genomics_data_desc }}
@@ -786,7 +786,7 @@
                       ></path>
                     </svg>
                   </div>
-                  <h4>标注信息</h4>
+                  <h4>{{ t('views_DatasetManageView.dataTypes.annotation') }}</h4>
                 </div>
                 <p class="data-card-content">
                   {{ selectedDataset.annotation_desc }}
@@ -811,7 +811,7 @@
                       <line x1="12" y1="8" x2="12.01" y2="8"></line>
                     </svg>
                   </div>
-                  <h4>备注</h4>
+                  <h4>{{ t('views_DatasetManageView.dialog.remarks') }}</h4>
                 </div>
                 <p class="data-card-content">{{ selectedDataset.notes }}</p>
               </div>
@@ -1297,7 +1297,7 @@
         </div>
         <div class="modal-footer">
           <button class="btn-secondary" @click="showFilesDialog = false">
-            关闭
+            {{ t('common.close') }}
           </button>
         </div>
       </div>
@@ -1307,6 +1307,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
+import { useI18n } from "vue-i18n";
 import {
   getDatasetList,
   createDataset,
@@ -1322,6 +1323,7 @@ import { getDataSetFiles, type FileInfo } from "@/apis/files";
 import { useAuthStore } from "@/store/auth";
 
 const authStore = useAuthStore();
+const { t } = useI18n();
 
 // 状态
 const datasets = ref<DatasetInfo[]>([]);

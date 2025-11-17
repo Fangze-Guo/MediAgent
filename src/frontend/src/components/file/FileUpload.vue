@@ -1,44 +1,28 @@
 <template>
   <div class="file-upload">
     <!-- 上传区域 -->
-    <div
-        class="upload-area"
-        :class="{
-        'uploading': uploading,
-        'drag-over': dragOver,
-        'error': uploadError
-      }"
-        @click="triggerFileInput"
-        @dragover.prevent="handleDragOver"
-        @dragleave.prevent="handleDragLeave"
-        @drop.prevent="handleDrop"
-    >
-      <input
-          ref="fileInput"
-          type="file"
-          :accept="acceptedTypes"
-          multiple
-          @change="handleFileSelect"
-          style="display: none"
-      />
+    <div class="upload-area" :class="{
+      'uploading': uploading,
+      'drag-over': dragOver,
+      'error': uploadError
+    }" @click="triggerFileInput" @dragover.prevent="handleDragOver" @dragleave.prevent="handleDragLeave"
+      @drop.prevent="handleDrop">
+      <input ref="fileInput" type="file" :accept="acceptedTypes" multiple @change="handleFileSelect"
+        style="display: none" />
 
       <div v-if="!uploading" class="upload-content">
         <UploadOutlined class="upload-icon" />
         <div class="upload-text">
-          <p class="upload-title">点击或拖拽文件到此处上传</p>
+          <p class="upload-title">{{ t('components_FileUpload.dropzoneText') }}</p>
           <p class="upload-hint">{{ uploadHintText }}</p>
-          <p class="upload-hint-small">可同时选择多个文件进行批量上传</p>
+          <p class="upload-hint-small">{{ t('components_FileUpload.dropzoneHint') }}</p>
         </div>
       </div>
 
       <div v-else class="uploading-content">
         <a-spin size="large" />
-        <p class="uploading-text">正在上传...</p>
-        <a-progress
-            :percent="uploadProgress"
-            :show-info="false"
-            stroke-color="#1890ff"
-        />
+        <p class="uploading-text">{{ t('components_FileUpload.uploading') }}</p>
+        <a-progress :percent="uploadProgress" :show-info="false" stroke-color="#1890ff" />
       </div>
     </div>
 
@@ -47,35 +31,20 @@
       <div class="files-header">
         <h4 class="files-title">
           <FileOutlined />
-          待上传文件 ({{ pendingFiles.length }})
+          {{ t('components_FileUpload.pendingFiles', { count: pendingFiles.length }) }}
         </h4>
         <div class="batch-actions">
-          <a-button
-              type="primary"
-              size="small"
-              @click="startUploadPendingFiles"
-              :disabled="pendingFiles.length === 0 || uploading"
-              :loading="uploading"
-          >
-            开始上传
+          <a-button type="primary" size="small" @click="startUploadPendingFiles"
+            :disabled="pendingFiles.length === 0 || uploading" :loading="uploading">
+            {{ t('components_FileUpload.startUpload') }}
           </a-button>
-          <a-button
-              type="link"
-              size="small"
-              danger
-              @click="clearPendingFiles"
-              :disabled="pendingFiles.length === 0"
-          >
-            清空列表
+          <a-button type="link" size="small" danger @click="clearPendingFiles" :disabled="pendingFiles.length === 0">
+            {{ t('components_FileUpload.clearList') }}
           </a-button>
         </div>
       </div>
       <div class="files-list">
-        <div
-            v-for="(file, index) in pendingFiles"
-            :key="`pending-${index}`"
-            class="file-item"
-        >
+        <div v-for="(file, index) in pendingFiles" :key="`pending-${index}`" class="file-item">
           <div class="file-info">
             <FileOutlined class="file-icon" />
             <div class="file-details">
@@ -88,13 +57,8 @@
             </div>
           </div>
           <div class="file-actions">
-            <a-button
-                type="link"
-                size="small"
-                danger
-                @click="removePendingFile(index)"
-            >
-              移除
+            <a-button type="link" size="small" danger @click="removePendingFile(index)">
+              {{ t('components_FileUpload.remove') }}
             </a-button>
           </div>
         </div>
@@ -106,19 +70,15 @@
       <div class="files-header">
         <h4 class="files-title">
           <FileOutlined />
-          已上传文件 ({{ uploadedFiles.length }})
+          {{ t('components_FileUpload.uploadedFiles', { count: uploadedFiles.length }) }}
         </h4>
         <div class="success-info">
-          <a-tag color="success">上传成功</a-tag>
-          <span class="hint-text">文件已保存到服务器，可关闭此窗口</span>
+          <a-tag color="success">{{ t('components_FileUpload.uploadSuccess') }}</a-tag>
+          <span class="hint-text">{{ t('components_FileUpload.uploadSuccessHint') }}</span>
         </div>
       </div>
       <div class="files-list">
-        <div
-            v-for="file in uploadedFiles"
-            :key="file.id"
-            class="file-item uploaded"
-        >
+        <div v-for="file in uploadedFiles" :key="file.id" class="file-item uploaded">
           <div class="file-info">
             <FileOutlined class="file-icon success-icon" />
             <div class="file-details">
@@ -126,7 +86,7 @@
                 {{ file.name }}
               </div>
               <div class="file-meta">
-                {{ formatFileSize(file.size) }} • 上传成功
+                {{ formatFileSize(file.size) }} • {{ t('components_FileUpload.uploadSuccess') }}
               </div>
             </div>
           </div>
@@ -139,13 +99,7 @@
 
     <!-- 错误提示 -->
     <div v-if="uploadError" class="error-message">
-      <a-alert
-          :message="uploadError"
-          type="error"
-          show-icon
-          closable
-          @close="uploadError = ''"
-      />
+      <a-alert :message="uploadError" type="error" show-icon closable @close="uploadError = ''" />
     </div>
   </div>
 </template>
@@ -164,6 +118,10 @@ import {
   isSupportedFileType,
   type FileInfo
 } from '@/apis/files.ts'
+import { useI18n } from 'vue-i18n'
+
+// 国际化
+const { t } = useI18n()
 
 // Props
 interface Props {
@@ -211,7 +169,7 @@ const acceptedTypes = computed(() => {
 })
 
 const uploadHintText = computed(() => {
-  return '支持多文件上传：图片文件 (JPG, PNG, GIF, WebP)、CSV 文件和 DICOM 文件 (.dcm)'
+  return t('components_FileUpload.supportedFormats')
 })
 
 /**
@@ -273,15 +231,14 @@ const handleDrop = (event: DragEvent) => {
 const addFilesToUploadList = (files: File[]) => {
   const validFiles: File[] = []
 
-  // 验证文件
   for (const file of files) {
     if (!isSupportedFileType(file)) {
-      message.error(`不支持的文件类型: ${file.name}`)
+      message.error(file.name)
       continue
     }
 
     if (file.size > props.maxSize * 1024 * 1024) {
-      message.error(`文件 ${file.name} 超过大小限制 (${props.maxSize}MB)`)
+      message.error(t('components_FileUpload.messages.sizeExceeded', { fileName: file.name, maxSize: props.maxSize }))
       continue
     }
 
@@ -292,7 +249,7 @@ const addFilesToUploadList = (files: File[]) => {
   pendingFiles.value.push(...validFiles)
 
   if (validFiles.length > 0) {
-    message.success(`已添加 ${validFiles.length} 个文件到上传列表`)
+    message.success(t('components_FileUpload.messages.filesAdded', { count: validFiles.length }))
   }
 }
 
@@ -307,13 +264,13 @@ const handleFiles = async (files: File[]) => {
   // 上传文件
   for (const file of files) {
     if (!isSupportedFileType(file)) {
-      errors.push(`${file.name}: 不支持的文件类型`)
+      errors.push(t('components_FileUpload.messages.unsupportedType', { fileName: file.name }))
       failedCount++
       continue
     }
 
     if (file.size > props.maxSize * 1024 * 1024) {
-      errors.push(`${file.name}: 超过大小限制 (${props.maxSize}MB)`)
+      errors.push(t('components_FileUpload.messages.sizeExceeded', { fileName: file.name, maxSize: props.maxSize }))
       failedCount++
       continue
     }
@@ -328,19 +285,19 @@ const handleFiles = async (files: File[]) => {
 
   // 批量上传完成后，统一显示结果
   if (successCount > 0 && failedCount === 0) {
-    message.success(`成功上传 ${successCount} 个文件`)
+    message.success(t('components_FileUpload.messages.allSuccess', { successCount }))
     // 刷新文件列表
     window.dispatchEvent(new CustomEvent('refresh-file-list'))
   } else if (successCount > 0 && failedCount > 0) {
-    message.warning(`成功上传 ${successCount} 个文件，失败 ${failedCount} 个`)
+    message.warning(t('components_FileUpload.messages.partialSuccess', { successCount, failedCount }))
     if (errors.length > 0) {
-      console.error('上传失败详情:', errors)
+      console.error(t('components_FileUpload.messages.failureDetails'), errors)
     }
     window.dispatchEvent(new CustomEvent('refresh-file-list'))
   } else if (failedCount > 0) {
-    message.error(`上传失败，共 ${failedCount} 个文件`)
+    message.error(t('components_FileUpload.messages.allFailed', { failedCount }))
     if (errors.length > 0) {
-      console.error('上传失败详情:', errors)
+      console.error(t('components_FileUpload.messages.failureDetails'), errors)
     }
   }
 }
@@ -365,36 +322,36 @@ const uploadSingleFile = async (file: File, isBatch: boolean = false): Promise<b
     if (response.code === 200) {
       uploadedFiles.value.push(response.data)
       emit('uploadSuccess', response.data)
-      
+
       // 非批量模式才显示单个文件成功提示
       if (!isBatch) {
-        message.success(`文件 ${file.name} 上传成功`)
+        message.success(t('components_FileUpload.messages.fileSuccess', { fileName: file.name }))
         window.dispatchEvent(new CustomEvent('refresh-file-list'))
       }
-      
+
       return true
     } else {
-      const errorMsg = response.message || '上传失败'
+      const errorMsg = response.message || t('components_FileUpload.messages.uploadFailed')
       uploadError.value = errorMsg
       emit('uploadError', errorMsg)
-      
+
       // 非批量模式才显示单个文件错误提示
       if (!isBatch) {
         message.error(errorMsg)
       }
-      
+
       return false
     }
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : '上传失败'
+    const errorMessage = error instanceof Error ? error.message : t('components_FileUpload.messages.uploadFailed')
     uploadError.value = errorMessage
     emit('uploadError', errorMessage)
-    
+
     // 非批量模式才显示单个文件错误提示
     if (!isBatch) {
       message.error(errorMessage)
     }
-    
+
     return false
   } finally {
     uploading.value = false
@@ -407,7 +364,7 @@ const uploadSingleFile = async (file: File, isBatch: boolean = false): Promise<b
  */
 const startUploadPendingFiles = async () => {
   if (pendingFiles.value.length === 0) {
-    message.warning('没有待上传的文件')
+    message.warning(t('components_FileUpload.messages.noFiles'))
     return
   }
 
@@ -422,7 +379,7 @@ const startUploadPendingFiles = async () => {
  */
 const removePendingFile = (index: number) => {
   pendingFiles.value.splice(index, 1)
-  message.success('文件已从上传列表移除')
+  message.success(t('components_FileUpload.messages.fileRemoved'))
 }
 
 /**
@@ -432,7 +389,7 @@ const clearPendingFiles = () => {
   const count = pendingFiles.value.length
   pendingFiles.value = []
   if (count > 0) {
-    message.success(`已清空 ${count} 个待上传文件`)
+    message.success(t('components_FileUpload.messages.listCleared', { count }))
   }
 }
 

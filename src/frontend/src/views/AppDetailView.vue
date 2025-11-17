@@ -5,7 +5,7 @@
       <div class="header-container">
         <a-button type="text" @click="goBack" class="back-btn">
           <LeftOutlined />
-          返回工具仓库
+          {{ t('views_AppDetailView.backToStore') }}
         </a-button>
       </div>
     </div>
@@ -13,7 +13,7 @@
     <!-- ==================== 加载状态 ==================== -->
     <div v-if="loading" class="loading-container">
       <a-spin size="large" />
-      <p>正在加载应用信息...</p>
+      <p>{{ t('views_AppDetailView.loading') }}</p>
     </div>
 
     <!-- ==================== 应用详情内容 ==================== -->
@@ -26,7 +26,7 @@
             <div class="app-icon-large">{{ app.icon }}</div>
             <div class="app-header-info">
               <h1 class="app-title">{{ app.name }}</h1>
-              <div class="app-provider">由 {{ app.author }} 提供</div>
+              <div class="app-provider">{{ t('views_AppDetailView.providedBy', { author: app.author }) }}</div>
 
               <!-- 评分和用户数 -->
               <div class="rating-section">
@@ -36,11 +36,11 @@
                     <StarFilled v-for="i in 5" :key="i"
                                 :style="{ color: i <= Math.round(app.rating) ? '#faad14' : '#e0e0e0' }" />
                   </div>
-                  <div class="rating-text">({{ formatNumber(app.downloads) }} 个评分)</div>
+                  <div class="rating-text">{{ t('views_AppDetailView.ratings', { count: formatNumber(app.downloads) }) }}</div>
                 </div>
                 <div class="user-count">
                   <UserOutlined />
-                  {{ formatNumber(app.downloads) }} 位用户
+                  {{ t('views_AppDetailView.users', { count: formatNumber(app.downloads) }) }}
                 </div>
               </div>
 
@@ -53,7 +53,7 @@
                     @click="handleUninstall"
                 >
                   <CheckCircleFilled style="margin-right: 8px" />
-                  已添加到 MediAgent
+                  {{ t('views_AppDetailView.installed') }}
                 </a-button>
                 <a-button
                     v-else
@@ -62,11 +62,11 @@
                     class="primary-action-btn"
                     @click="handleInstall"
                 >
-                  添加至 MediAgent
+                  {{ t('views_AppDetailView.addToMediAgent') }}
                 </a-button>
                 <a-button size="large" class="share-btn">
                   <ShareAltOutlined />
-                  分享
+                  {{ t('views_AppDetailView.share') }}
                 </a-button>
               </div>
             </div>
@@ -74,7 +74,7 @@
 
           <!-- 概述部分 -->
           <div class="section overview-section">
-            <h2 class="section-title">概述</h2>
+            <h2 class="section-title">{{ t('views_AppDetailView.overview') }}</h2>
             <div class="overview-content">
               {{ app.full_description || app.description }}
             </div>
@@ -279,26 +279,26 @@
         <div class="sidebar-content">
           <!-- 详细信息 -->
           <div class="info-card">
-            <h3 class="info-card-title">详情</h3>
+            <h3 class="info-card-title">{{ t('views_AppDetailView.details') }}</h3>
             <div class="info-items">
               <div class="info-row">
-                <span class="info-label">版本</span>
+                <span class="info-label">{{ t('views_AppDetailView.version') }}</span>
                 <span class="info-value">{{ app.version }}</span>
               </div>
               <div class="info-row">
-                <span class="info-label">上次更新日期</span>
+                <span class="info-label">{{ t('views_AppDetailView.lastUpdated') }}</span>
                 <span class="info-value">2025年10月11日</span>
               </div>
               <div class="info-row">
-                <span class="info-label">大小</span>
+                <span class="info-label">{{ t('views_AppDetailView.size') }}</span>
                 <span class="info-value">2.5MB</span>
               </div>
               <div class="info-row">
-                <span class="info-label">语言</span>
+                <span class="info-label">{{ t('views_AppDetailView.language') }}</span>
                 <span class="info-value">中文</span>
               </div>
               <div class="info-row">
-                <span class="info-label">分类</span>
+                <span class="info-label">{{ t('views_AppDetailView.category') }}</span>
                 <span class="info-value">{{ app.category }}</span>
               </div>
             </div>
@@ -306,7 +306,7 @@
 
           <!-- 标签 -->
           <div class="info-card">
-            <h3 class="info-card-title">标签</h3>
+            <h3 class="info-card-title">{{ t('views_AppDetailView.tags') }}</h3>
             <div class="tags-container">
               <a-tag v-for="tag in app.tags" :key="tag" class="app-tag">{{ tag }}</a-tag>
             </div>
@@ -314,7 +314,7 @@
 
           <!-- 相关应用 -->
           <div class="info-card">
-            <h3 class="info-card-title">相关应用</h3>
+            <h3 class="info-card-title">{{ t('views_AppDetailView.relatedApps') }}</h3>
             <div class="related-apps">
               <div v-for="relatedApp in relatedApps" :key="relatedApp.id" class="related-app-item"
                    @click="goToApp(relatedApp.id)">
@@ -336,8 +336,8 @@
     <!-- ==================== 错误状态 ==================== -->
     <div v-else class="error-container">
       <InboxOutlined style="font-size: 64px; color: #dadce0" />
-      <p class="error-text">未找到该应用</p>
-      <a-button type="primary" @click="goBack">返回工具仓库</a-button>
+      <p class="error-text">{{ t('views_AppDetailView.notFound') }}</p>
+      <a-button type="primary" @click="goBack">{{ t('views_AppDetailView.backButton') }}</a-button>
     </div>
   </div>
 </template>
@@ -345,6 +345,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { message, Modal } from 'ant-design-vue'
 import {
   CheckCircleFilled,
@@ -376,6 +377,7 @@ import FeaturesMarkdown from '@/components/FeaturesMarkdown.vue'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 const authStore = useAuthStore()
 
 // 响应式状态

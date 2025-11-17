@@ -30,7 +30,7 @@
 
       <!-- 历史对话区 -->
       <div class="history-section">
-        <h4>历史对话</h4>
+        <h4>{{ t('components_Sidebar.historyTitle') }}</h4>
 
         <!-- 对话列表骨架屏 -->
         <div v-if="!isConversationsReady" class="conversations-skeleton">
@@ -66,7 +66,7 @@
               </div>
             </div>
             <div class="delete-btn" @click.stop="handleDeleteConversation(c.id)">
-              删除
+              {{ t('components_Sidebar.delete') }}
             </div>
           </a-list-item>
         </a-list>
@@ -88,7 +88,7 @@
           </span>
         </div>
         <div class="user-details">
-          <div class="user-name">{{ currentUser?.user_name || '用户' }}</div>
+          <div class="user-name">{{t('components_Sidebar.userName', {userName: currentUser?.user_name || 'User'})}}</div>
           <div class="user-uid">UID: {{ currentUser?.uid || '--' }}</div>
         </div>
       </div>
@@ -99,7 +99,7 @@
             size="small"
             @click="showUserProfile"
             class="edit-btn"
-            title="编辑个人信息"
+            :title="t('components_Sidebar.editProfile')"
         >
           <template #icon>
             <EditOutlined />
@@ -111,7 +111,7 @@
             size="small"
             @click="handleLogout"
             class="logout-btn"
-            title="退出登录"
+            :title="t('components_Sidebar.logout')"
         >
           <template #icon>
             <LogoutOutlined />
@@ -151,6 +151,10 @@ import {
   UnorderedListOutlined
 } from '@ant-design/icons-vue'
 import UserProfileModal from './UserProfileModal.vue'
+import { useI18n } from 'vue-i18n'
+
+// 国际化
+const { t } = useI18n()
 
 // ==================== 路由和状态管理 ====================
 const router = useRouter()
@@ -204,31 +208,31 @@ onMounted(async () => {
 })
 
 // ==================== 菜单配置 ====================
-const items = ref([
+const items = computed(() =>[
   {
     key: 'home',
     icon: () => h(CommentOutlined),
-    label: '新建对话',
+    label: t('components_Sidebar.home'),
   },
   {
     key: 'files',
     icon: () => h(FolderOutlined),
-    label: '文件管理',
+    label: t('components_Sidebar.files'),
   },
   {
     key: 'tasks',
     icon: () => h(UnorderedListOutlined),
-    label: '任务管理',
+    label: t('components_Sidebar.tasks'),
   },
   {
     key: 'datasets',
     icon: () => h(DatabaseOutlined),
-    label: '数据管理',
+    label: t('components_Sidebar.datasets'),
   },
   {
     key: 'app-store',
     icon: () => h(AppstoreOutlined),
-    label: '工具仓库',
+    label: t('components_Sidebar.appStore'),
   },
 ])
 
@@ -369,15 +373,15 @@ const showUserProfile = () => {
 // 处理用户登出
 const handleLogout = () => {
   Modal.confirm({
-    title: '确认退出',
-    content: '确定要退出登录吗？',
-    okText: '退出',
+    title: t('components_Sidebar.logoutConfirm.title'),
+    content: t('components_Sidebar.logoutConfirm.content'),
+    okText: t('components_Sidebar.logoutConfirm.okText'),
     okType: 'danger',
-    cancelText: '取消',
+    cancelText: t('components_Sidebar.logoutConfirm.cancelText'),
     onOk: () => {
       authStore.logout()
       router.push('/login')
-      message.success('已退出登录')
+      message.success(t('components_Sidebar.logoutConfirm.successMessage'))
     }
   })
 }

@@ -4,11 +4,11 @@
       <a-layout-content class="content">
         <!-- 上栏工具栏 -->
         <div class="top-toolbar">
-          <h2 class="title">数据集文件管理</h2>
+          <h2 class="title">{{ t('views_FileManageView.title') }}</h2>
           <div class="top-actions">
             <a-input-search
                 v-model:value="fileStore.searchText"
-                placeholder="搜索文件..."
+                :placeholder="t('views_FileManageView.searchPlaceholder')"
                 style="width: 200px; margin-right: 12px"
                 @search="handleSearch"
                 allow-clear
@@ -19,13 +19,13 @@
               <template #icon>
                 <ReloadOutlined />
               </template>
-              刷新
+              {{ t('views_FileManageView.refresh') }}
             </a-button>
             <a-button type="primary" @click="handleUploadClick">
               <template #icon>
                 <UploadOutlined />
               </template>
-              上传文件
+              {{ t('views_FileManageView.uploadFiles') }}
             </a-button>
           </div>
         </div>
@@ -45,6 +45,10 @@ import { message } from 'ant-design-vue'
 import { ReloadOutlined, UploadOutlined } from '@ant-design/icons-vue'
 import { useFileStore } from '@/store/files'
 import DatasetFileBrowser from '@/components/file/DatasetFileBrowser.vue'
+import { useI18n } from 'vue-i18n'
+
+// 国际化
+const { t } = useI18n()
 
 // 使用文件状态管理
 const fileStore = useFileStore()
@@ -53,8 +57,7 @@ const fetchFileList = async () => {
   try {
     await fileStore.fetchFileList()
   } catch (error) {
-    message.error('获取文件列表失败')
-    console.error('获取文件列表失败:', error)
+    message.error(t('views_FileManageView.loadFailed'))
   }
 }
 

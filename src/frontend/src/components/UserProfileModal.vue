@@ -1,9 +1,11 @@
 <template>
   <a-modal
     v-model:open="visible"
-    title="编辑个人信息"
+    :title="t('components_UserProfileModal.title')"
     :confirm-loading="saving"
     :width="500"
+    :cancelText="t('components_UserProfileModal.cancel')"
+    :okText="t('components_UserProfileModal.save')"
     @ok="handleSave"
     @cancel="handleCancel"
   >
@@ -20,7 +22,7 @@
         <div class="avatar-actions">
           <a-button @click="triggerAvatarUpload" :loading="uploadingAvatar">
             <UploadOutlined />
-            {{ avatarUrl ? '更换头像' : '上传头像' }}
+            {{ avatarUrl ? t('components_UserProfileModal.changeAvatar') : t('components_UserProfileModal.uploadAvatar') }}
           </a-button>
           <a-button 
             v-if="avatarUrl" 
@@ -29,7 +31,7 @@
             danger
           >
             <DeleteOutlined />
-            移除头像
+            {{ t('components_UserProfileModal.removeAvatar') }}
           </a-button>
         </div>
         
@@ -51,24 +53,24 @@
         layout="vertical"
         class="profile-form"
       >
-        <a-form-item label="用户名" name="user_name">
+        <a-form-item :label="t('components_UserProfileModal.username')" name="user_name">
           <a-input
             v-model:value="formData.user_name"
-            placeholder="请输入用户名"
+            :placeholder="t('components_UserProfileModal.usernamePlaceholder')"
             :maxlength="20"
             show-count
           />
         </a-form-item>
 
-        <a-form-item label="用户ID" name="uid">
+        <a-form-item :label="t('components_UserProfileModal.userId')" name="uid">
           <a-input
             :value="formData.uid"
             disabled
-            placeholder="系统自动生成"
+            :placeholder="t('components_UserProfileModal.userIdNote')"
           />
         </a-form-item>
 
-        <a-form-item label="角色" name="role">
+        <a-form-item :label="t('components_UserProfileModal.role')" name="role">
           <a-tag :color="roleColor">
             {{ roleText }}
           </a-tag>
@@ -77,12 +79,12 @@
 
       <!-- 头像上传提示 -->
       <div class="upload-tips">
-        <h4>头像上传说明：</h4>
+        <h4>{{ t('components_UserProfileModal.uploadInstructions') }}</h4>
         <ul>
-          <li>支持 JPG、PNG、GIF 格式</li>
-          <li>文件大小不超过 2MB</li>
-          <li>建议尺寸：200x200 像素</li>
-          <li>头像将存储为 Base64 格式</li>
+          <li>{{ t('components_UserProfileModal.supportedFormats') }}</li>
+          <li>{{ t('components_UserProfileModal.maxSize') }}</li>
+          <li>{{ t('components_UserProfileModal.recommendedSize') }}</li>
+          <li>{{ t('components_UserProfileModal.storageFormat') }}</li>
         </ul>
       </div>
     </div>
@@ -95,6 +97,10 @@ import { message } from 'ant-design-vue'
 import { DeleteOutlined, UploadOutlined } from '@ant-design/icons-vue'
 import { useAuthStore } from '@/store/auth'
 import type { UserInfo } from '@/types/auth'
+import { useI18n } from 'vue-i18n'
+
+// 国际化
+const { t } = useI18n()
 
 interface Props {
   open: boolean
@@ -141,18 +147,18 @@ const roleColor = computed(() => {
 
 const roleText = computed(() => {
   switch (formData.value.role) {
-    case 'admin': return '管理员'
-    case 'user': return '普通用户'
-    default: return '未知'
+    case 'admin': return t('components_UserProfileModal.roleAdmin')
+    case 'user': return t('components_UserProfileModal.roleUser')
+    default: return t('components_UserProfileModal.roleUnknown')
   }
 })
 
 // 表单验证规则
 const formRules = {
   user_name: [
-    { required: true, message: '请输入用户名', trigger: 'blur' },
-    { min: 2, max: 20, message: '用户名长度在 2 到 20 个字符', trigger: 'blur' },
-    { pattern: /^[a-zA-Z0-9_\u4e00-\u9fa5]+$/, message: '用户名只能包含字母、数字、下划线和中文', trigger: 'blur' }
+    { required: true, message: t('components_UserProfileModal.usernamePlaceholder'), trigger: 'blur' },
+    { min: 2, max: 20, message: t('components_UserProfileModal.usernameLength'), trigger: 'blur' },
+    { pattern: /^[a-zA-Z0-9_\u4e00-\u9fa5]+$/, message: t('components_UserProfileModal.usernamePattern'), trigger: 'blur' }
   ]
 }
 
@@ -196,13 +202,13 @@ const handleAvatarUpload = async (event: Event) => {
 
   // 验证文件类型
   if (!file.type.startsWith('image/')) {
-    message.error('请选择图片文件')
+    message.error(t('components_UserProfileModal.selectImage'))
     return
   }
 
   // 验证文件大小（2MB）
   if (file.size > 2 * 1024 * 1024) {
-    message.error('图片大小不能超过 2MB')
+    message.error(t('components_UserProfileModal.imageTooLarge'))
     return
   }
 
@@ -215,16 +221,15 @@ const handleAvatarUpload = async (event: Event) => {
       const base64 = e.target?.result as string
       avatarUrl.value = base64
       formData.value.avatar = base64
-      message.success('头像上传成功')
+      message.success(t('components_UserProfileModal.uploadSuccess'))
     }
     reader.onerror = () => {
-      message.error('头像读取失败')
+      message.error(t('components_UserProfileModal.readFailed'))
     }
     reader.readAsDataURL(file)
 
   } catch (error) {
-    console.error('头像上传失败:', error)
-    message.error('头像上传失败，请重试')
+    message.error(t('components_UserProfileModal.uploadFailed'))
   } finally {
     uploadingAvatar.value = false
     // 清空input，允许重复上传同一文件
@@ -236,7 +241,7 @@ const handleAvatarUpload = async (event: Event) => {
 const removeAvatar = () => {
   avatarUrl.value = ''
   formData.value.avatar = ''
-  message.success('头像已移除')
+  message.success(t('components_UserProfileModal.removeSuccess'))
 }
 
 // 保存用户信息
@@ -253,17 +258,16 @@ const handleSave = async () => {
       avatar: formData.value.avatar
     })
 
-    message.success('个人信息更新成功')
+    message.success(t('components_UserProfileModal.updateSuccess'))
     visible.value = false
     emit('success')
 
   } catch (error: any) {
-    console.error('保存用户信息失败:', error)
     if (error.errorFields) {
       // 表单验证错误
-      message.error('请检查输入信息')
+      message.error(t('components_UserProfileModal.checkInput'))
     } else {
-      message.error('保存失败，请重试')
+      message.error(t('components_UserProfileModal.saveFailed'))
     }
   } finally {
     saving.value = false

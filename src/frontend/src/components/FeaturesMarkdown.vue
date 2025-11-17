@@ -3,10 +3,10 @@
     <!-- 编辑模式 -->
     <div v-if="isEditing && canEdit" class="edit-mode">
       <div class="edit-header">
-        <h3>编辑功能特点</h3>
+        <h3>{{ t('components_FeaturesMarkdown.editTitle') }}</h3>
         <div class="edit-actions">
-          <a-button @click="cancelEdit" style="margin-right: 8px">取消</a-button>
-          <a-button type="primary" @click="saveFeatures" :loading="saving">保存</a-button>
+          <a-button @click="cancelEdit" style="margin-right: 8px">{{ t('components_FeaturesMarkdown.cancel') }}</a-button>
+          <a-button type="primary" @click="saveFeatures" :loading="saving">{{ t('components_FeaturesMarkdown.save') }}</a-button>
         </div>
       </div>
       
@@ -19,7 +19,7 @@
               :disabled="historyIndex <= 0"
               title="撤销 (Ctrl+Z)"
             >
-              <UndoOutlined /> 撤销
+              <UndoOutlined /> {{ t('components_FeaturesMarkdown.undo') }}
             </a-button>
             <a-button 
               size="small" 
@@ -27,29 +27,29 @@
               :disabled="historyIndex >= history.length - 1"
               title="重做 (Ctrl+Shift+Z)"
             >
-              <RedoOutlined /> 重做
+              <RedoOutlined /> {{ t('components_FeaturesMarkdown.redo') }}
             </a-button>
             <a-divider type="vertical" />
             <a-button size="small" @click="insertMarkdown('**', '**')" title="粗体">
-              <BoldOutlined /> 粗体
+              <BoldOutlined /> {{ t('components_FeaturesMarkdown.bold') }}
             </a-button>
             <a-button size="small" @click="insertMarkdown('*', '*')" title="斜体">
-              <ItalicOutlined /> 斜体
+              <ItalicOutlined /> {{ t('components_FeaturesMarkdown.italic') }}
             </a-button>
             <a-button size="small" @click="insertMarkdown('```', '```')" title="代码">
-              <CodeOutlined /> 代码
+              <CodeOutlined /> {{ t('components_FeaturesMarkdown.code') }}
             </a-button>
             <a-button size="small" @click="insertMarkdown('- ', '')" title="无序列表">
-              <UnorderedListOutlined /> 列表
+              <UnorderedListOutlined /> {{ t('components_FeaturesMarkdown.list') }}
             </a-button>
             <a-button size="small" @click="insertMarkdown('## ', '')" title="标题">
-              <FontSizeOutlined /> 标题
+              <FontSizeOutlined /> {{ t('components_FeaturesMarkdown.heading') }}
             </a-button>
             <a-button size="small" @click="insertMarkdown('[链接文本](', ')')" title="插入链接">
-              <LinkOutlined /> 链接
+              <LinkOutlined /> {{ t('components_FeaturesMarkdown.link') }}
             </a-button>
             <a-button size="small" @click="triggerImageUpload" :loading="uploading" title="上传图片">
-              <PictureOutlined /> 图片
+              <PictureOutlined /> {{ t('components_FeaturesMarkdown.image') }}
             </a-button>
           </a-space>
         </div>
@@ -73,7 +73,7 @@
           <a-textarea
             ref="textareaRef"
             v-model:value="editContent"
-            placeholder="请输入功能特点的Markdown内容...&#10;&#10;💡 提示：&#10;• 支持粘贴图片（Ctrl+V）&#10;• 支持拖拽图片到此处&#10;• 点击工具栏的图片按钮上传&#10;• 图片使用简短占位符，预览区可查看实际效果&#10;• Ctrl+Z 撤销，Ctrl+Shift+Z 重做"
+            :placeholder="t('components_FeaturesMarkdown.placeholder')"
             :rows="20"
             class="markdown-editor"
             @paste="handlePaste"
@@ -82,12 +82,12 @@
 
           <div v-if="isDragging" class="drag-overlay">
             <PictureOutlined style="font-size: 48px; color: #1890ff;" />
-            <p>释放以上传图片</p>
+            <p>{{ t('components_FeaturesMarkdown.dropImage') }}</p>
           </div>
         </div>
         
         <div class="preview-section">
-          <h4>预览效果</h4>
+          <h4>{{ t('components_FeaturesMarkdown.preview') }}</h4>
           <div class="preview-content">
             <MarkdownRenderer :content="previewContent" />
           </div>
@@ -100,7 +100,7 @@
       <div class="features-header">
         <h3 class="features-title">
           <AppstoreOutlined />
-          功能特点
+          {{ t('components_FeaturesMarkdown.title') }}
         </h3>
         <a-button 
           v-if="canEdit" 
@@ -110,7 +110,7 @@
           class="edit-btn"
         >
           <EditOutlined />
-          编辑
+          {{ t('components_FeaturesMarkdown.edit') }}
         </a-button>
       </div>
       
@@ -118,11 +118,11 @@
         <div v-if="!features || features.trim() === ''" class="empty-features">
           <a-empty 
             :image="Empty.PRESENTED_IMAGE_SIMPLE"
-            description="暂无功能特点介绍"
+            :description="t('components_FeaturesMarkdown.emptyDescription')"
           >
             <a-button v-if="canEdit" type="primary" @click="startEdit">
               <PlusOutlined />
-              添加功能特点
+              {{ t('components_FeaturesMarkdown.addFeatures') }}
             </a-button>
           </a-empty>
         </div>
@@ -155,6 +155,7 @@ import {
 import MarkdownRenderer from './MarkdownRenderer.vue'
 import { useAuthStore } from '@/store/auth'
 import { isAdmin } from '@/utils/permission'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
   /** 应用ID */
@@ -176,6 +177,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<Emits>()
 
+const { t } = useI18n()
 const authStore = useAuthStore()
 
 // 编辑状态
@@ -243,7 +245,7 @@ const convertPlaceholderToBase64 = (content: string): string => {
       return `![${alt}](${base64})`
     } else {
       // 如果找不到数据，保持原样
-      console.warn(`图片数据丢失: ${imageId}`)
+      console.warn(`${t('components_FeaturesMarkdown.imageDataLost')}: ${imageId}`)
       return match
     }
   })
@@ -262,7 +264,7 @@ const cancelEdit = () => {
 // 保存功能特点
 const saveFeatures = async () => {
   if (!editContent.value.trim()) {
-    message.warning('请输入功能特点内容')
+    message.warning(t('components_FeaturesMarkdown.enterContent'))
     return
   }
   
@@ -280,10 +282,10 @@ const saveFeatures = async () => {
     imageDataMap.value.clear()
     imageIdCounter = 0
     
-    message.success('功能特点保存成功')
+    message.success(t('components_FeaturesMarkdown.saveSuccess'))
   } catch (error) {
     console.error('保存功能特点失败:', error)
-    message.error('保存失败，请重试')
+    message.error(t('components_FeaturesMarkdown.saveFailed'))
   } finally {
     saving.value = false
   }

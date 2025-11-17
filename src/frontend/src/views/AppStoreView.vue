@@ -7,14 +7,14 @@
         <!-- 商店 Logo 区域 -->
         <div class="store-logo">
           <span class="logo-icon">🏪</span>
-          <span class="logo-text">MediAgent 工具仓库</span>
+          <span class="logo-text">{{ t('views_AppStoreView.logoText') }}</span>
         </div>
         
         <!-- 搜索框区域：支持搜索应用名称、描述和标签 -->
         <div class="search-box">
           <a-input-search
             v-model:value="searchKeyword"
-            placeholder="搜索扩展程序、主题等"
+            :placeholder="t('views_AppStoreView.searchPlaceholder')"
             size="large"
             @search="handleSearch"
             class="search-input"
@@ -44,7 +44,7 @@
 
     <!-- ==================== 精选横幅轮播 ==================== -->
     <!-- 仅在"全部"分类时显示，展示评分最高的前3个应用 -->
-    <div v-if="selectedCategory === '全部'" class="featured-banner">
+    <div v-if="selectedCategory === t('views_AppStoreView.allCategory')" class="featured-banner">
       <div class="banner-container">
         <!-- Ant Design 轮播组件，自动播放 -->
         <a-carousel autoplay :dots="true" class="banner-carousel">
@@ -64,7 +64,7 @@
                       {{ featured.rating }}
                     </span>
                     <span class="banner-downloads">
-                      {{ formatNumber(featured.downloads) }} 位用户
+                      {{ t('views_AppStoreView.users', { count: formatNumber(featured.downloads) }) }}
                     </span>
                   </div>
                 </div>
@@ -82,14 +82,14 @@
         <!-- 加载状态：数据获取中时显示 -->
         <div v-if="loading" class="loading-state">
           <a-spin size="large" />
-          <p>正在加载应用...</p>
+          <p>{{ t('views_AppStoreView.loading') }}</p>
         </div>
 
         <!-- 空状态：没有找到匹配的应用时显示 -->
         <div v-else-if="apps.length === 0" class="empty-state">
           <InboxOutlined style="font-size: 64px; color: #dadce0" />
-          <p class="empty-text">未找到相关应用</p>
-          <p class="empty-hint">请尝试其他搜索词或浏览其他分类</p>
+          <p class="empty-text">{{ t('views_AppStoreView.emptyText') }}</p>
+          <p class="empty-hint">{{ t('views_AppStoreView.emptyHint') }}</p>
         </div>
 
         <!-- 应用网格：正常展示应用列表 -->
@@ -97,9 +97,9 @@
           <!-- 区块标题：显示当前分类和应用数量 -->
           <div class="section-header">
             <h2 class="section-title">
-              {{ selectedCategory === '全部' ? '推荐工具' : selectedCategory }}
+              {{ selectedCategory === t('views_AppStoreView.allCategory') ? t('views_AppStoreView.recommendedTools') : selectedCategory }}
             </h2>
-            <span class="results-count">{{ apps.length }} 个应用</span>
+            <span class="results-count">{{ t('views_AppStoreView.resultsCount', { count: apps.length }) }}</span>
           </div>
           
           <!-- 应用卡片网格：自适应布局 -->
@@ -141,7 +141,7 @@
                   @click.stop="handleUninstall(app)"
                 >
                   <CheckCircleFilled style="margin-right: 4px" />
-                  已安装
+                  {{ t('views_AppStoreView.installed') }}
                 </a-button>
                 <!-- 未安装状态：显示蓝色主按钮 -->
                 <a-button
@@ -150,7 +150,7 @@
                   class="install-btn"
                   @click.stop="handleInstall(app)"
                 >
-                  添加至 MediAgent
+                  {{ t('views_AppStoreView.addToMediAgent') }}
                 </a-button>
               </div>
             </div>
@@ -169,9 +169,9 @@
  * 提供应用浏览、搜索、安装和卸载功能
  */
 
-// ==================== 导入依赖 ====================
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { message } from 'ant-design-vue'
 // 图标组件
 import {
@@ -184,12 +184,13 @@ import {
 import { getApps, getCategories, installApp, uninstallApp, type AppInfo } from '@/apis/appStore'
 
 const router = useRouter()
+const { t, locale } = useI18n()
 
 // ==================== 响应式状态 ====================
 const loading = ref(true)                          // 加载状态
 const apps = ref<AppInfo[]>([])                    // 应用列表
 const categories = ref<string[]>([])               // 分类列表
-const selectedCategory = ref('全部')               // 当前选中的分类
+const selectedCategory = ref(t('views_AppStoreView.allCategory'))               // 当前选中的分类
 const searchKeyword = ref('')                      // 搜索关键词
 
 // ==================== 计算属性 ====================
@@ -213,6 +214,22 @@ onMounted(async () => {
   await loadApps()
 })
 
+/**
+ * 监听语言切换
+ * 当语言变化时，更新分类列表和选中的分类
+ */
+watch(locale, async () => {
+  // 如果当前选中的是"全部"分类，则更新为新语言的"全部"
+  const allCategoryTexts = ['全部', 'All']
+  if (allCategoryTexts.includes(selectedCategory.value)) {
+    selectedCategory.value = t('views_AppStoreView.allCategory')
+  }
+  // 重新加载分类列表（将"全部"映射为当前语言）
+  await loadCategories()
+  // 重新加载应用列表
+  await loadApps()
+})
+
 // ==================== 数据加载函数 ====================
 /**
  * 加载分类列表
@@ -221,9 +238,10 @@ onMounted(async () => {
 const loadCategories = async () => {
   try {
     const data = await getCategories()
-    categories.value = data
+    // 将后端返回的分类列表中的"全部"替换为国际化文本
+    categories.value = data.map(cat => cat === '全部' ? t('views_AppStoreView.allCategory') : cat)
   } catch (error) {
-    console.error('加载分类失败', error)
+    console.error(t('views_AppStoreView.loadCategoriesFailed'), error)
   }
 }
 
@@ -234,13 +252,18 @@ const loadCategories = async () => {
 const loadApps = async () => {
   loading.value = true
   try {
-    // 如果选中"全部"，则不传分类参数
-    const category = selectedCategory.value === '全部' ? undefined : selectedCategory.value
+    // 如果选中"全部"，则不传分类参数；否则传递分类名
+    let category: string | undefined
+    if (selectedCategory.value === t('views_AppStoreView.allCategory')) {
+      category = undefined
+    } else {
+      category = selectedCategory.value
+    }
     const data = await getApps(category, searchKeyword.value)
     apps.value = data
   } catch (error) {
-    console.error('加载应用失败', error)
-    message.error('加载应用失败')
+    console.error(t('views_AppStoreView.loadAppsFailed'), error)
+    message.error(t('views_AppStoreView.loadAppsFailed'))
   } finally {
     loading.value = false
   }

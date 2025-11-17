@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { login, register, getUserInfo, updateUserProfile } from '@/apis/auth'
 import type { UpdateUserProfileRequest } from '@/types/auth'
+import i18n from '@/i18n'
 
 // 类型定义
 export interface LoginRequest {
@@ -56,13 +57,13 @@ export const useAuthStore = defineStore('auth', {
           await this.fetchUserInfo()
           return { success: true, message: response.message }
         } else {
-          return { success: false, message: response.message || '登录失败' }
+          return { success: false, message: response.message || i18n.global.t('views_LoginView.messages.loginFailed') }
         }
       } catch (error: any) {
         console.error('Login error:', error)
         return { 
           success: false, 
-          message: error.response?.data?.message || '登录失败，请检查网络连接' 
+          message: error.response?.data?.message || i18n.global.t('views_LoginView.messages.loginFailedNetwork') 
         }
       }
     },
@@ -75,15 +76,15 @@ export const useAuthStore = defineStore('auth', {
         // 检查是否成功
         if (response.code === 200) {
           // 优先使用 data.message，否则使用默认消息
-          const successMessage = response.data?.message || `用户 ${userData.user_name} 注册成功！`
+          const successMessage = response.data?.message || i18n.global.t('views_LoginView.messages.registerSuccess', { username: userData.user_name })
           return { success: true, message: successMessage }
         } else {
-          return { success: false, message: response.message || '注册失败' }
+          return { success: false, message: response.message || i18n.global.t('views_LoginView.messages.registerFailed') }
         }
       } catch (error: any) {
         console.error('Register error:', error)
         // 尝试从后端错误响应中获取详细错误信息
-        const errorMessage = error.response?.data?.message || error.message || '注册失败，请检查网络连接'
+        const errorMessage = error.response?.data?.message || error.message || i18n.global.t('views_LoginView.messages.registerFailedNetwork')
         return { 
           success: false, 
           message: errorMessage

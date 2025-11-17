@@ -9,6 +9,7 @@ import router from './router'
 import './style.css'
 import Antd from 'ant-design-vue'
 import 'ant-design-vue/dist/reset.css'
+import i18n from '@/i18n'
 import { useAuthStore } from '@/store/auth'
 
 /**
@@ -25,10 +26,12 @@ const pinia = createPinia()
  * 注册插件
  * 1. Pinia - 状态管理
  * 2. Vue Router - 路由管理
- * 3. Ant Design Vue - UI组件库
+ * 3. i18n - 国际化
+ * 4. Ant Design Vue - UI组件库
  */
 app.use(pinia)
 app.use(router)
+app.use(i18n)
 app.use(Antd)
 
 /**

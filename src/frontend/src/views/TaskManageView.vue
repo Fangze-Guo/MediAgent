@@ -3,25 +3,25 @@
     <!-- 任务列表区域 -->
     <div class="task-list-section">
       <div class="section-header">
-          <h2 class="section-title">
+        <h2 class="section-title">
           <UnorderedListOutlined />
-          Task List
+          {{ t('views_TaskManageView.title') }}
         </h2>
         <div class="section-actions">
-          <a-input-search v-model:value="searchKeyword" placeholder="Search task name" style="width: 240px" @search="handleSearch"
-            allow-clear />
+          <a-input-search v-model:value="searchKeyword" :placeholder="t('views_TaskManageView.searchPlaceholder')"
+            style="width: 240px" @search="handleSearch" allow-clear />
           <a-radio-group v-model:value="statusFilter" button-style="solid" @change="handleFilterChange">
-            <a-radio-button value="">All</a-radio-button>
-            <a-radio-button value="queued">Queued</a-radio-button>
-            <a-radio-button value="running">Running</a-radio-button>
-            <a-radio-button value="succeeded">Succeeded</a-radio-button>
-            <a-radio-button value="failed">Failed</a-radio-button>
+            <a-radio-button value="">{{ t('views_TaskManageView.status.all') }}</a-radio-button>
+            <a-radio-button value="queued">{{ t('views_TaskManageView.status.queued') }}</a-radio-button>
+            <a-radio-button value="running">{{ t('views_TaskManageView.status.running') }}</a-radio-button>
+            <a-radio-button value="succeeded">{{ t('views_TaskManageView.status.succeeded') }}</a-radio-button>
+            <a-radio-button value="failed">{{ t('views_TaskManageView.status.failed') }}</a-radio-button>
           </a-radio-group>
           <a-button @click="loadTasks" :loading="loading">
             <template #icon>
               <ReloadOutlined />
             </template>
-            Refresh
+            {{ t('views_TaskManageView.refresh') }}
           </a-button>
         </div>
       </div>
@@ -35,7 +35,8 @@
         showTotal: (totalCount: number) => `${totalCount} tasks`,
         onChange: handlePageChange,
         onShowSizeChange: handlePageChange
-      }" :row-key="(record: TaskInfo) => record.task_uid" :locale="{ emptyText: '暂无任务' }" class="task-table">
+      }" :row-key="(record: TaskInfo) => record.task_uid"
+        :locale="{ emptyText: t('views_TaskManageView.messages.loadFailed') }" class="task-table">
         <!-- ID列 -->
         <template #bodyCell="{ column, record, index }">
           <template v-if="column.key === 'id'">
@@ -70,7 +71,7 @@
           <!-- 任务状态列 -->
           <template v-else-if="column.key === 'status'">
             <a-tag :color="record.status_color">
-              {{ record.status_text }}
+              {{ getTaskStatusText(record.status) }}
             </a-tag>
           </template>
 
@@ -87,7 +88,8 @@
           <!-- 操作列 -->
           <template v-else-if="column.key === 'action'">
             <div class="action-buttons">
-              <a-button class="btn-icon" @click.stop="viewTaskFiles(record)" title="查看文件">
+              <a-button class="btn-icon" @click.stop="viewTaskFiles(record)"
+                :title="t('views_TaskManageView.actions.viewFiles')">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
@@ -95,11 +97,11 @@
                 </svg>
               </a-button>
               <a-button type="link" size="small" @click="showTaskDetail(record)" class="action-btn">
-                详情
+                {{ t('views_TaskManageView.actions.viewDetails') }}
               </a-button>
               <a-button type="link" danger size="small" @click="confirmDeleteTask(record)"
                 :disabled="record.status === 'running'" class="action-btn">
-                删除
+                {{ t('views_TaskManageView.actions.delete') }}
               </a-button>
             </div>
           </template>
@@ -108,33 +110,36 @@
     </div>
 
     <!-- 编辑任务名称模态框 -->
-    <a-modal v-model:open="editNameVisible" title="编辑任务名称" @ok="handleUpdateTaskName" @cancel="editNameVisible = false">
+    <a-modal v-model:open="editNameVisible" :title="t('views_TaskManageView.editNameModal.title')"
+      @ok="handleUpdateTaskName" @cancel="editNameVisible = false">
       <a-form layout="vertical">
-        <a-form-item label="任务名称">
-          <a-input v-model:value="editingTaskName" placeholder="请输入任务名称" :maxlength="100" allow-clear />
+        <a-form-item :label="t('views_TaskManageView.editNameModal.label')">
+          <a-input v-model:value="editingTaskName" :placeholder="t('views_TaskManageView.basicInfo.taskName')"
+            :maxlength="100" allow-clear />
         </a-form-item>
       </a-form>
     </a-modal>
 
     <!-- 任务详情模态框 -->
-    <a-modal v-model:open="detailVisible" title="任务详情" width="900px" :footer="null" :destroy-on-close="true">
+    <a-modal v-model:open="detailVisible" :title="t('views_TaskManageView.detailsModal.title')" width="900px"
+      :footer="null" :destroy-on-close="true">
       <div v-if="selectedTask" class="task-detail">
         <!-- 任务基本信息 -->
         <div class="detail-section">
           <h3 class="section-title">
             <FileTextOutlined />
-            基本信息
+            {{ t('views_TaskManageView.detailsModal.basicInfo') }}
           </h3>
           <a-descriptions bordered :column="2" size="small">
-            <a-descriptions-item label="任务ID" :span="2">
+            <a-descriptions-item :label="t('views_TaskManageView.basicInfo.taskId')" :span="2">
               <a-typography-text copyable>{{ selectedTask.task_uid }}</a-typography-text>
             </a-descriptions-item>
-            <a-descriptions-item label="任务状态">
+            <a-descriptions-item :label="t('views_TaskManageView.basicInfo.taskStatus')">
               <a-tag :color="selectedTask.status_color">
-                {{ selectedTask.status_text }}
+                {{ getTaskStatusText(selectedTask.status) }}
               </a-tag>
             </a-descriptions-item>
-            <a-descriptions-item label="用户ID">
+            <a-descriptions-item label="User ID">
               {{ selectedTask.user_uid }}
             </a-descriptions-item>
           </a-descriptions>
@@ -144,24 +149,24 @@
         <div class="detail-section">
           <h3 class="section-title">
             <ClockCircleOutlined />
-            执行进度
+            {{ t('views_TaskManageView.detailsModal.progressInfo') }}
           </h3>
           <div class="progress-detail">
             <div class="progress-stats">
               <div class="stat-item">
-                <div class="stat-label">总步骤</div>
+                <div class="stat-label">{{ t('views_TaskManageView.progressInfo.totalSteps') }}</div>
                 <div class="stat-value">{{ selectedTask.total_steps }}</div>
               </div>
               <div class="stat-item">
-                <div class="stat-label">已完成</div>
+                <div class="stat-label">{{ t('views_TaskManageView.progressInfo.completedSteps') }}</div>
                 <div class="stat-value success">{{ selectedTask.last_completed_step || 0 }}</div>
               </div>
               <div class="stat-item" v-if="selectedTask.current_step_number">
-                <div class="stat-label">当前步骤</div>
+                <div class="stat-label">{{ t('views_TaskManageView.progressInfo.currentStep') }}</div>
                 <div class="stat-value primary">{{ selectedTask.current_step_number }}</div>
               </div>
               <div class="stat-item" v-if="selectedTask.failed_step_number">
-                <div class="stat-label">失败步骤</div>
+                <div class="stat-label">{{ t('views_TaskManageView.progressInfo.failedStep') }}</div>
                 <div class="stat-value error">{{ selectedTask.failed_step_number }}</div>
               </div>
             </div>
@@ -174,7 +179,7 @@
         <div class="detail-section" v-if="taskSteps.length > 0">
           <h3 class="section-title">
             <UnorderedListOutlined />
-            步骤详情
+            {{ t('views_TaskManageView.detailsModal.stepDetails') }}
           </h3>
           <div class="steps-timeline">
             <div v-for="step in taskSteps" :key="step.step_number" class="step-item"
@@ -190,11 +195,11 @@
                 </div>
                 <div class="step-info">
                   <div class="step-source">
-                    <span class="label">数据源:</span>
+                    <span class="label">{{ t('views_TaskManageView.stepDetails.dataSource') }}:</span>
                     <span class="value">{{ step.source_kind }} - {{ step.source || 'N/A' }}</span>
                   </div>
                   <div v-if="step.relative" class="step-relative">
-                    <span class="label">相对路径:</span>
+                    <span class="label">{{ t('views_TaskManageView.stepDetails.relativePath') }}:</span>
                     <span class="value">{{ step.relative }}</span>
                   </div>
                 </div>
@@ -209,7 +214,7 @@
               <template #icon>
                 <DeleteOutlined />
               </template>
-              删除任务
+              {{ t('views_TaskManageView.detailActions.deleteTask') }}
             </a-button>
           </div>
           <div class="detail-actions-right">
@@ -217,9 +222,11 @@
               <template #icon>
                 <ReloadOutlined />
               </template>
-              刷新
+              {{ t('views_TaskManageView.detailActions.refresh') }}
             </a-button>
-            <a-switch v-model:checked="autoRefreshEnabled" checked-children="自动刷新" un-checked-children="手动刷新" />
+            <a-switch v-model:checked="autoRefreshEnabled"
+              :checked-children="t('views_TaskManageView.detailActions.autoRefresh')"
+              :un-checked-children="t('views_TaskManageView.detailActions.manualRefresh')" />
           </div>
         </div>
       </div>
@@ -238,7 +245,7 @@
             </div>
             <div class="header-text">
               <h2>{{ selectedTask?.task_name }}</h2>
-              <span class="header-subtitle">浏览任务文件</span>
+              <span class="header-subtitle">{{ t('views_TaskManageView.fileBrowser.title') }}</span>
             </div>
           </div>
           <button class="btn-close" @click="showFilesDialog = false">×</button>
@@ -252,20 +259,20 @@
             </svg>
             <span class="breadcrumb-path">{{ currentFilePath || "/" }}</span>
             <button v-if="currentFilePath && currentFilePath !== '.'" class="btn-back" @click="goBackFolder"
-              title="返回上级">
+              :title="t('views_TaskManageView.fileBrowser.backToParent')">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2">
                 <line x1="19" y1="12" x2="5" y2="12"></line>
                 <polyline points="12 19 5 12 12 5"></polyline>
               </svg>
-              返回上级
+              {{ t('views_TaskManageView.fileBrowser.backToParent') }}
             </button>
           </div>
 
           <!-- 文件列表 -->
           <div v-if="filesLoading" class="files-loading">
             <div class="spinner"></div>
-            <p>加载中...</p>
+            <p>{{ t('views_TaskManageView.fileBrowser.loading') }}</p>
           </div>
 
           <div v-else-if="taskFiles.length === 0" class="empty-files">
@@ -273,15 +280,15 @@
               stroke="currentColor" stroke-width="1">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
             </svg>
-            <p>该文件夹为空</p>
+            <p>{{ t('views_TaskManageView.fileBrowser.empty') }}</p>
           </div>
 
           <div v-else class="files-list-container">
             <!-- 表头 -->
             <div class="files-list-header">
-              <div class="header-col col-name">名称</div>
-              <div class="header-col col-size">大小</div>
-              <div class="header-col col-time">修改时间</div>
+              <div class="header-col col-name">{{ t('views_TaskManageView.fileBrowser.name') }}</div>
+              <div class="header-col col-size">{{ t('views_TaskManageView.fileBrowser.size') }}</div>
+              <div class="header-col col-time">{{ t('views_TaskManageView.fileBrowser.modifiedTime') }}</div>
             </div>
 
             <!-- 文件列表 -->
@@ -318,7 +325,7 @@
         </div>
         <div class="modal-footer">
           <button class="btn-secondary" @click="showFilesDialog = false">
-            关闭
+            {{ t('views_TaskManageView.fileBrowser.close') }}
           </button>
         </div>
       </div>
@@ -337,60 +344,62 @@ import {
   UnorderedListOutlined
 } from '@ant-design/icons-vue'
 import { message, Modal } from 'ant-design-vue'
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { getTaskFiles, type FileInfo } from "@/apis/files";
 import { useAuthStore } from "@/store/auth"
+import { useI18n } from 'vue-i18n'
 
 const authStore = useAuthStore()
+const { t } = useI18n()
 
-// 表格列定义
-const columns = [
+// 表格列定义 - 使用 computed 确保能访问 i18n
+const columns = computed(() => [
   {
-    title: 'ID',
+    title: t('views_TaskManageView.columns.id'),
     key: 'id',
     width: 80,
     align: 'center'
   },
   {
-    title: '任务名称',
+    title: t('views_TaskManageView.columns.name'),
     key: 'name',
     width: 200,
   },
   {
-    title: '任务代码',
+    title: t('views_TaskManageView.columns.code'),
     key: 'code',
     width: 180,
   },
   {
-    title: '任务类型',
+    title: t('views_TaskManageView.columns.type'),
     key: 'type',
     width: 120,
     align: 'center'
   },
   {
-    title: '任务状态',
+    title: t('views_TaskManageView.columns.status'),
     key: 'status',
     width: 120,
     align: 'center'
   },
   {
-    title: '创建时间',
+    title: t('views_TaskManageView.columns.createTime'),
     key: 'createTime',
     width: 180,
   },
   {
-    title: '更新时间',
+    title: t('views_TaskManageView.columns.updateTime'),
     key: 'updateTime',
     width: 180,
   },
   {
-    title: '操作',
+    title: t('views_TaskManageView.columns.actions'),
     key: 'action',
     width: 150,
     align: 'center',
     fixed: 'right'
   }
-]
+])
 
 // 响应式数据
 const loading = ref(false)
@@ -471,26 +480,26 @@ const loadTaskFiles = async () => {
     }
   } catch (error) {
     console.error("加载文件列表失败:", error);
-    alert("加载文件列表失败");
+    message.error(t('views_TaskManageView.messages.fileListFailed'));
   } finally {
     filesLoading.value = false;
   }
 };
 
-// 辅助函数：获取任务类型
+// 辅助函数：获取任务类型（国际化）
 const getTaskType = (task: TaskInfo): string => {
   try {
     const request = JSON.parse(task.request_json)
     if (request.steps && request.steps.length > 0) {
       const tools = request.steps.map((s: any) => s.tool_name).filter(Boolean)
       if (tools.length > 0) {
-        return '机器学习'
+        return t('views_TaskManageView.taskType.machineLearning')
       }
     }
   } catch (e) {
     // 解析失败
   }
-  return '机器学习'
+  return t('views_TaskManageView.taskType.machineLearning')
 }
 
 // 格式化文件大小
@@ -537,7 +546,7 @@ const showEditNameModal = (task: TaskInfo) => {
 // 处理更新任务名称
 const handleUpdateTaskName = async () => {
   if (!editingTask.value || !editingTaskName.value.trim()) {
-    message.warning('请输入任务名称')
+    message.warning(t('views_TaskManageView.messages.enterName'))
     return
   }
 
@@ -545,16 +554,16 @@ const handleUpdateTaskName = async () => {
     const response = await updateTaskName(editingTask.value.task_uid, editingTaskName.value.trim())
 
     if (response.code === 200) {
-      message.success('任务名称更新成功')
+      message.success(t('views_TaskManageView.messages.updateSuccess'))
       editNameVisible.value = false
       // 刷新任务列表
       await loadTasks()
     } else {
-      message.error(response.message || '更新任务名称失败')
+      message.error(response.message || t('views_TaskManageView.messages.updateFailed'))
     }
   } catch (error) {
     console.error('更新任务名称失败:', error)
-    message.error(`更新任务名称失败: ${error instanceof Error ? error.message : String(error)}`)
+    message.error(`${t('views_TaskManageView.messages.updateFailed')}: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 
@@ -592,11 +601,11 @@ const loadTasks = async () => {
       }
     } else {
       console.error('加载任务列表失败:', response)
-      message.error(response.message || '加载任务列表失败')
+      message.error(response.message || t('views_TaskManageView.messages.loadFailed'))
     }
   } catch (error) {
     console.error('加载任务列表异常:', error)
-    message.error(`加载任务列表失败: ${error instanceof Error ? error.message : String(error)}`)
+    message.error(`${t('views_TaskManageView.messages.loadFailed')}: ${error instanceof Error ? error.message : String(error)}`)
   } finally {
     loading.value = false
   }
@@ -618,7 +627,7 @@ const loadStatistics = async () => {
       console.log('统计信息加载成功:', statistics.value)
     } else {
       console.error('加载统计信息失败:', response)
-      message.error(response.message || '加载统计信息失败')
+      message.error(response.message || t('views_TaskManageView.messages.statsFailed'))
     }
   } catch (error) {
     console.error('加载统计信息异常:', error)
@@ -640,11 +649,11 @@ const handlePageChange = () => {
 // 确认删除任务
 const confirmDeleteTask = (task: TaskInfo) => {
   Modal.confirm({
-    title: '确认删除任务',
-    content: `确定要删除任务 ${task.task_uid} 吗？此操作不可恢复。`,
-    okText: '确认删除',
+    title: t('views_TaskManageView.messages.confirmDelete'),
+    content: t('views_TaskManageView.messages.confirmDeleteMessage', { taskUid: task.task_uid }),
+    okText: t('common.confirm'),
     okType: 'danger',
-    cancelText: '取消',
+    cancelText: t('common.cancel'),
     onOk: async () => {
       await handleDeleteTask(task.task_uid)
     }
@@ -657,7 +666,7 @@ const handleDeleteTask = async (taskUid: string) => {
     const response = await deleteTask(taskUid)
 
     if (response.code === 200) {
-      message.success('任务删除成功')
+      message.success(t('views_TaskManageView.messages.deleteSuccess'))
       // 刷新任务列表和统计信息
       await Promise.all([loadTasks(), loadStatistics()])
       // 如果当前详情窗口显示的是被删除的任务，关闭窗口
@@ -666,11 +675,11 @@ const handleDeleteTask = async (taskUid: string) => {
         selectedTask.value = null
       }
     } else {
-      message.error(response.message || '删除任务失败')
+      message.error(response.message || t('views_TaskManageView.messages.deleteFailed'))
     }
   } catch (error) {
     console.error('删除任务失败:', error)
-    message.error(`删除任务失败: ${error instanceof Error ? error.message : String(error)}`)
+    message.error(`${t('views_TaskManageView.messages.deleteFailed')}: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 
@@ -734,13 +743,13 @@ const getStepStatus = (step: any, task: TaskInfo): string => {
   const failedStep = task.failed_step_number
 
   if (failedStep === stepNumber) {
-    return '失败'
+    return t('views_TaskManageView.stepStatus.failed')
   } else if (stepNumber <= lastCompleted) {
-    return '已完成'
+    return t('views_TaskManageView.stepStatus.completed')
   } else if (stepNumber === currentStep) {
-    return '执行中'
+    return t('views_TaskManageView.stepStatus.running')
   } else if (stepNumber > lastCompleted) {
-    return '等待中'
+    return t('views_TaskManageView.stepStatus.pending')
   }
   return ''
 }
@@ -749,10 +758,10 @@ const getStepStatus = (step: any, task: TaskInfo): string => {
 const getStepStatusColor = (step: any, task: TaskInfo): string => {
   const status = getStepStatus(step, task)
   const colorMap: Record<string, string> = {
-    '已完成': 'success',
-    '执行中': 'processing',
-    '等待中': 'default',
-    '失败': 'error'
+    [t('views_TaskManageView.stepStatus.completed')]: 'success',
+    [t('views_TaskManageView.stepStatus.running')]: 'processing',
+    [t('views_TaskManageView.stepStatus.pending')]: 'default',
+    [t('views_TaskManageView.stepStatus.failed')]: 'error'
   }
   return colorMap[status] || 'default'
 }
@@ -761,12 +770,18 @@ const getStepStatusColor = (step: any, task: TaskInfo): string => {
 const getStepClass = (step: any, task: TaskInfo): string => {
   const status = getStepStatus(step, task)
   const classMap: Record<string, string> = {
-    '已完成': 'step-completed',
-    '执行中': 'step-running',
-    '等待中': 'step-pending',
-    '失败': 'step-failed'
+    [t('views_TaskManageView.stepStatus.completed')]: 'step-completed',
+    [t('views_TaskManageView.stepStatus.running')]: 'step-running',
+    [t('views_TaskManageView.stepStatus.pending')]: 'step-pending',
+    [t('views_TaskManageView.stepStatus.failed')]: 'step-failed'
   }
   return classMap[status] || ''
+}
+
+// 获取任务状态文本（国际化）
+const getTaskStatusText = (status: string): string => {
+  const statusKey = `views_TaskManageView.taskStatus.${status}`
+  return t(statusKey)
 }
 
 // 获取进度条状态

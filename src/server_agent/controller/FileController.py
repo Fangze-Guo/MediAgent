@@ -3,14 +3,18 @@
 """
 
 from typing import List
+from pathlib import Path
+import pathlib
 
 from fastapi import UploadFile, File, Form, Depends, Header
+from fastapi.responses import FileResponse
 
 from src.server_agent.common import BaseResponse
 from src.server_agent.common.ResultUtils import ResultUtils
 from src.server_agent.model import DeleteFileRequest, CreateFolderRequest, BatchDeleteFilesRequest, FileInfo, FileListVO, UserVO
 from src.server_agent.service import FileService, UserService
 from src.server_agent.exceptions import AuthenticationError
+from src.server_agent.constants.CommonConstants import DATASET_PATH
 from .base import BaseController
 
 
@@ -25,6 +29,36 @@ class FileController(BaseController):
 
     def _register_routes(self):
         """注册所有路由"""
+
+        @self.router.get("/serve/{file_id:path}")
+        async def serveFile(file_id: str):
+            """提供文件下载/预览接口"""
+            try:
+                # 获取文件完整路径 - file_id 是相对于 DATASET_PATH 的路径
+                # 例如: "public/image.png" 或 "private/user123/dataset/photo.jpg"
+                dataset_root = pathlib.Path(DATASET_PATH)
+                file_path = dataset_root / file_id
+                
+                # 安全检查：防止路径遍历攻击
+                try:
+                    file_path = file_path.resolve()
+                    root = dataset_root.resolve()
+                    if not str(file_path).startswith(str(root)):
+                        return ResultUtils.error(403, "Access denied")
+                except Exception:
+                    return ResultUtils.error(403, "Invalid path")
+                
+                # 检查文件是否存在
+                if not file_path.exists() or not file_path.is_file():
+                    return ResultUtils.error(404, "File not found")
+                
+                # 返回文件 - FastAPI 会自动设置 Content-Type
+                return FileResponse(
+                    path=file_path,
+                    filename=file_path.name
+                )
+            except Exception as e:
+                return ResultUtils.error(500, f"Error serving file: {str(e)}")
 
         @self.router.get("/dataset")
         async def getDataSetFiles(

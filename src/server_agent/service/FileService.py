@@ -231,9 +231,10 @@ class FileService:
                     if self._should_filter_item(item, files_dir, user_id, role):
                         continue
 
-                    file_id = f"{abs(hash(str(item)))}"
-                    file_type = "directory" if is_directory else self._get_content_type(item.suffix)
+                    # 使用相对路径作为 file_id（用于 /files/serve/{file_id} API）
                     relative_path = str(item.relative_to(files_dir)).replace('\\', '/')
+                    file_id = relative_path
+                    file_type = "directory" if is_directory else self._get_content_type(item.suffix)
 
                     file_info: FileInfo = FileInfo(
                         id=file_id,
@@ -625,19 +626,17 @@ class FileService:
         根据文件ID查找文件路径
         
         Args:
-            file_id: 文件ID
+            file_id: 文件ID（现在是相对路径）
             files_dir: 文件目录
             
         Returns:
             文件相对路径，如果未找到返回None
         """
         try:
-            # 遍历目录查找匹配的文件和目录
-            for item in files_dir.rglob('*'):
-                # 生成ID并比较（包括文件和目录）
-                generated_id = f"{abs(hash(str(item)))}"
-                if generated_id == file_id:
-                    return str(item.relative_to(files_dir)).replace('\\', '/')
+            # file_id 现在就是相对路径，直接验证其存在性
+            file_path = files_dir / file_id
+            if file_path.exists():
+                return str(file_path.relative_to(files_dir)).replace('\\', '/')
             return None
         except Exception as e:
             logger.error(f"查找文件路径失败: {e}")

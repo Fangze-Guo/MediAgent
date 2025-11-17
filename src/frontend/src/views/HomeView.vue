@@ -1,42 +1,42 @@
 <template>
   <div class="home">
     <div class="hero">
-      <h1 class="title">欢迎使用 MediAgent</h1>
-      <p class="subtitle">输入你的问题，开始与您的助手对话</p>
+      <h1 class="title">{{ t('views_HomeView.welcome') }}</h1>
+      <p class="subtitle">{{ t('views_HomeView.subtitle') }}</p>
       <div class="start-box">
         <a-textarea
             v-model:value="draft"
             :auto-size="{ minRows: 2, maxRows: 6 }"
-            placeholder="发消息或选择技能"
+            :placeholder="t('views_HomeView.placeholder')"
             class="start-input"
         />
-        <a-button type="primary" class="start-btn" :loading="creating" @click="startConversation">开始对话</a-button>
+        <a-button type="primary" class="start-btn" :loading="creating" @click="startConversation">{{ t('views_HomeView.startConversation') }}</a-button>
       </div>
       <!-- 技能按钮区域 -->
       <div class="skills-container">
         <a-button type="default" class="skill-btn">
-          <span class="skill-icon">💻 编程</span>
+          <span class="skill-icon">{{ t('views_HomeView.programming') }}</span>
         </a-button>
         <a-button type="default" class="skill-btn">
-          <span class="skill-icon">✍️ 帮我写作</span>
+          <span class="skill-icon">{{ t('views_HomeView.writing') }}</span>
         </a-button>
         <a-button type="default" class="skill-btn">
-          <span class="skill-icon">🖼️ 图像生成</span>
+          <span class="skill-icon">{{ t('views_HomeView.imageGen') }}</span>
         </a-button>
         <a-button type="default" class="skill-btn">
-          <span class="skill-icon">🎵 音乐生成</span>
+          <span class="skill-icon">{{ t('views_HomeView.musicGen') }}</span>
         </a-button>
         <a-button type="default" class="skill-btn">
-          <span class="skill-icon">🔄 翻译</span>
+          <span class="skill-icon">{{ t('views_HomeView.translation') }}</span>
         </a-button>
         <a-button type="default" class="skill-btn">
-          <span class="skill-icon">📊 PPT</span>
-        </a-button>
-        <a-button type="default" class="skill-btn" @click="handleUploadClick">
-          <span class="skill-icon">📁</span> 上传文件
+          <span class="skill-icon">{{ t('views_HomeView.ppt') }}</span>
         </a-button>
         <a-button type="default" class="skill-btn">
-          <span class="skill-icon">➕</span> 更多
+          <span class="skill-icon">{{ t('views_HomeView.uploadFiles') }}</span>
+        </a-button>
+        <a-button type="default" class="skill-btn">
+          <span class="skill-icon">{{ t('views_HomeView.more') }}</span>
         </a-button>
       </div>
     </div>
@@ -52,9 +52,13 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useConversationsStore } from '@/store/conversations'
+import { useI18n } from 'vue-i18n'
 
 // 路由相关
 const router = useRouter()
+
+// 国际化
+const { t } = useI18n()
 
 // 状态管理
 const conversationsStore = useConversationsStore()
@@ -93,14 +97,6 @@ const startConversation = async () => {
   } finally {
     creating.value = false
   }
-}
-
-/**
- * 处理上传按钮点击
- */
-const handleUploadClick = () => {
-  // 触发全局上传事件
-  window.dispatchEvent(new CustomEvent('open-file-upload'))
 }
 </script>
 

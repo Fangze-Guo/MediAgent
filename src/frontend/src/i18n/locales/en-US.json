@@ -1,0 +1,720 @@
+{
+  "common": {
+    "all": "All",
+    "search": "Search",
+    "refresh": "Refresh",
+    "close": "Close",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "view": "View",
+    "details": "Details",
+    "back": "Back",
+    "loading": "Loading...",
+    "noData": "No data",
+    "success": "Success",
+    "error": "Error",
+    "warning": "Warning"
+  },
+  "layout": {
+    "sidebar": {
+      "dashboard": "Dashboard",
+      "tasks": "Tasks",
+      "datasets": "Datasets",
+      "models": "Models",
+      "appstore": "App Store",
+      "settings": "Settings",
+      "logout": "Logout"
+    }
+  },
+  "task": {
+    "title": "Task List",
+    "searchPlaceholder": "Search task name",
+    "columns": {
+      "id": "ID",
+      "name": "Task Name",
+      "code": "Task Code",
+      "type": "Type",
+      "status": "Status",
+      "createdAt": "Created At",
+      "updatedAt": "Updated At",
+      "actions": "Actions"
+    },
+    "buttons": {
+      "refresh": "Refresh",
+      "details": "Details",
+      "delete": "Delete",
+      "viewFiles": "View files",
+      "views_TaskManageView": {
+        "title": "Task Management",
+        "searchPlaceholder": "Search task name",
+        "statusAll": "All",
+        "statusRunning": "Running",
+        "statusSucceeded": "Succeeded",
+        "statusFailed": "Failed",
+        "refresh": "Refresh",
+        "emptyText": "No tasks yet",
+        "viewFiles": "View Files",
+        "viewDetails": "View Details",
+        "delete": "Delete",
+        "editNameModalTitle": "Edit Task Name",
+        "editNameLabel": "Task Name",
+        "detailModalTitle": "Task Details",
+        "basicInfo": "Basic Information",
+        "taskId": "Task ID",
+        "taskStatus": "Task Status",
+        "progressInfo": "Progress Information",
+        "totalSteps": "Total Steps",
+        "completedSteps": "Completed Steps",
+        "currentStep": "Current Step",
+        "failedStep": "Failed Step",
+        "stepDetails": "Step Details",
+        "dataSource": "Data Source",
+        "relativePath": "Relative Path",
+        "deleteTask": "Delete Task",
+        "refreshButton": "Refresh",
+        "autoRefresh": "Auto Refresh",
+        "fileBrowserTitle": "File Browser",
+        "backToParent": "Back to Parent Directory",
+        "backButton": "Back",
+        "loading": "Loading...",
+        "emptyFolder": "Empty Folder",
+        "fileName": "File Name",
+        "fileType": "File Type",
+        "fileSize": "File Size",
+        "modifiedTime": "Modified Time",
+        "close": "Close",
+        "stepStatus": {
+          "completed": "Completed",
+          "running": "Running",
+          "pending": "Pending",
+          "failed": "Failed"
+        },
+        "messages": {
+          "enterName": "Please enter task name",
+          "updateSuccess": "Task name updated successfully",
+          "updateFailed": "Failed to update task name",
+          "loadFailed": "Failed to load task list",
+          "statsFailed": "Failed to load statistics",
+          "confirmDelete": "Are you sure you want to delete this task?",
+          "deleteSuccess": "Task deleted successfully",
+          "deleteFailed": "Failed to delete task",
+          "fileListFailed": "Failed to load file list"
+        }
+      }
+    },
+    "filters": {
+      "all": "All",
+      "queued": "Queued",
+      "running": "Running",
+      "succeeded": "Succeeded",
+      "failed": "Failed"
+    },
+    "modals": {
+      "details": "Task Details",
+      "editName": "Edit Task Name",
+      "filesBrowser": "Browse task files"
+    },
+    "forms": {
+      "taskNameLabel": "Task Name",
+      "taskNamePlaceholder": "Enter task name"
+    },
+    "sections": {
+      "basicInfo": "Basic Info",
+      "progress": "Progress",
+      "stepDetails": "Step Details"
+    },
+    "stats": {
+      "totalSteps": "Total Steps",
+      "completed": "Completed",
+      "currentStep": "Current Step",
+      "failedSteps": "Failed Steps"
+    },
+    "steps": {
+      "source": "Source",
+      "relativePath": "Relative Path"
+    },
+    "file": {
+      "name": "Name",
+      "size": "Size",
+      "modifiedTime": "Modified Time",
+      "empty": "This folder is empty"
+    },
+    "time": {
+      "justNow": "just now",
+      "minutesAgo": "minutes ago",
+      "hoursAgo": "hours ago",
+      "daysAgo": "days ago"
+    },
+    "messages": {
+      "noTasks": "No tasks",
+      "deleteConfirm": "Are you sure you want to delete this task?",
+      "deleteSuccess": "Task deleted",
+      "deleteFailed": "Failed to delete task",
+      "updateNameSuccess": "Task name updated",
+      "updateNameFailed": "Failed to update task name",
+      "loadFailed": "Failed to load task list"
+    },
+    "actions": {
+      "deleteTask": "Delete Task",
+      "autoRefresh": "Auto",
+      "manualRefresh": "Manual"
+    }
+  },
+  "dataset": {
+    "title": "Dataset Management",
+    "createButton": "Create Dataset",
+    "columns": {
+      "name": "Name",
+      "caseCount": "Case Count",
+      "uploadStatus": "Upload Status",
+      "actions": "Actions"
+    },
+    "buttons": {
+      "viewFiles": "View Files",
+      "edit": "Edit",
+      "delete": "Delete"
+    },
+    "messages": {
+      "dataUploaded": "Data uploaded",
+      "dataNotUploaded": "Data not uploaded",
+      "descriptionUploaded": "Description file uploaded",
+      "descriptionNotUploaded": "Description file not uploaded"
+    },
+    "tabs": {
+      "clinicalData": "Clinical Data",
+      "textData": "Text Data",
+      "imageData": "Image Data",
+      "pathologyData": "Pathology Data",
+      "genomicData": "Genomic Data"
+    }
+  },
+  "login": {
+    "title": "Login",
+    "username": "Username",
+    "password": "Password",
+    "loginButton": "Login",
+    "remember": "Remember me",
+    "forgotPassword": "Forgot password?"
+  },
+  "model": {
+    "title": "Models",
+    "selectModel": "Select Model",
+    "configuration": "Configuration"
+  },
+  "components_FeaturesMarkdown": {
+      "editTitle": "Edit Features",
+      "cancel": "Cancel",
+      "save": "Save",
+      "undo": "Undo",
+      "redo": "Redo",
+      "bold": "Bold",
+      "italic": "Italic",
+      "code": "Code",
+      "list": "List",
+      "heading": "Heading",
+      "link": "Link",
+      "image": "Image",
+      "preview": "Preview",
+      "title": "Features",
+      "edit": "Edit",
+      "emptyDescription": "No features yet",
+      "addFeatures": "Add Features",
+      "placeholder": "Enter Markdown content for features...\n\n💡 Tips:\n• Paste images (Ctrl+V)\n• Drag and drop images here\n• Click the image button to upload\n• Images use short placeholders, preview shows actual effect\n• Ctrl+Z to undo, Ctrl+Shift+Z to redo",
+      "dropImage": "Release to upload image",
+      "enterContent": "Please enter feature content",
+      "saveSuccess": "Features saved successfully",
+      "saveFailed": "Failed to save features",
+      "uploadFailed": "Image upload failed",
+      "imageDataLost": "Image data lost"
+    },
+  "components_DatasetFileBrowser": {
+      "pathNavigation": {
+        "datasetDir": "Dataset Directory",
+        "parentDir": "Parent Directory",
+        "refresh": "Refresh",
+        "uploadToCurrent": "Upload to Current Directory",
+        "createFolder": "Create Folder",
+        "totalFiles": "Total {count} files",
+        "batchDelete": "Batch Delete ({count})"
+      },
+      "fileList": {
+        "name": "Name",
+        "type": "Type",
+        "size": "Size",
+        "modifiedTime": "Modified Time",
+        "actions": "Actions",
+        "typeDirectory": "Directory",
+        "typeImage": "Image",
+        "typeText": "Text",
+        "typeOthers": "Others",
+        "preview": "Preview",
+        "delete": "Delete"
+      },
+      "previewModal": {
+        "title": "File Preview",
+        "fileSize": "File Size",
+        "fileType": "File Type",
+        "modifiedTime": "Modified Time"
+      },
+      "createFolderModal": {
+        "title": "Create Folder",
+        "label": "Folder Name",
+        "placeholder": "Please enter folder name",
+        "create": "Create",
+        "cancel": "Cancel"
+      },
+      "createFolderRules": {
+        "required": "Please enter folder name",
+        "length": "Folder name length must be 1-50 characters",
+        "pattern": "Folder name cannot contain special characters"
+      },
+      "messages": {
+        "loadFailed": "Failed to get file list",
+        "createSuccess": "Folder created successfully",
+        "createFailed": "Failed to create folder"
+      },
+      "deleteFile": {
+        "confirmTitle": "Confirm Delete",
+        "confirmDirMessage": "Are you sure you want to delete the directory '{fileName}'?This operation will delete the directory and all its contents, and cannot be recovered!",
+        "confirmFileMessage": "Are you sure you want to delete the file '{fileName}'? This operation cannot be recovered!",
+        "cancel": "Cancel",
+        "dirDeleteSuccess": "Directory deleted successfully",
+        "fileDeleteSuccess": "File deleted successfully",
+        "deleteFailed": "Delete failed"
+      },
+      "batchDelete": {
+        "selectPrompt": "Please select the files to delete",
+        "confirmTitle": "Confirm Batch Delete",
+        "confirmMessage": "Are you sure you want to delete the selected {count} files?",
+        "delete": "Delete",
+        "cancel": "Cancel",
+        "success": "Successfully deleted {count} files",
+        "failed": "Batch delete failed"
+      },
+      "upload": {
+        "failed": "Upload failed",
+        "success": "Successfully uploaded {count} files",
+        "failedWithMessage": "Upload failed: {message}",
+        "unknownError": "Unknown error"
+      }
+    },
+  "components_FileUpload": {
+      "dropzoneText": "Click or drag files here to upload",
+      "dropzoneHint": "Multiple files can be selected for batch upload",
+      "uploading": "Uploading...",
+      "pendingFiles": "Pending Files ({count})",
+      "startUpload": "Start Upload",
+      "clearList": "Clear List",
+      "remove": "Remove",
+      "uploadedFiles": "Uploaded Files ({count})",
+      "uploadSuccess": "Upload Successful",
+      "uploadSuccessHint": "Files have been saved to the server, you can close this window",
+      "supportedFormats": "Supports multiple file uploads: image files (JPG, PNG, GIF, WebP), CSV files, and DICOM files (.dcm)",
+      "messages": {
+        "unsupportedType": "{fileName}: Unsupported file type",
+        "sizeExceeded": "File {fileName} exceeds the size limit ({maxSize}MB)",
+        "filesAdded": "{count} files have been added to the upload list",
+        "allSuccess": "Successfully uploaded {successCount} files",
+        "partialSuccess": "Successfully uploaded {successCount} files, failed {failedCount}",
+        "failureDetails": "Upload failure details:",
+        "allFailed": "Upload failed, total {failedCount} files",
+        "fileSuccess": "File {fileName} uploaded successfully",
+        "uploadFailed": "Upload failed",
+        "noFiles": "No files to upload",
+        "fileRemoved": "File has been removed from the upload list",
+        "listCleared": "Cleared {count} pending files"
+      }
+    },
+  "components_GlobalFileUpload": {
+      "title": "Upload Files",
+      "uploadFailed": "Upload failed: {error}"
+    },
+  "components_LanguageSwitcher": {
+      "1": "English"
+    },
+  "components_ModelConfigModal": {
+      "1": "Current Models",
+      "2": "All Models",
+      "3": "Add Model",
+      "4": "Refresh",
+      "5": "Alibaba Cloud",
+      "6": "Online",
+      "7": "Under Maintenance",
+      "8": "Offline",
+      "9": "Daily Conversation",
+      "10": "Text Creation",
+      "11": "Code Generation",
+      "12": "Mathematical Problems",
+      "13": "Logical Reasoning",
+      "14": "Complex Analysis",
+      "15": "Model Configuration Management",
+      "16": "isEdit ? 'Edit Model Configuration' : 'Add Model Configuration'",
+      "17": "Model ID",
+      "18": "[{ required: true, message: 'Please enter Model ID' }]",
+      "19": "Model Name",
+      "20": "[{ required: true, message: 'Please enter Model Name' }]",
+      "21": "Description",
+      "22": "Provider",
+      "23": "[{ required: true, message: 'Please select Provider' }]",
+      "24": "Alibaba Cloud",
+      "25": "API Base URL",
+      "26": "[{ required: true, message: 'Please enter API Base URL' }]",
+      "27": "Status",
+      "28": "Tags",
+      "29": "Enter Tags",
+      "30": "Daily Conversation",
+      "31": "Text Creation",
+      "32": "Code Generation",
+      "33": "Mathematical Problems",
+      "34": "Logical Reasoning",
+      "35": "Complex Analysis"
+    },
+  "components_ModelSelector": {
+      "1": "Select Model",
+      "2": "{{ provider.models.length }} models"
+    },
+  "components_Sidebar": {
+      "historyTitle": "History Conversations",
+      "delete": "Delete",
+      "userName": "{userName}",
+      "editProfile": "Edit Profile",
+      "logout": "Log out",
+      "home": "New Conversation",
+      "files": "File Management",
+      "tasks": "Task Management",
+      "datasets": "Dataset Management",
+      "appStore": "Tool Repository",
+      "logoutConfirm": {
+        "title": "Confirm Logout",
+        "content": "Are you sure you want to log out?",
+        "okText": "Log out",
+        "cancelText": "Cancel",
+        "successMessage": "Logged out successfully"
+      }
+    },
+  "components_UserProfileModal": {
+      "changeAvatar": "Change Avatar",
+      "uploadAvatar": "Upload Avatar",
+      "uploadInstructions": "Avatar Upload Instructions:",
+      "supportedFormats": "Supports JPG, PNG, GIF formats",
+      "maxSize": "File size does not exceed 2MB",
+      "recommendedSize": "Recommended size: 200x200 pixels",
+      "storageFormat": "Avatar will be stored in Base64 format",
+      "title": "Edit Profile",
+      "username": "Username",
+      "usernamePlaceholder": "Please enter username",
+      "userId": "User ID",
+      "userIdNote": "Automatically generated by the system",
+      "role": "Role",
+      "removeAvatar": "Remove Avatar",
+      "roleAdmin": "Administrator",
+      "roleUser": "Regular User",
+      "roleUnknown": "Unknown",
+      "cancel": "Cancel",
+      "save": "Save",
+      "usernameLength": "Username length must be 2-20 characters",
+      "usernamePattern": "Username can only contain letters, numbers, underscores, and Chinese characters",
+      "selectImage": "Please select image file",
+      "imageTooLarge": "Image size cannot exceed 2MB",
+      "uploadSuccess": "Avatar uploaded successfully",
+      "readFailed": "Failed to read avatar",
+      "uploadFailed": "Avatar upload failed, please try again",
+      "removeSuccess": "Avatar has been removed",
+      "updateSuccess": "Personal information updated successfully",
+      "checkInput": "Please check the input information",
+      "saveFailed": "Save failed, please try again"
+    },
+  "views_AppDetailView": {
+      "backToStore": "Return to Tool Repository",
+      "loading": "Loading app information...",
+      "providedBy": "Provided by {author}",
+      "ratings": "({count} ratings)",
+      "users": "{count} users",
+      "installed": "Added to MediAgent",
+      "addToMediAgent": "Add to MediAgent",
+      "share": "Share",
+      "overview": "Overview",
+      "tags": "Tags",
+      "relatedApps": "Related Apps",
+      "notFound": "App not found",
+      "backButton": "Return to Tool Repository",
+      "details": "Details",
+      "version": "Version",
+      "lastUpdated": "Last Updated",
+      "size": "Size",
+      "language": "Language",
+      "category": "Category"
+    },
+  "views_AppStoreView": {
+      "logoText": "MediAgent Tool Repository",
+      "searchPlaceholder": "Search extensions, themes, etc.",
+      "loading": "Loading apps...",
+      "emptyText": "No related apps found",
+      "emptyHint": "Try other search terms or browse other categories",
+      "recommendedTools": "Recommended Tools",
+      "resultsCount": "{count} apps",
+      "users": "{count} users",
+      "installed": "Installed",
+      "addToMediAgent": "Add to MediAgent",
+      "allCategory": "All",
+      "loadCategoriesFailed": "Failed to load categories",
+      "loadAppsFailed": "Failed to load apps"
+    },
+    "views_ChatView": {
+      "thinkingProcess": "Thinking Process",
+      "collapse": "Collapse",
+      "expand": "Expand",
+      "aiThinking": "AI is thinking...",
+      "currentSessionFiles": "Current Session Files",
+      "uploadFile": "Upload File",
+      "documentManagement": "Document Management",
+      "settings": "Settings",
+      "voiceInput": "Voice Input",
+      "tools": "Tools",
+      "clearInput": "Clear Input",
+      "expandInput": "Expand",
+      "inputPlaceholder": "Enter message...",
+      "inputHint": "Press Enter to send, Ctrl+Enter for new line",
+      "send": "Send",
+      "uploadFileTitle": "Upload File"
+    },
+    "views_DatasetManageView": {
+      "title": "Data Management",
+      "createButton": "Create Dataset",
+      "emptyState": "No datasets yet",
+      "loading": "Loading...",
+      "caseCount": "Case Count: {count}",
+      "dataUploaded": "Data Uploaded",
+      "dataNotUploaded": "Data Not Uploaded",
+      "descriptionUploaded": "Description File Uploaded",
+      "descriptionNotUploaded": "Description File Not Uploaded",
+      "viewFiles": "View Files",
+      "edit": "Edit",
+      "delete": "Delete",
+      "dataTypes": {
+        "clinical": "Clinical Data",
+        "text": "Text Data",
+        "imaging": "Image Data",
+        "pathology": "Pathology Data",
+        "genomics": "Genomic Data",
+        "annotation": "Annotation Information"
+      },
+      "dialog": {
+        "createTitle": "Create Dataset",
+        "editTitle": "Edit Dataset",
+        "basicInfo": "Basic Information",
+        "datasetName": "Dataset Name",
+        "quantity": "Quantity",
+        "dataDescription": "Data Description",
+        "otherInfo": "Other Information",
+        "remarks": "Remarks",
+        "cancel": "Cancel",
+        "save": "Save",
+        "create": "Create"
+      },
+      "descriptions": {
+        "clinical": "Clinical Data Description",
+        "text": "Text Data Description",
+        "imaging": "Image Data Description",
+        "pathology": "Pathology Data Description",
+        "genomics": "Genomic Data Description",
+        "annotation": "Annotation Information Description"
+      },
+      "placeholders": {
+        "clinical": "e.g., Clinical information such as patient age, gender, medical history",
+        "text": "e.g., Text information such as diagnostic reports, medical records",
+        "imaging": "e.g., MRI T1, T2 sequences, DICOM format",
+        "pathology": "e.g., Pathological sections, histological grading, etc.",
+        "genomics": "e.g., Gene sequencing data, mutation information, etc.",
+        "annotation": "e.g., Lesion segmentation annotations, classification labels, etc.",
+        "remarks": "Other information to note"
+      }
+    },
+  "views_FileManageView": {
+      "title": "Dataset File Management",
+      "searchPlaceholder": "Search files...",
+      "refresh": "Refresh",
+      "uploadFiles": "Upload Files",
+      "loadFailed": "Failed to get file list"
+    },
+  "views_HomeView": {
+      "welcome": "Welcome to MediAgent",
+      "subtitle": "Enter your question and start a conversation with your assistant.",
+      "startConversation": "Start Conversation",
+      "programming": "💻 Programming",
+      "writing": "✍️ Writing Assistance",
+      "imageGen": "🖼️ Image Generation",
+      "musicGen": "🎵 Music Generation",
+      "translation": "🔄 Translation",
+      "ppt": "📊 PPT",
+      "uploadFiles": "📁 Upload Files",
+      "more": "➕ More",
+      "placeholder": "Send a message or select a skill"
+    },
+    "views_LoginView": {
+      "welcome": "Welcome!",
+      "welcomeSubtitle": "Providing you with professional medical analysis services !",
+      "login": "Login",
+      "register": "Register",
+      "loginSubtitle": "Welcome back! Please login to your account.",
+      "registerSubtitle": "Create a new account to get started.",
+      "username": "Username",
+      "password": "Password",
+      "confirmPassword": "Confirm Password",
+      "usernamePlaceholder": "Please enter username",
+      "passwordPlaceholder": "Please enter password",
+      "confirmPasswordPlaceholder": "Please confirm password",
+      "loginButton": "Login",
+      "registerButton": "Register",
+      "orLoginWith": "Or login with",
+      "rules": {
+        "usernameRequired": "Please enter username",
+        "usernameLength": "Username length must be 3 to 20 characters",
+        "passwordRequired": "Please enter password",
+        "passwordLength": "Password must be at least 6 characters",
+        "confirmPasswordRequired": "Please confirm password",
+        "passwordMismatch": "The two passwords do not match"
+      },
+      "messages": {
+        "loginSuccess": "Login successful!",
+        "loginFailed": "Login failed",
+        "loginFailedNetwork": "Login failed, please check network connection",
+        "registerSuccess": "User {username} registered successfully!",
+        "registerFailed": "Registration failed",
+        "registerFailedNetwork": "Registration failed, please check network connection"
+      }
+    },
+  "views_NotFoundView": {
+      "title": "Page Not Found",
+      "message": "Sorry, the page you are looking for does not exist or has been removed.",
+      "backHome": "Return to Home Page"
+    },
+  "views_SettingsView": {
+      "title": "Settings",
+      "subtitle": "Manage your MediAgent preferences",
+      "chatSettings": "Chat Settings",
+      "autoScroll": "Auto-scroll to Bottom",
+      "messageTime": "Message Time Display",
+      "relativeTime": "Relative Time",
+      "absoluteTime": "Absolute Time",
+      "interfaceSettings": "Interface Settings",
+      "theme": "Theme",
+      "lightTheme": "Light",
+      "darkTheme": "Dark",
+      "followSystem": "Follow System",
+      "dataManagement": "Data Management",
+      "exportHistory": "Export Chat History",
+      "export": "Export",
+      "clearData": "Clear All Data",
+      "clear": "Clear"
+    },
+  "views_TaskManageView": {
+      "title": "Task List",
+      "searchPlaceholder": "Search task name",
+      "refresh": "Refresh",
+      "status": {
+        "all": "All",
+        "queued": "Queued",
+        "running": "Running",
+        "succeeded": "Succeeded",
+        "failed": "Failed"
+      },
+      "columns": {
+        "id": "ID",
+        "name": "Task Name",
+        "code": "Task Code",
+        "type": "Task Type",
+        "status": "Task Status",
+        "createTime": "Create Time",
+        "updateTime": "Update Time",
+        "actions": "Actions"
+      },
+      "actions": {
+        "viewDetails": "View Details",
+        "editName": "Edit Name",
+        "viewFiles": "View Files",
+        "delete": "Delete"
+      },
+      "editNameModal": {
+        "title": "Edit Task Name",
+        "label": "Task Name"
+      },
+      "detailsModal": {
+        "title": "Task Details",
+        "basicInfo": "Basic Information",
+        "progressInfo": "Progress Information",
+        "stepDetails": "Step Details"
+      },
+      "basicInfo": {
+        "taskId": "Task ID",
+        "taskName": "Task Name",
+        "taskCode": "Task Code",
+        "taskType": "Task Type",
+        "taskStatus": "Task Status",
+        "createTime": "Create Time",
+        "updateTime": "Update Time",
+        "requestInfo": "Request Information"
+      },
+      "progressInfo": {
+        "totalSteps": "Total Steps",
+        "completedSteps": "Completed Steps",
+        "currentStep": "Current Step",
+        "failedStep": "Failed Step"
+      },
+      "stepDetails": {
+        "stepNumber": "Step {number}",
+        "dataSource": "Data Source",
+        "relativePath": "Relative Path"
+      },
+      "stepStatus": {
+        "completed": "Completed",
+        "running": "Running",
+        "pending": "Pending",
+        "failed": "Failed"
+      },
+      "taskStatus": {
+        "running": "Running",
+        "succeeded": "Succeeded",
+        "failed": "Failed",
+        "queued": "Queued"
+      },
+      "taskType": {
+        "machineLearning": "Machine Learning",
+        "dataProcessing": "Data Processing",
+        "unknown": "Unknown"
+      },
+      "fileBrowser": {
+        "title": "Task File Browser",
+        "fileList": "File List",
+        "backToParent": "Back to Parent",
+        "loading": "Loading...",
+        "empty": "This folder is empty",
+        "name": "Name",
+        "size": "Size",
+        "modifiedTime": "Modified Time",
+        "close": "Close"
+      },
+      "messages": {
+        "loadFailed": "Failed to load task list",
+        "statsFailed": "Failed to load statistics information",
+        "confirmDelete": "Confirm Delete Task",
+        "confirmDeleteMessage": "Are you sure you want to delete task '{taskUid}'? This operation cannot be undone.",
+        "deleteSuccess": "Task deleted successfully",
+        "deleteFailed": "Failed to delete task",
+        "updateSuccess": "Task name updated successfully",
+        "updateFailed": "Failed to update task name",
+        "enterName": "Please enter task name",
+        "fileListFailed": "Failed to load file list",
+        "loadSuccess": "Successfully loaded {count} tasks"
+      },
+      "detailActions": {
+        "deleteTask": "Delete Task",
+        "refresh": "Refresh",
+        "autoRefresh": "Auto Refresh",
+        "manualRefresh": "Manual Refresh"
+      }
+    }
+  }

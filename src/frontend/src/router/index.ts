@@ -16,7 +16,7 @@ const routes: RouteRecordRaw[] = [
         name: 'Login',
         component: () => import('@/views/LoginView.vue'),
         meta: { 
-            title: 'MediAgent - 登录',
+            title: 'MediAgent - Login',
             requiresAuth: false 
         }
     },
@@ -25,7 +25,7 @@ const routes: RouteRecordRaw[] = [
         name: 'Home',
         component: () => import('@/views/HomeView.vue'),
         meta: {
-            title: 'MediAgent - 首页',
+            title: 'MediAgent - Home',
             requiresAuth: true
         }
     },
@@ -34,7 +34,7 @@ const routes: RouteRecordRaw[] = [
         name: 'Conversation',
         component: () => import('@/views/ChatView.vue'),
         meta: {
-            title: 'MediAgent - 对话',
+            title: 'MediAgent - Conversation',
             requiresAuth: true
         }
     },
@@ -43,7 +43,7 @@ const routes: RouteRecordRaw[] = [
         name: 'files',
         component: () => import('@/views/FileManageView.vue'),
         meta: {
-            title: 'MediAgent - 文件',
+            title: 'MediAgent - Files',
             requiresAuth: true
         }
     },
@@ -52,7 +52,7 @@ const routes: RouteRecordRaw[] = [
         name: 'Tasks',
         component: () => import('@/views/TaskManageView.vue'),
         meta: {
-            title: 'MediAgent - 任务管理',
+            title: 'MediAgent - Tasks',
             requiresAuth: true
         }
     },
@@ -61,7 +61,7 @@ const routes: RouteRecordRaw[] = [
         name: 'Datasets',
         component: () => import('@/views/DatasetManageView.vue'),
         meta: {
-            title: 'MediAgent - 数据集管理',
+            title: 'MediAgent - Datasets',
             requiresAuth: true
         }
     },
@@ -70,7 +70,7 @@ const routes: RouteRecordRaw[] = [
         name: 'Settings',
         component: () => import('@/views/SettingsView.vue'),
         meta: {
-            title: 'MediAgent - 设置',
+            title: 'MediAgent - Settings',
             requiresAuth: true
         }
     },
@@ -79,7 +79,7 @@ const routes: RouteRecordRaw[] = [
         name: 'AppStore',
         component: () => import('@/views/AppStoreView.vue'),
         meta: {
-            title: 'MediAgent - 应用商店',
+            title: 'MediAgent - AppStore',
             requiresAuth: true
         }
     },
@@ -88,7 +88,7 @@ const routes: RouteRecordRaw[] = [
         name: 'AppDetail',
         component: () => import('@/views/AppDetailView.vue'),
         meta: {
-            title: 'MediAgent - 应用详情',
+            title: 'MediAgent - AppDetail',
             requiresAuth: true
         }
     },
@@ -97,7 +97,7 @@ const routes: RouteRecordRaw[] = [
         name: 'NotFound',
         component: () => import('@/views/NotFoundView.vue'),
         meta: {
-            title: 'MediAgent - 页面未找到'
+            title: 'MediAgent - NotFound'
         }
     }
 ]
