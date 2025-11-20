@@ -26,7 +26,7 @@ OPENAI_MODEL    = "deepseek-chat"   # 你的模型名称
 # OPENAI_MODEL    = "qwen/qwen3-30b-a3b-2507"   # 你的模型名称
 
 # —— 用户 / 对话标识（可留空以便脚本交互创建）——
-OWNER_UID: str = "5931999430"                 # create_conversation() 需要：必须存在于 users(uid)
+OWNER_UID: str = "7272895950"                 # create_conversation() 需要：必须存在于 users(uid)
 CONVERSATION_UID: Optional[str] = None        # 为空则首轮自动创建
 
 # —— 内部信息流识别码（你分配，用于落盘 <conversation_uid>/<stream_id>.json）——
@@ -38,9 +38,9 @@ MOCK_LLM = False   # True 时脚本会跳过真实 LLM 调用，用内置假响�
 
 # ========= ② 工程内导入 =========
 # TaskManager（按你的工程结构）
-from mediagent.modules.task_manager import AsyncTaskManager
+from mediagent.modules.tm_test import AsyncTaskManager
 # Agent B（你的执行器 / 任务创建编排器）
-from mediagent.agents.task_create_agent import TaskCreationAgentB, AgentBConfig
+from mediagent.agents.B_test import TaskCreationAgentB, AgentBConfig
 # Agent A（新版：仅暴露 converse，并需要 cm/stream_id/task_manager）
 from mediagent.agents.A_test import DialogueAgentA, AgentAConfig
 # 对话管理器
@@ -156,7 +156,6 @@ async def main():
         max_retries=3,
         allowed_tools=None,            # 默认使用 tm.list_tools()
         allowed_datasets=None,
-        extra_param_rules=None,
         prompt_tools_limit=20,
     )
     executor = TaskCreationAgentB(task_manager=tm, config=cfg_b)

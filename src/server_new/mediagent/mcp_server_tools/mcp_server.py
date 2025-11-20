@@ -1,4 +1,4 @@
-# mcp_server.py —— 极简：仅向 Agent 返回 {name, description}，不返回 inputSchema
+# mcp_server.py —— 带标准化 description（HUMAN_DESC + PARAM_SPEC_JSON）
 from __future__ import annotations
 
 import asyncio
@@ -33,6 +33,7 @@ def _sanitize_json_line(s: str, max_len: int = 16384) -> str:
         s = s[: max_len - 15] + " ...[truncated]"
     return s
 
+
 # ============================ 目录定位 ============================
 HERE = Path(__file__).resolve().parent
 TOOLS_DIR = HERE / "tools"
@@ -55,9 +56,6 @@ class RunInfo:
 
 
 RUNS: Dict[str, RunInfo] = {}
-
-
-
 
 
 async def _launch_and_capture(pyfile: str, *cli_args: str, out_dir: str) -> RunInfo:
@@ -189,7 +187,6 @@ async def _launch_and_capture(pyfile: str, *cli_args: str, out_dir: str) -> RunI
     return ri
 
 
-
 def _read_ndjson_from(path: Path, offset: int) -> Tuple[List[dict], int]:
     """
     从给定 offset（字节偏移）读取 .ndjson。关键点：
@@ -257,7 +254,6 @@ def _read_ndjson_from(path: Path, offset: int) -> Tuple[List[dict], int]:
     return items, last_returned_offset
 
 
-
 # ============================ “作业工具 → 仅对 Agent 的元信息” ============================
 JOB_TOOLS: Set[str] = set()
 # 仅存给 Agent 的元数据：name -> {"description": str}
@@ -271,6 +267,9 @@ def job_tool(_fn=None, **tool_kwargs):
     """
     注册“可编排作业工具”（返回 run_id）。
     仅向 Agent 暴露：name / description。**不返回 inputSchema**。
+    description 采用两段式：
+    - 【HUMAN_DESC_BEGIN】...【HUMAN_DESC_END】
+    - 【PARAM_SPEC_JSON_BEGIN】{...}【PARAM_SPEC_JSON_END】
     """
     def _decorator(fn):
         tool_name = tool_kwargs.get("name") or fn.__name__
@@ -291,17 +290,17 @@ def job_tool(_fn=None, **tool_kwargs):
 @server.tool()
 async def list_job_tools(ctx: Context) -> dict:
     """
-    返回给 Agent 的工具能力（name / description）。不含任何参数 schema。
+    返回给 Agent 的工具能力（name / description）。
+    description 内部包含：
+    - 【HUMAN_DESC_BEGIN】...【HUMAN_DESC_END】：自然语言工具说明
+    - 【PARAM_SPEC_JSON_BEGIN】{...}【PARAM_SPEC_JSON_END】：严格 JSON 参数规范
     """
     tools = []
     for name in sorted(JOB_TOOLS):
         meta = JOB_TOOL_META.get(name, {})
         desc = meta.get("description", "") or ""
-        # 关键：一定返回对象，且 description 为字符串
         tools.append({"name": name, "description": str(desc)})
-    # 可选：在服务器控制台打日志，便于核对
     return {"tools": tools}
-
 
 
 # ============================ 基础工具 ============================
@@ -311,144 +310,81 @@ async def ping(ctx: Context) -> dict:
     return {"ok": True}
 
 
-# ============================ 作业工具（描述已对齐 PLAN_JSON_SCHEMA） ============================
-# @job_tool(
-#     name="start_ingest",
-#     description=(
-#         "数据导入（step1_ingest.py）。用于将外部数据引入工作空间。\n\n"
-#         "【用于 LLM 产出 steps[*] 的规则】\n"
-#         "1) 固定字段：必须包含 step_number / tool_name / source_kind / source / additional_params；relative 可选。\n"
-#         "2) tool_name 必须为 'start_ingest'。\n"
-#         "3) 推荐的 source_kind：\n"
-#         "   - 'dataset'：source=数据集编号（字符串），例如 'ds001'。\n"
-#         "   - 'direct'：source=输入目录路径或自定义 scheme（字符串），例如 'file:///mnt/raw'。\n"
-#         "4) relative：可选，指定子路径或模式（字符串），由任务管理器解析。\n"
-#         "5) additional_params：本工具无业务参数 → 必须是空对象 {}。\n"
-#         "6) 禁止在 additional_params 中出现 in_dir/out_dir（执行时由系统注入）。\n\n"
-#         "【最小示例】\n"
-#         "{\n"
-#         "  \"step_number\": 1,\n"
-#         "  \"tool_name\": \"start_ingest\",\n"
-#         "  \"source_kind\": \"dataset\",\n"
-#         "  \"source\": \"ds001\",\n"
-#         "  \"relative\": null,\n"
-#         "  \"additional_params\": {}\n"
-#         "}"
-#     )
-# )
-# async def start_ingest(ctx: Context, in_dir: str, out_dir: str) -> dict:
-#     ri = await _launch_and_capture("step1_ingest.py", "--source", in_dir, "--out-dir", out_dir, out_dir=out_dir)
-#     return {"run_id": ri.run_id, "log_path": str(ri.log_path), "status_path": str(ri.status_path),
-#             "out_dir": out_dir, "started": True}
-#
-#
-# @job_tool(
-#     name="start_preprocess",
-#     description=(
-#         "数据预处理（step2_preprocess.py）。对上一步导入的数据进行清洗/转换。\n\n"
-#         "【用于 LLM 产出 steps[*] 的规则】\n"
-#         "1) tool_name='start_preprocess'。\n"
-#         "2) 常用 source_kind='step'，source=前置步骤号（整数或数字字符串），且必须小于当前步骤号。\n"
-#         "3) relative：可选，用于选择上一步产物中的子目录/文件模式。\n"
-#         "4) additional_params：无业务参数 → 必须是 {}。\n"
-#         "5) 禁止 additional_params 出现 in_dir/out_dir。\n\n"
-#         "【最小示例】\n"
-#         "{\n"
-#         "  \"step_number\": 2,\n"
-#         "  \"tool_name\": \"start_preprocess\",\n"
-#         "  \"source_kind\": \"step\",\n"
-#         "  \"source\": 1,\n"
-#         "  \"relative\": null,\n"
-#         "  \"additional_params\": {}\n"
-#         "}"
-#     )
-# )
-# async def start_preprocess(ctx: Context, in_dir: str, out_dir: str) -> dict:
-#     ri = await _launch_and_capture("step2_preprocess.py", "--in-dir", in_dir, "--out-dir", out_dir, out_dir=out_dir)
-#     return {"run_id": ri.run_id, "log_path": str(ri.log_path), "status_path": str(ri.status_path),
-#             "out_dir": out_dir, "started": True}
-#
-#
-# @job_tool(
-#     name="start_train",
-#     description=(
-#         "模型训练（step3_train.py）。从预处理产物中训练模型。\n\n"
-#         "【用于 LLM 产出 steps[*] 的规则】\n"
-#         "1) tool_name='start_train'。\n"
-#         "2) 常用 source_kind='step'，source=预处理步骤号。\n"
-#         "3) relative：可选。\n"
-#         "4) additional_params：可包含业务参数，例如 epochs（整数，默认 5）。\n"
-#         "5) 禁止 additional_params 出现 in_dir/out_dir。\n\n"
-#         "【最小示例】\n"
-#         "{\n"
-#         "  \"step_number\": 3,\n"
-#         "  \"tool_name\": \"start_train\",\n"
-#         "  \"source_kind\": \"step\",\n"
-#         "  \"source\": 2,\n"
-#         "  \"relative\": null,\n"
-#         "  \"additional_params\": {\"epochs\": 20}\n"
-#         "}"
-#     )
-# )
-# async def start_train(ctx: Context, in_dir: str, out_dir: str, epochs: int = 5) -> dict:
-#     ri = await _launch_and_capture(
-#         "step3_train.py", "--in-dir", in_dir, "--out-dir", out_dir, "--epochs", str(epochs), out_dir=out_dir
-#     )
-#     return {"run_id": ri.run_id, "log_path": str(ri.log_path), "status_path": str(ri.status_path),
-#             "out_dir": out_dir, "started": True}
-#
-#
-# @job_tool(
-#     name="start_evaluate",
-#     description=(
-#         "模型评估（step4_evaluate.py）。对训练好的模型或结果进行评估。\n\n"
-#         "【用于 LLM 产出 steps[*] 的规则】\n"
-#         "1) tool_name='start_evaluate'。\n"
-#         "2) 常用 source_kind='step'，source=训练步骤号。\n"
-#         "3) relative：可选。\n"
-#         "4) additional_params：无业务参数 → 必须是 {}。\n"
-#         "5) 禁止 additional_params 出现 in_dir/out_dir。\n\n"
-#         "【最小示例】\n"
-#         "{\n"
-#         "  \"step_number\": 4,\n"
-#         "  \"tool_name\": \"start_evaluate\",\n"
-#         "  \"source_kind\": \"step\",\n"
-#         "  \"source\": 3,\n"
-#         "  \"relative\": null,\n"
-#         "  \"additional_params\": {}\n"
-#         "}"
-#     )
-# )
-# async def start_evaluate(ctx: Context, in_dir: str, out_dir: str) -> dict:
-#     ri = await _launch_and_capture("step4_evaluate.py", "--in-dir", in_dir, "--out-dir", out_dir, out_dir=out_dir)
-#     return {"run_id": ri.run_id, "log_path": str(ri.log_path), "status_path": str(ri.status_path),
-#             "out_dir": out_dir, "started": True}
+# ============================ 作业工具（带标准化 description） ============================
 
 @job_tool(
     name="convert_dicom_to_nifti",
     description=(
-        "将 DICOM 序列批量转换为 NIfTI 文件。\n\n"
-        "输入目录结构示例：\n"
-        "  ├─ Patient001\n"
-        "  │   ├─ C0\n"
-        "  │   └─ C2\n"
-        "  ├─ Patient002\n"
-        "  │   ├─ C0\n"
-        "  │   └─ C2\n"
-        "输出目录将生成对应的 NIfTI 文件：C0.nii.gz, C2.nii.gz。\n\n"
-        "【用于 LLM 产出 steps[*] 的规则】\n"
-        "1) tool_name='convert_dicom_to_nifti'。\n"
-        "2) source_kind='step' 或 'direct' 均可。\n"
-        "3) additional_params 必须为 {}。\n"
-        "4) 禁止 additional_params 出现 in_dir/out_dir。\n"
-        "【示例】\n"
-        "{\n"
-        "  \"step_number\": 5,\n"
-        "  \"tool_name\": \"convert_dicom_to_nifti\",\n"
-        "  \"source_kind\": \"direct\",\n"
-        "  \"source\": \"file:///mnt/data/dicoms\",\n"
-        "  \"additional_params\": {}\n"
-        "}"
+        '''【HUMAN_DESC_BEGIN】
+将 DICOM 序列批量转换为 NIfTI 文件。
+
+- 输入目录（in_dir）通常是“包含多个病例子目录”的根目录：
+  - Patient001/C0, Patient001/C2
+  - Patient002/C0, Patient002/C2
+- 输出目录（out_dir）由任务管理器自动注入，对 AgentB 和 LLM 不可见。
+- 对每个病人，工具会生成 C0.nii.gz 与 C2.nii.gz。
+
+【HUMAN_DESC_END】
+
+【PARAM_SPEC_JSON_BEGIN】
+{
+  "version": 1,
+  "tool_name": "convert_dicom_to_nifti",
+  "params": [
+    {
+      "name": "in_dir",
+      "type": "path",
+      "required": true,
+      "filled_by": "agent",
+      "is_list": false,
+      "allow_ref": true,
+      "ref_kinds": ["dataset", "job_output"],
+      "default": null,
+      "enum": null,
+      "description": "输入根目录，下级为病人子目录，每个子目录内包含 C0/C2 等 DICOM 序列。通常通过 $ref 引用数据集或上一步产物，可以配合 relative 子路径。",
+      "examples": [
+        {
+          "comment": "通过数据集引用 0_DICOM 子目录",
+          "value": {
+            "$ref": {
+              "kind": "dataset",
+              "id": 8842777993,
+              "relative": "0_DICOM"
+            }
+          }
+        },
+        {
+          "comment": "引用前一配套步骤输出目录 raw_dicoms",
+          "value": {
+            "$ref": {
+              "kind": "job_output",
+              "step": 3,
+              "relative": "raw_dicoms"
+            }
+          }
+        },
+        {
+          "comment": "直接指定一个绝对路径（不推荐，但允许）",
+          "value": "/mnt/public_datasets/PROJECT_X/0_DICOM"
+        }
+      ]
+    },
+    {
+      "name": "out_dir",
+      "type": "path",
+      "required": true,
+      "filled_by": "task_manager",
+      "is_list": false,
+      "allow_ref": false,
+      "ref_kinds": [],
+      "default": null,
+      "enum": null,
+      "description": "输出根目录，由任务管理器在执行时自动设置为当前步骤的工作空间，AgentB 和 LLM 不需要也不能填写。",
+      "examples": []
+    }
+  ]
+}
+【PARAM_SPEC_JSON_END】'''
     )
 )
 async def convert_dicom_to_nifti(ctx: Context, in_dir: str, out_dir: str) -> dict:
@@ -461,28 +397,67 @@ async def convert_dicom_to_nifti(ctx: Context, in_dir: str, out_dir: str) -> dic
         "started": True,
     }
 
+
 @job_tool(
     name="register_deeds",
     description=(
-        "基于 linearBCV + deedsBCV 的批量配准工具：将每个病人目录中的 C2.nii.gz 配准到 C0.nii.gz。\n"
-        "输入目录既可为“包含多个病人的根目录”，也可为“单一病人目录”。输出目录的层级结构将与输入保持一致。\n"
-        "输入要求：每个病人目录下必须至少包含 C0.nii.gz 与 C2.nii.gz 两个文件。\n"
-        "运行依赖：linearBCV / deedsBCV 可执行文件需放置在本工具脚本同级的 bin/ 目录内。\n\n"
-        "【用于 LLM 产出 steps[*] 的规则】\n"
-        "1) tool_name 必须为 'register_deeds'。\n"
-        "2) 常用 source_kind='step'（例如上一转换步骤 convert_dicom_to_nifti 的产物），也可使用 'direct'。\n"
-        "3) relative：可选，字符串，表示在输入目录下选择子目录/模式（由任务管理器解析）。\n"
-        "4) additional_params：本工具无业务可配置参数 → 必须是空对象 {}。\n"
-        "5) 禁止在 additional_params 中出现 in_dir/out_dir（执行时由系统注入）。\n\n"
-        "【最小示例】\n"
-        "{\n"
-        "  \"step_number\": 9,\n"
-        "  \"tool_name\": \"register_deeds\",\n"
-        "  \"source_kind\": \"step\",\n"
-        "  \"source\": 8,\n"
-        "  \"relative\": null,\n"
-        "  \"additional_params\": {}\n"
-        "}\n"
+        '''【HUMAN_DESC_BEGIN】
+基于 linearBCV + deedsBCV 的批量配准工具：将每个病人目录中的 C2.nii.gz 配准到 C0.nii.gz。
+
+- 输入目录（in_dir）既可为“包含多个病人的根目录”，也可为“单一病人目录”。
+- 输出目录（out_dir）的层级结构与输入保持一致。
+- 每个病人目录下必须至少包含 C0.nii.gz 与 C2.nii.gz。
+【HUMAN_DESC_END】
+
+【PARAM_SPEC_JSON_BEGIN】
+{
+  "version": 1,
+  "tool_name": "register_deeds",
+  "params": [
+    {
+      "name": "in_dir",
+      "type": "path",
+      "required": true,
+      "filled_by": "agent",
+      "is_list": false,
+      "allow_ref": true,
+      "ref_kinds": ["dataset", "job_output"],
+      "default": null,
+      "enum": null,
+      "description": "输入根目录，可为包含多个病人子目录的根目录，也可为单一病人目录，通常通过 $ref 引用数据集或上一步产物，可以配合 relative 子路径。",
+      "examples": [
+        {
+          "comment": "直接引用前一步 job_output 的全部输出目录",
+          "value": {
+            "$ref": {
+              "kind": "job_output",
+              "step": 5,
+              "relative": ""
+            }
+          }
+        },
+        {
+          "comment": "直接指定一个已经准备好的输入目录",
+          "value": "/mnt/workspace/user123/task_abc/step_5_out"
+        }
+      ]
+    },
+    {
+      "name": "out_dir",
+      "type": "path",
+      "required": true,
+      "filled_by": "task_manager",
+      "is_list": false,
+      "allow_ref": false,
+      "ref_kinds": [],
+      "default": null,
+      "enum": null,
+      "description": "输出根目录，由任务管理器设置为当前步骤的工作目录，层级结构与 in_dir 保持一致。",
+      "examples": []
+    }
+  ]
+}
+【PARAM_SPEC_JSON_END】'''
     )
 )
 async def register_deeds(ctx: Context, in_dir: str, out_dir: str) -> dict:
@@ -498,31 +473,97 @@ async def register_deeds(ctx: Context, in_dir: str, out_dir: str) -> dict:
             "started": True,
         }
     except Exception as e:
-        # 关键：失败也明确告诉客户端
         return {"error": f"failed to start register_deeds: {e}"}
-
 
 
 @job_tool(
     name="start_nnunet_predict",
     description=(
-        "nnUNet 推理（批量）。\n"
-        "输入目录结构：根目录下为病人文件夹；每个病人包含 C0.nii.gz 与 C2.nii.gz。\n"
-        "输出目录：仅包含病人子目录，每个病人目录下三件文件：C0.nii.gz、C2.nii.gz、C2_mask.nii.gz。\n"
-        "【用于 LLM 产出 steps[*] 的规则】\n"
-        "1) tool_name='start_nnunet_predict'。\n"
-        "2) 常用 source_kind='step'（例如上一配准步骤的产物）。\n"
-        "3) additional_params 可选：{\"overwrite_mask\": true/false}（默认 false）。\n"
-        "4) 禁止 additional_params 出现 in_dir/out_dir（由系统注入）。\n"
-        "【最小示例】\n"
-        "{\n"
-        "  \"step_number\": 10,\n"
-        "  \"tool_name\": \"start_nnunet_predict\",\n"
-        "  \"source_kind\": \"step\",\n"
-        "  \"source\": 9,\n"
-        "  \"relative\": null,\n"
-        "  \"additional_params\": {\"overwrite_mask\": false}\n"
-        "}"
+        '''【HUMAN_DESC_BEGIN】
+nnUNet 推理（批量）。
+
+- 输入目录（in_dir）：根目录下为病人目录；每个病人至少包含 C0.nii.gz 与 C2.nii.gz。
+- 输出目录（out_dir）：仅包含病人子目录，每个病人目录下生成三件文件：
+  - C0.nii.gz（可能重用/复制自输入）
+  - C2.nii.gz（可能重用/复制自输入）
+  - C2_mask.nii.gz（nnUNet 预测的掩膜）
+
+关键参数：
+- overwrite_mask：是否允许覆盖已有的 C2_mask.nii.gz。默认 false，已有掩膜时会跳过该病人。
+
+【HUMAN_DESC_END】
+
+【PARAM_SPEC_JSON_BEGIN】
+{
+  "version": 1,
+  "tool_name": "start_nnunet_predict",
+  "params": [
+    {
+      "name": "in_dir",
+      "type": "path",
+      "required": true,
+      "filled_by": "agent",
+      "is_list": false,
+      "allow_ref": true,
+      "ref_kinds": ["dataset", "job_output", "filesystem"],
+      "default": null,
+      "enum": null,
+      "description": "输入根目录，下面是病人目录集合，通常通过 $ref 引用数据集或上一步产物，可以配合 relative 子路径。",
+      "examples": [
+        {
+          "comment": "引用前一步 job_output 的完整输出目录",
+          "value": {
+            "$ref": {
+              "kind": "job_output",
+              "step": 9,
+              "relative": ""
+            }
+          }
+        },
+        {
+          "comment": "直接使用一个已有的输入根目录",
+          "value": "/mnt/workspace/user123/task_abc/step_9_out"
+        }
+      ]
+    },
+    {
+      "name": "out_dir",
+      "type": "path",
+      "required": true,
+      "filled_by": "task_manager",
+      "is_list": false,
+      "allow_ref": false,
+      "ref_kinds": [],
+      "default": null,
+      "enum": null,
+      "description": "输出根目录，由任务管理器自动设置，病人目录层级与 in_dir 保持一致。",
+      "examples": []
+    },
+    {
+      "name": "overwrite_mask",
+      "type": "boolean",
+      "required": false,
+      "filled_by": "agent",
+      "is_list": false,
+      "allow_ref": false,
+      "ref_kinds": [],
+      "default": false,
+      "enum": [true, false],
+      "description": "是否覆盖已有的 C2_mask.nii.gz。默认 false（已有掩膜则跳过该例），当需要重新预测时才设置为 true。",
+      "examples": [
+        {
+          "comment": "默认行为（已有掩膜则跳过）",
+          "value": false
+        },
+        {
+          "comment": "强制覆盖所有已有掩膜",
+          "value": true
+        }
+      ]
+    }
+  ]
+}
+【PARAM_SPEC_JSON_END】'''
     )
 )
 async def start_nnunet_predict(ctx: Context, in_dir: str, out_dir: str, overwrite_mask: bool = False) -> dict:
@@ -538,29 +579,146 @@ async def start_nnunet_predict(ctx: Context, in_dir: str, out_dir: str, overwrit
         "started": True,
     }
 
+
 @job_tool(
     name="start_n4",
     description=(
-        "N4 偏置场校正（批量）。\n"
-        "输入（in_dir）：根目录下为病人子目录；每个病人至少包含 C2.nii.gz 与 C2_mask.nii.gz。\n"
-        "输出（out_dir）：与输入层级一致，写出校正后 C2.nii.gz 与对应 C2_mask.nii.gz。\n\n"
-        "【用于 LLM 产出 steps[*] 的规则】\n"
-        "1) tool_name='start_n4'。\n"
-        "2) 常用 source_kind='step'（如接前序配准/预测的产物），也可 'direct'。\n"
-        "3) additional_params 可选：\n"
-        "   - kernel_radius：整数或三元组（如 3 或 [3,3,1]），默认不膨胀。\n"
-        "   - overwrite：bool，默认 false（目标存在则跳过）。\n"
-        "   - save_dilated_mask：bool，默认 false（输出仍保存原始 mask；置 true 保存膨胀后 mask）。\n"
-        "4) 禁止 additional_params 出现 in_dir/out_dir（由系统注入）。\n\n"
-        "【最小示例】\n"
-        "{\n"
-        "  \"step_number\": 11,\n"
-        "  \"tool_name\": \"start_n4\",\n"
-        "  \"source_kind\": \"step\",\n"
-        "  \"source\": 10,\n"
-        "  \"relative\": null,\n"
-        "  \"additional_params\": {\"kernel_radius\": 3, \"overwrite\": false}\n"
-        "}"
+        '''【HUMAN_DESC_BEGIN】
+N4 偏置场校正（批量）。
+
+- 输入目录（in_dir）：根目录下为病人子目录；每个病人至少包含 C2.nii.gz 与 C2_mask.nii.gz。
+- 输出目录（out_dir）：与输入层级一致，写出校正后 C2.nii.gz 与对应 C2_mask.nii.gz。
+- 可选地对 C2_mask 进行膨胀，以获得更稳定的偏置场估计。
+
+关键参数：
+- kernel_radius：用于 BinaryDilate 的膨胀半径，不设置则不膨胀；
+  - 可用整数 3，或列表 3,3,1 表示各向异性半径。
+- overwrite：是否覆盖已有结果（默认 false）。
+- save_dilated_mask：是否把膨胀后的 mask 另存（默认 false）。
+
+典型使用场景：
+- 在配准/分割之后，对图像做偏置场校正，提升后续定量分析或建模的稳定性。
+【HUMAN_DESC_END】
+
+【PARAM_SPEC_JSON_BEGIN】
+{
+  "version": 1,
+  "tool_name": "start_n4",
+  "params": [
+    {
+      "name": "in_dir",
+      "type": "path",
+      "required": true,
+      "filled_by": "agent",
+      "is_list": false,
+      "allow_ref": true,
+      "ref_kinds": ["dataset", "job_output", "filesystem"],
+      "default": null,
+      "enum": null,
+      "description": "输入根目录，下面是病人目录集合；通常通过 $ref 引用数据集或上一步产物，可以配合 relative 子路径。",
+      "examples": [
+        {
+          "comment": "引用前一步 job_output 的完整输出目录",
+          "value": {
+            "$ref": {
+              "kind": "job_output",
+              "step": 10,
+              "relative": ""
+            }
+          }
+        },
+        {
+          "comment": "直接指定一个已存在的输入根目录",
+          "value": "/mnt/workspace/user123/task_abc/step_10_out"
+        }
+      ]
+    },
+    {
+      "name": "out_dir",
+      "type": "path",
+      "required": true,
+      "filled_by": "task_manager",
+      "is_list": false,
+      "allow_ref": false,
+      "ref_kinds": [],
+      "default": null,
+      "enum": null,
+      "description": "输出根目录，由任务管理器设置为当前步骤的工作目录，层级结构与 in_dir 保持一致。",
+      "examples": []
+    },
+    {
+      "name": "kernel_radius",
+      "type": "string",
+      "required": false,
+      "filled_by": "agent",
+      "is_list": false,
+      "allow_ref": false,
+      "ref_kinds": [],
+      "default": null,
+      "enum": null,
+      "description": "用户没有特殊需求则不填写，用于 BinaryDilate 的膨胀半径，不设置则不膨胀。可以是整数 3，或列表格式 3,3,1 等（内部会解析为半径向量）。",
+      "examples": [
+        {
+          "comment": "各向同性半径 3",
+          "value": "3"
+        },
+        {
+          "comment": "各向异性半径 [3,3,1]",
+          "value": "3,3,1"
+        },
+        {
+          "comment": "不进行膨胀",
+          "value": null
+        }
+      ]
+    },
+    {
+      "name": "overwrite",
+      "type": "boolean",
+      "required": false,
+      "filled_by": "agent",
+      "is_list": false,
+      "allow_ref": false,
+      "ref_kinds": [],
+      "default": false,
+      "enum": [true, false],
+      "description": "是否覆盖已有 N4 结果。默认 false，仅在需要强制重跑时设为 true。",
+      "examples": [
+        {
+          "comment": "默认行为：已有结果则跳过",
+          "value": false
+        },
+        {
+          "comment": "强制重跑并覆盖已有结果",
+          "value": true
+        }
+      ]
+    },
+    {
+      "name": "save_dilated_mask",
+      "type": "boolean",
+      "required": false,
+      "filled_by": "agent",
+      "is_list": false,
+      "allow_ref": false,
+      "ref_kinds": [],
+      "default": false,
+      "enum": [true, false],
+      "description": "是否把膨胀后的 mask 单独保存。默认 false，仅在调试或需要对膨胀结果做进一步分析时开启。",
+      "examples": [
+        {
+          "comment": "默认：不另存膨胀 mask",
+          "value": false
+        },
+        {
+          "comment": "另存膨胀 mask，便于调试或分析",
+          "value": true
+        }
+      ]
+    }
+  ]
+}
+【PARAM_SPEC_JSON_END】'''
     )
 )
 async def start_n4(
@@ -576,7 +734,6 @@ async def start_n4(
     - kernel_radius 允许 int / list[int] / str("3,3,1")
     """
     args = ["--in-dir", in_dir, "--out-dir", out_dir]
-    # kernel_radius 统一转为 CLI 字符串
     if kernel_radius is not None:
         if isinstance(kernel_radius, (list, tuple)):
             kr_str = ",".join(str(int(x)) for x in kernel_radius)
@@ -598,31 +755,75 @@ async def start_n4(
         "started": True,
     }
 
+
 @job_tool(
     name="start_resample",
     description=(
-        "重采样与空间规范（批量）。\n"
-        "输入（in_dir）：根目录为病人目录集合；每个病人目录需包含 C2.nii.gz 与 C2_mask.nii.gz。\n"
-        "输出（out_dir）：与输入层级一致；每例输出规则化的 C2.nii.gz 和 C2_mask.nii.gz。\n\n"
-        "固定行为：\n"
-        "1) 体素间距重采样到 1.0×1.0×1.0 mm；图像用 B-Spline，掩膜用最近邻。\n"
-        "2) DICOMOrient 到 LPS；direction 设为 identity；origin 设为 (0,0,0)。\n"
-        "3) 默认不覆盖已有结果；若目标 C2 已存在则整例跳过。\n"
-        "4) 自动跳过以下划线开头目录（_logs/_workspace 等）。\n\n"
-        "【用于 LLM 产出 steps[*] 的规则】\n"
-        "1) tool_name='start_resample'。\n"
-        "2) 常用 source_kind='step'（接 N4 产物），也可 'direct'。\n"
-        "3) additional_params 必须是空对象 {}（本工具无业务参数）。\n"
-        "4) 禁止 additional_params 出现 in_dir/out_dir（由系统注入）。\n"
-        "【最小示例】\n"
-        "{\n"
-        "  \"step_number\": 12,\n"
-        "  \"tool_name\": \"start_resample\",\n"
-        "  \"source_kind\": \"step\",\n"
-        "  \"source\": 11,\n"
-        "  \"relative\": null,\n"
-        "  \"additional_params\": {}\n"
-        "}"
+        '''【HUMAN_DESC_BEGIN】
+重采样与空间规范（批量）。
+
+- 输入目录（in_dir）：根目录为病人目录集合；每个病人目录需包含 C2.nii.gz 与 C2_mask.nii.gz。
+- 输出目录（out_dir）：与输入层级一致；每例输出规则化的 C2.nii.gz 和 C2_mask.nii.gz。
+
+固定行为（不可由 Agent 配置）：
+1) 体素间距重采样到 1.0×1.0×1.0 mm；图像用 B-Spline，掩膜用最近邻。
+2) 统一到 LPS 方向；direction 设为 identity；origin 设为 (0,0,0)。
+3) 默认不覆盖已有结果；若目标 C2 已存在则整例跳过。
+
+典型使用场景：
+- 在 N4 或分割之后，对图像做空间规范，使得后续量化分析、模型训练具有统一的空间基准。
+
+【HUMAN_DESC_END】
+
+【PARAM_SPEC_JSON_BEGIN】
+{
+  "version": 1,
+  "tool_name": "start_resample",
+  "params": [
+    {
+      "name": "in_dir",
+      "type": "path",
+      "required": true,
+      "filled_by": "agent",
+      "is_list": false,
+      "allow_ref": true,
+      "ref_kinds": ["dataset", "job_output", "filesystem"],
+      "default": null,
+      "enum": null,
+      "description": "输入根目录，下面为病人目录集合；通常通过 $ref 引用数据集或上一步产物，可以配合 relative 子路径。",
+      "examples": [
+        {
+          "comment": "引用前一步 job_output 的完整输出目录",
+          "value": {
+            "$ref": {
+              "kind": "job_output",
+              "step": 11,
+              "relative": ""
+            }
+          }
+        },
+        {
+          "comment": "直接指定 resample 的输入根目录",
+          "value": "/mnt/workspace/user123/task_abc/step_11_out"
+        }
+      ]
+    },
+    {
+      "name": "out_dir",
+      "type": "path",
+      "required": true,
+      "filled_by": "task_manager",
+      "is_list": false,
+      "allow_ref": false,
+      "ref_kinds": [],
+      "default": null,
+      "enum": null,
+      "description": "输出根目录，由任务管理器设置为当前步骤的工作目录，层级结构与 in_dir 保持一致。",
+      "examples": []
+    }
+  ]
+}
+【PARAM_SPEC_JSON_END】'''
     )
 )
 async def start_resample(ctx: Context, in_dir: str, out_dir: str) -> dict:
@@ -639,31 +840,74 @@ async def start_resample(ctx: Context, in_dir: str, out_dir: str) -> dict:
         "started": True,
     }
 
+
 @job_tool(
     name="start_normalize",
     description=(
-        "强度归一化（基于 MONAI NormalizeIntensity，批量）。\n"
-        "输入（in_dir）：根目录为病人目录集合；每个病人目录需包含 C2.nii.gz 与 C2_mask.nii.gz。\n"
-        "输出（out_dir）：与输入层级一致；输出归一化后的 C2.nii.gz 与原样复制的 C2_mask.nii.gz。\n"
-        "额外：若存在 C0.nii.gz，会原样复制到输出目录（不覆盖）。\n\n"
-        "固定行为：\n"
-        "1) 使用 MONAI NormalizeIntensity 对 C2 做强度归一化（保持空间信息）。\n"
-        "2) C2_mask 原样复制；C0（如存在）原样复制。\n"
-        "3) 默认不覆盖已有结果；自动跳过以下划线开头目录（_logs/_workspace 等）。\n\n"
-        "【用于 LLM 产出 steps[*] 的规则】\n"
-        "1) tool_name='start_normalize'。\n"
-        "2) 常用 source_kind='step'（接 Resample/N4 产物），也可 'direct'。\n"
-        "3) additional_params 必须是空对象 {}（本工具无业务参数）。\n"
-        "4) 禁止 additional_params 出现 in_dir/out_dir（由系统注入）。\n"
-        "【最小示例】\n"
-        "{\n"
-        "  \"step_number\": 13,\n"
-        "  \"tool_name\": \"start_normalize\",\n"
-        "  \"source_kind\": \"step\",\n"
-        "  \"source\": 12,\n"
-        "  \"relative\": null,\n"
-        "  \"additional_params\": {}\n"
-        "}"
+        '''【HUMAN_DESC_BEGIN】
+强度归一化（基于 MONAI NormalizeIntensity，批量）。
+
+- 输入目录（in_dir）：根目录为病人目录集合；每个病人目录需包含 C2.nii.gz 与 C2_mask.nii.gz。
+- 输出目录（out_dir）：与输入层级一致；输出归一化后的 C2.nii.gz 与原样复制的 C2_mask.nii.gz。
+- 若存在 C0.nii.gz，会原样复制到输出目录（不覆盖）。
+
+固定行为：
+1) 使用 MONAI NormalizeIntensity 对 C2 做强度归一化（保持空间信息）。
+2) C2_mask 原样复制；C0（如存在）原样复制。
+
+典型使用场景：
+- 在空间规范之后，对强度分布做标准化，以便不同病例在同一强度尺度上进行建模或统计分析。
+【HUMAN_DESC_END】
+
+【PARAM_SPEC_JSON_BEGIN】
+{
+  "version": 1,
+  "tool_name": "start_normalize",
+  "params": [
+    {
+      "name": "in_dir",
+      "type": "path",
+      "required": true,
+      "filled_by": "agent",
+      "is_list": false,
+      "allow_ref": true,
+      "ref_kinds": ["dataset", "job_output", "filesystem"],
+      "default": null,
+      "enum": null,
+      "description": "输入根目录，下面为病人目录集合；通常通过 $ref 引用数据集或上一步产物，可以配合 relative 子路径。",
+      "examples": [
+        {
+          "comment": "引用前一步 job_output 的完整输出目录",
+          "value": {
+            "$ref": {
+              "kind": "job_output",
+              "step": 12,
+              "relative": ""
+            }
+          }
+        },
+        {
+          "comment": "直接指定 normalize 的输入根目录",
+          "value": "/mnt/workspace/user123/task_abc/step_12_out"
+        }
+      ]
+    },
+    {
+      "name": "out_dir",
+      "type": "path",
+      "required": true,
+      "filled_by": "task_manager",
+      "is_list": false,
+      "allow_ref": false,
+      "ref_kinds": [],
+      "default": null,
+      "enum": null,
+      "description": "输出根目录，由任务管理器设置为当前步骤的工作目录，层级结构与 in_dir 保持一致。",
+      "examples": []
+    }
+  ]
+}
+【PARAM_SPEC_JSON_END】'''
     )
 )
 async def start_normalize(ctx: Context, in_dir: str, out_dir: str) -> dict:
@@ -679,13 +923,76 @@ async def start_normalize(ctx: Context, in_dir: str, out_dir: str) -> dict:
         "started": True,
     }
 
+
 @job_tool(
     name="start_qc_plot",
     description=(
-        "QC 可视化（批量）：为每个病人的 C2/C2_mask 生成“最大掩膜切片 + 全卷强度分布”的 PNG。\n"
-        "输入（in_dir）：根目录为病人目录集合；每个病人需包含 C2.nii.gz 与 C2_mask.nii.gz。\n"
-        "输出（out_dir）：与输入层级一致；每例生成 C2_qc.png 与 C2_qc.json（记录 z_index）。\n"
-        "固定行为：默认不覆盖；跳过以下划线开头目录；实时日志与 summary。"
+        '''【HUMAN_DESC_BEGIN】
+QC 可视化（批量）：为每个病人的 C2/C2_mask 生成“最大掩膜切片 + 全卷强度分布”的 PNG。
+
+- 输入目录（in_dir）：根目录为病人目录集合；每个病人需包含 C2.nii.gz 与 C2_mask.nii.gz。
+- 输出目录（out_dir）：与输入层级一致；每例生成：
+  - C2_qc.png：展示最大掩膜切片及强度直方图等；
+  - C2_qc.json：记录用于可视化的 z_index 等元信息。
+
+固定行为：
+- 默认不覆盖已有 QC 结果。
+- 自动跳过以下划线开头目录（_logs/_workspace 等）。
+- 在日志中输出实时进度与 summary。
+
+典型使用场景：
+- 在预处理或训练前后，对数据质量进行快速可视化检查。
+【HUMAN_DESC_END】
+
+【PARAM_SPEC_JSON_BEGIN】
+{
+  "version": 1,
+  "tool_name": "start_qc_plot",
+  "params": [
+    {
+      "name": "in_dir",
+      "type": "path",
+      "required": true,
+      "filled_by": "agent",
+      "is_list": false,
+      "allow_ref": true,
+      "ref_kinds": ["dataset", "job_output", "filesystem"],
+      "default": null,
+      "enum": null,
+      "description": "输入根目录，下面为病人目录集合；通常通过 $ref 引用数据集或上一步产物，可以配合 relative 子路径。",
+      "examples": [
+        {
+          "comment": "引用前一步 job_output 的完整输出目录",
+          "value": {
+            "$ref": {
+              "kind": "job_output",
+              "step": 13,
+              "relative": ""
+            }
+          }
+        },
+        {
+          "comment": "直接指定 qc_plot 的输入根目录",
+          "value": "/mnt/workspace/user123/task_abc/step_13_out"
+        }
+      ]
+    },
+    {
+      "name": "out_dir",
+      "type": "path",
+      "required": true,
+      "filled_by": "task_manager",
+      "is_list": false,
+      "allow_ref": false,
+      "ref_kinds": [],
+      "default": null,
+      "enum": null,
+      "description": "输出根目录，由任务管理器设置为当前步骤的工作目录，层级结构与 in_dir 保持一致。",
+      "examples": []
+    }
+  ]
+}
+【PARAM_SPEC_JSON_END】'''
     )
 )
 async def start_qc_plot(ctx: Context, in_dir: str, out_dir: str) -> dict:
@@ -724,15 +1031,19 @@ async def poll_logs(ctx: Context, run_id: str, offset: int = 0, limit: int = 200
     }
 
 
-
 @server.tool()
 async def get_status(ctx: Context, run_id: str) -> dict:
     """查询运行状态。"""
     ri = RUNS.get(run_id)
     if not ri:
         return {"error": f"run_id not found: {run_id}"}
-    return {"run_id": run_id, "done": ri.done, "exit_code": ri.exit_code,
-            "log_path": str(ri.log_path), "status_path": str(ri.status_path)}
+    return {
+        "run_id": run_id,
+        "done": ri.done,
+        "exit_code": ri.exit_code,
+        "log_path": str(ri.log_path),
+        "status_path": str(ri.status_path),
+    }
 
 
 @server.tool()

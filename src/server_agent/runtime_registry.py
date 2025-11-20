@@ -32,7 +32,6 @@ class RuntimeRegistry:
             max_retries=3,
             allowed_tools=None,
             allowed_datasets=None,
-            extra_param_rules=None,
             prompt_tools_limit=20,
         )
         new_executor = TaskCreationAgentB(task_manager=self._tm, config=new_cfg_b)
