@@ -234,18 +234,22 @@ def _get_private_root_win() -> Path:
 async def _launch_in_wsl_and_capture(
     pyfile: str,
     cli_args: List[str],
-    out_dir: str,
+    out_dir_win: str,          # <-- 新增：Windows out_dir 用于写日志
+    out_dir_wsl: str,          # <-- 新增：WSL out_dir 仅用于脚本参数
     wsl_conda_env: str = "pyhiomics",
 ) -> RunInfo:
     """
-    在 WSL conda env 中运行 tools/<pyfile>，并沿用 ndjson/status/run_id 机制。
-    cli_args/out_dir 均为 WSL 格式路径。
+    在 WSL conda env 中运行 tools/<pyfile>。
+    - out_dir_win: Windows 路径，仅用于 MCP server 写 ndjson/status
+    - out_dir_wsl: WSL 路径，仅用于传给 bash/python
     """
     run_id = uuid.uuid4().hex[:12]
-    work_dir = Path(out_dir).expanduser().resolve()
-    work_dir.mkdir(parents=True, exist_ok=True)
 
-    logs_dir = work_dir / "_logs"
+    # ====== 关键修复：日志目录一律用 Windows Path ======
+    work_dir_win = Path(out_dir_win).expanduser().resolve()
+    work_dir_win.mkdir(parents=True, exist_ok=True)
+
+    logs_dir = work_dir_win / "_logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
     log_path = logs_dir / f"{Path(pyfile).stem}-{run_id}.ndjson"
     status_path = logs_dir / f"{Path(pyfile).stem}-{run_id}.status.json"
@@ -253,18 +257,21 @@ async def _launch_in_wsl_and_capture(
     script_path_win = (TOOLS_DIR / pyfile).resolve()
     script_path_wsl = _to_wsl_path(script_path_win)
 
-    # 拼 WSL bash -lc 命令
+    # === 新增：tools 目录的 WSL 路径，用来作为 cwd ===
+    tools_dir_win = TOOLS_DIR.resolve()
+    tools_dir_wsl = _to_wsl_path(tools_dir_win)
+
+    # 拼 WSL bash -lc 命令（关键：先 cd 到 tools 目录）
     quoted_args = " ".join(shlex.quote(a) for a in cli_args)
     bash_cmd = f"""
-set -e
-source ~/anaconda3/etc/profile.d/conda.sh
-conda activate {shlex.quote(wsl_conda_env)}
-python -u {shlex.quote(script_path_wsl)} {quoted_args}
-""".strip()
+    set -e
+    cd {shlex.quote(tools_dir_wsl)}
+    source ~/anaconda3/etc/profile.d/conda.sh
+    conda activate {shlex.quote(wsl_conda_env)}
+    python -u {shlex.quote(script_path_wsl)} {quoted_args}
+    """.strip()
 
-    cmd = [
-        "wsl", "--", "bash", "-lc", bash_cmd
-    ]
+    cmd = ["wsl", "--", "bash", "-lc", bash_cmd]
 
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
@@ -284,7 +291,7 @@ python -u {shlex.quote(script_path_wsl)} {quoted_args}
     ri = RunInfo(run_id, proc, log_path, status_path)
     RUNS[run_id] = ri
 
-    # --- 复用你现有的 pump 逻辑（与 _launch_and_capture 保持一致） ---
+    # --- pump 逻辑完全不变，继续写到 Windows log_path ---
     BATCH_LINES = 200
     BATCH_INTERVAL = 0.02
     MAX_LINE_LEN = 65536
@@ -355,7 +362,10 @@ python -u {shlex.quote(script_path_wsl)} {quoted_args}
 
             def _write_status():
                 with status_path.open("w", encoding="utf-8") as sf:
-                    json.dump({"run_id": ri.run_id, "done": True, "exit_code": ri.exit_code}, sf, ensure_ascii=False)
+                    json.dump(
+                        {"run_id": ri.run_id, "done": True, "exit_code": ri.exit_code},
+                        sf, ensure_ascii=False
+                    )
 
             await asyncio.to_thread(_write_status)
 
@@ -365,6 +375,7 @@ python -u {shlex.quote(script_path_wsl)} {quoted_args}
 
     asyncio.create_task(_pump())
     return ri
+
 
 
 def _read_ndjson_from(path: Path, offset: int) -> Tuple[List[dict], int]:
@@ -1270,7 +1281,8 @@ async def train_hiomics_pipeline(ctx: Context, train_datasets: List[str], out_di
     ri = await _launch_in_wsl_and_capture(
         "train_hiomics_pipeline.py",
         cli_args=cli_args,
-        out_dir=out_dir_wsl,
+        out_dir_win=out_dir,
+        out_dir_wsl=out_dir_wsl,
         wsl_conda_env="pyhiomics",
     )
 
@@ -1395,7 +1407,8 @@ async def test_hiomics_pipeline(
     ri = await _launch_in_wsl_and_capture(
         "test_hiomics_pipeline.py",
         cli_args=cli_args,
-        out_dir=out_dir_wsl,
+        out_dir_win=out_dir,
+        out_dir_wsl=out_dir_wsl,
         wsl_conda_env="pyhiomics",
     )
 
