@@ -1,0 +1,20 @@
+# RadiomicsLHCP特征提取配置
+enabled_features:
+  - base
+  - primary  # 可选: base, primary 或两者
+
+radiomics_params: "./configs/MR.yaml"
+
+# Primary特征配置（当enabled_features包含primary时）
+primary_params:
+  preprocessing:
+    method: "StandardScaler"
+    params: null
+  decomposition:
+    method: "PCA"
+    params:
+      n_components: 1
+      random_state: 42
+  # 模型保存路径（会在运行时动态设置）
+  preprocessing_pkl_path: null
+  decomposition_pkl_path: null

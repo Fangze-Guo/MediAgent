@@ -1,0 +1,15 @@
+# GHSD特征提取配置
+enabled_features:
+  - tumoral_ecological_diversity
+  - entropy
+  - spatial_dispersion_index
+  - variation_coefficient
+  - simpson_diversity_index
+  - pielou_evenness
+  - berger_parker_dominance
+  - habitat_size_cv
+  - habitat_fragmentation_index
+  - interface_area_density
+  - label_transition_fraction
+  - label_adjacency_entropy
+  - radial_separation_index

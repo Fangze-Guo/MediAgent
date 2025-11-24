@@ -1,0 +1,11 @@
+preprocessing:
+  method: StandardScaler
+  params: null
+
+decomposition:
+  method: SelectKBest
+  params: null
+
+cluster:
+  method: KMeans
+  params: null

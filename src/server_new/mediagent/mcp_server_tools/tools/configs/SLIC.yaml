@@ -1,0 +1,9 @@
+compactness: 0.10
+enforce_connectivity: false
+max_num_iter: 10
+sigma: 0
+min_size_factor: 0.
+max_size_factor: 3
+slic_zero: false
+max_number_of_segments: 200
+min_pixels_per_segment: 200

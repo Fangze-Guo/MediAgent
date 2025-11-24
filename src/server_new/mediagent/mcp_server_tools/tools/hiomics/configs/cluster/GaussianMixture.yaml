@@ -1,0 +1,7 @@
+covariance_type: full
+max_iter: 1000
+random_state: 0
+
+n_clusters: null
+n_clusters_range: [3, 10]
+n_clusters_score_method: CalinskiHarabasz

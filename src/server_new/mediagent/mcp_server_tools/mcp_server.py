@@ -18,6 +18,14 @@ _ANSI_RE   = re.compile(r"\x1B\[[0-9;?]*[ -/]*[@-~]")        # CSI … m 等
 _OSC_RE    = re.compile(r"\x1B\][^\a]*\x07")                 # OSC … BEL
 _CTRL_RE   = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F]")     # 除 \t \n 外的控制字节
 
+from pathlib import Path
+import sys
+
+HERE = Path(__file__).resolve().parent
+PROJECT_ROOT = HERE.parents[1]   # 指到 server_new
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 
 def _sanitize_json_line(s: str, max_len: int = 16384) -> str:
     # 1) 统一编码，替换非法码点
@@ -128,6 +136,178 @@ async def _launch_and_capture(pyfile: str, *cli_args: str, out_dir: str) -> RunI
             return s
         except Exception:
             # 极端兜底
+            try:
+                return raw.decode("gbk", "replace")
+            except Exception:
+                return raw.decode("utf-8", "replace")
+
+    async def _pump():
+        f = log_path.open("a", encoding="utf-8")
+        try:
+            batch = []
+            loop = asyncio.get_event_loop()
+            last_flush = loop.time()
+            seq = 0
+
+            async def _flush_batch():
+                nonlocal batch
+                if not batch:
+                    return
+                lines = batch
+                batch = []
+
+                def _write_lines():
+                    for obj in lines:
+                        f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+                    f.flush()
+                return await asyncio.to_thread(_write_lines)
+
+            while True:
+                raw = await proc.stdout.readline()
+                if not raw:
+                    await _flush_batch()
+                    break
+
+                s = _sanitize(_decode_best(raw))
+                seq += 1
+                batch.append({"ts": time.time(), "seq": seq, "line": s})
+
+                now = loop.time()
+                if len(batch) >= BATCH_LINES or (now - last_flush) >= BATCH_INTERVAL:
+                    await _flush_batch()
+                    last_flush = now
+
+            rc = await proc.wait()
+            ri.done = True
+            ri.exit_code = int(rc or 0)
+
+            def _write_status():
+                with status_path.open("w", encoding="utf-8") as sf:
+                    json.dump({"run_id": ri.run_id, "done": True, "exit_code": ri.exit_code}, sf, ensure_ascii=False)
+
+            await asyncio.to_thread(_write_status)
+
+        finally:
+            with contextlib.suppress(Exception):
+                f.close()
+
+    asyncio.create_task(_pump())
+    return ri
+
+import shlex
+from pathlib import Path
+from typing import List, Optional, Any
+
+def _to_wsl_path(p: Path) -> str:
+    """
+    Windows Path -> WSL Path
+    例：D:\\a\\b -> /mnt/d/a/b
+    """
+    p = p.resolve()
+    drive = p.drive.rstrip(":").lower()
+    rest = p.as_posix().split(":", 1)[-1]  # /a/b
+    return f"/mnt/{drive}{rest}"
+
+def _get_private_root_win() -> Path:
+    """
+    TODO: 你项目里有现成函数获取 private 绝对路径。
+    请把下面的 import / 调用替换成你的真实实现。
+
+    例如你可能有：
+        from mediagent.paths import get_private_root
+        return Path(get_private_root())
+
+    我这里先给一个占位写法；你替换后就不用改别处。
+    """
+    try:
+        # ====== 你自己替换这里 ======
+        from mediagent.paths import in_data  # type: ignore
+        return in_data("files","private").resolve()
+        # ============================
+    except Exception as e:
+        raise RuntimeError(
+            "Cannot get private_root automatically. "
+            "Please edit _get_private_root_win() to call your project's function."
+        ) from e
+
+
+async def _launch_in_wsl_and_capture(
+    pyfile: str,
+    cli_args: List[str],
+    out_dir: str,
+    wsl_conda_env: str = "pyhiomics",
+) -> RunInfo:
+    """
+    在 WSL conda env 中运行 tools/<pyfile>，并沿用 ndjson/status/run_id 机制。
+    cli_args/out_dir 均为 WSL 格式路径。
+    """
+    run_id = uuid.uuid4().hex[:12]
+    work_dir = Path(out_dir).expanduser().resolve()
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    logs_dir = work_dir / "_logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    log_path = logs_dir / f"{Path(pyfile).stem}-{run_id}.ndjson"
+    status_path = logs_dir / f"{Path(pyfile).stem}-{run_id}.status.json"
+
+    script_path_win = (TOOLS_DIR / pyfile).resolve()
+    script_path_wsl = _to_wsl_path(script_path_win)
+
+    # 拼 WSL bash -lc 命令
+    quoted_args = " ".join(shlex.quote(a) for a in cli_args)
+    bash_cmd = f"""
+set -e
+source ~/anaconda3/etc/profile.d/conda.sh
+conda activate {shlex.quote(wsl_conda_env)}
+python -u {shlex.quote(script_path_wsl)} {quoted_args}
+""".strip()
+
+    cmd = [
+        "wsl", "--", "bash", "-lc", bash_cmd
+    ]
+
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    env.setdefault("LANG", "C.UTF-8")
+    env.setdefault("LC_ALL", "C.UTF-8")
+
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        cwd=str(HERE),
+        env=env,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    assert proc.stdout is not None
+
+    ri = RunInfo(run_id, proc, log_path, status_path)
+    RUNS[run_id] = ri
+
+    # --- 复用你现有的 pump 逻辑（与 _launch_and_capture 保持一致） ---
+    BATCH_LINES = 200
+    BATCH_INTERVAL = 0.02
+    MAX_LINE_LEN = 65536
+
+    def _sanitize(s: str) -> str:
+        s = s.replace("\r", "")
+        s = "".join(ch for ch in s if (ch == "\n" or ch == "\t" or ord(ch) >= 32))
+        if len(s) > MAX_LINE_LEN:
+            s = s[: MAX_LINE_LEN - 15] + " ...[truncated]"
+        return s
+
+    def _decode_best(raw: bytes) -> str:
+        try:
+            s = raw.decode("utf-8", "replace")
+            if s.count("�") >= 3:
+                try:
+                    s2 = raw.decode("gbk", "replace")
+                    if s2.count("�") < s.count("�"):
+                        s = s2
+                except Exception:
+                    pass
+            return s
+        except Exception:
             try:
                 return raw.decode("gbk", "replace")
             except Exception:
@@ -997,6 +1177,103 @@ QC 可视化（批量）：为每个病人的 C2/C2_mask 生成“最大掩膜�
 )
 async def start_qc_plot(ctx: Context, in_dir: str, out_dir: str) -> dict:
     ri = await _launch_and_capture("qc_plot_maxslice.py", "--in-dir", in_dir, "--out-dir", out_dir, out_dir=out_dir)
+    return {
+        "run_id": ri.run_id,
+        "log_path": str(ri.log_path),
+        "status_path": str(ri.status_path),
+        "out_dir": out_dir,
+        "started": True,
+    }
+
+@job_tool(
+    name="train_hiomics_pipeline",
+    description=(
+        '''【HUMAN_DESC_BEGIN】
+Hiomics 训练（合并 CSV 处理 + 多数据集拼接 + 训练）。
+- 输入（train_datasets）：一个或多个“数据集顶层目录”
+  每个数据集顶层目录下必须且仅有一个 CSV（*.csv）以及一个数据文件夹。
+  CSV 内的 image_path/mask_path 为相对该数据集顶层目录的相对路径。
+固定行为：
+1) 自动找到每个数据集的 CSV，读取并标准化字段（PID/DX 等）。
+2) 将 image_path/mask_path 从相对 dataset_root 重写为相对 private_root。
+3) 多数据集拼接为一个训练 CSV。
+4) 使用 hiomics pipeline 训练，task_name 固定为 pCR，task_dir=out_dir。
+5) 发现单行/单数据集异常：写 prepare_csv_errors.log 并跳过。
+
+【HUMAN_DESC_END】
+
+【PARAM_SPEC_JSON_BEGIN】
+{
+  "version": 1,
+  "tool_name": "train_hiomics_pipeline",
+  "params": [
+    {
+      "name": "train_datasets",
+      "type": "path",
+      "required": true,
+      "filled_by": "agent",
+      "is_list": true,
+      "allow_ref": true,
+      "ref_kinds": ["dataset", "job_output", "filesystem"],
+      "default": null,
+      "enum": null,
+      "description": "训练数据集顶层目录列表（Windows 路径）。每个目录下必须且仅有一个 CSV 文件和一个数据子文件夹。",
+      "examples": [
+        {
+          "comment": "训练用两个数据集",
+          "value": [
+            {
+              "$ref": {"kind": "dataset", "id": 1111111111, "relative": ""}
+            },
+            {
+              "$ref": {"kind": "dataset", "id": 2222222222, "relative": ""}
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "out_dir",
+      "type": "path",
+      "required": true,
+      "filled_by": "task_manager",
+      "is_list": false,
+      "allow_ref": false,
+      "ref_kinds": [],
+      "default": null,
+      "enum": null,
+      "description": "输出/工作目录，由任务管理器自动设置，LLM 不填写。",
+      "examples": []
+    }
+  ]
+}
+【PARAM_SPEC_JSON_END】'''
+    )
+)
+async def train_hiomics_pipeline(ctx: Context, train_datasets: List[str], out_dir: str) -> dict:
+    # 1) MCP server 在 Windows 环境自动获取 private_root
+    private_root_win = _get_private_root_win()
+
+    # 2) 把所有 Windows 路径转成 WSL 路径
+    out_dir_wsl = _to_wsl_path(Path(out_dir))
+    private_root_wsl = _to_wsl_path(private_root_win)
+
+    train_datasets_wsl = [_to_wsl_path(Path(p)) for p in (train_datasets or [])]
+
+    # 3) 启动 WSL 子进程运行真实脚本
+    cli_args = [
+        "--train-datasets", *train_datasets_wsl,
+        "--private-root", private_root_wsl,
+        "--out-dir", out_dir_wsl,
+    ]
+
+    ri = await _launch_in_wsl_and_capture(
+        "train_hiomics_pipeline.py",
+        cli_args=cli_args,
+        out_dir=out_dir_wsl,
+        wsl_conda_env="pyhiomics",
+    )
+
     return {
         "run_id": ri.run_id,
         "log_path": str(ri.log_path),

@@ -1,0 +1,11 @@
+subregion_feature_extraction:
+  method: radiomics
+  params: MR.yaml
+
+preprocessing:
+  method: StandardScaler
+  params: null
+
+decomposition:
+  method: PCA1
+  params: null

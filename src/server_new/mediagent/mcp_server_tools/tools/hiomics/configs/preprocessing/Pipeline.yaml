@@ -1,0 +1,11 @@
+steps:
+  - name: "scaler"
+    method: "sklearn.preprocessing.StandardScaler"
+    params:
+      copy: true
+      with_mean: true
+      with_std: true
+  - name: "normalizer"
+    method: "sklearn.preprocessing.MinMaxScaler"
+    params:
+      feature_range: [0, 1]
