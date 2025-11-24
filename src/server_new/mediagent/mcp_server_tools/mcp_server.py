@@ -1282,6 +1282,131 @@ async def train_hiomics_pipeline(ctx: Context, train_datasets: List[str], out_di
         "started": True,
     }
 
+@job_tool(
+    name="test_hiomics_pipeline",
+    description=(
+        '''【HUMAN_DESC_BEGIN】
+Hiomics 测试（融合 CSV 处理 + 多数据集测试）。
+
+- 输入（train_task_dir）：训练脚本的输出目录，用于复用训练好的 hiomics steps（clone_steps）。
+- 输入（test_datasets）：一个或多个“数据集顶层目录”（Windows 路径列表）。
+  每个数据集顶层目录下必须且仅有一个 CSV（*.csv）以及一个数据文件夹。
+  CSV 内的 image_path/mask_path 为相对该数据集顶层目录的相对路径。
+- out_dir 由任务管理器注入，用于存放测试产物。
+
+固定行为：
+1) 自动找到每个数据集的 CSV，读取并标准化字段（PID/DX 等）。
+2) 将 image_path/mask_path 从相对 dataset_root 重写为相对 private_root。
+3) 每个数据集按 <dataset_root.name>__<Center> 保存 processed csv。
+4) 对每个 processed csv 建立 TestTask(task_dir=out_dir/<dataset_root.name>__<Center>)，
+   clone_steps(train_task_dir) 后逐步 run_step。
+5) 发现单行/单数据集异常：写 prepare_csv_errors.log 并跳过。
+
+【HUMAN_DESC_END】
+
+【PARAM_SPEC_JSON_BEGIN】
+{
+  "version": 1,
+  "tool_name": "test_hiomics_pipeline",
+  "params": [
+    {
+      "name": "train_task_dir",
+      "type": "path",
+      "required": true,
+      "filled_by": "agent",
+      "is_list": false,
+      "allow_ref": true,
+      "ref_kinds": ["job_output", "filesystem"],
+      "default": null,
+      "enum": null,
+      "description": "训练产物目录。通常通过 $ref 引用上一训练步骤的 out_dir。",
+      "examples": [
+        {
+          "comment": "引用训练步骤输出目录",
+          "value": {
+            "$ref": {"kind": "job_output", "step": 1, "relative": ""}
+          }
+        }
+      ]
+    },
+    {
+      "name": "test_datasets",
+      "type": "path",
+      "required": true,
+      "filled_by": "agent",
+      "is_list": true,
+      "allow_ref": true,
+      "ref_kinds": ["dataset", "job_output", "filesystem"],
+      "default": null,
+      "enum": null,
+      "description": "待测试数据集顶层目录列表。每个目录下必须且仅有一个 CSV 文件和一个数据子文件夹。",
+      "examples": [
+        {
+          "comment": "测试用多个数据集",
+          "value": [
+            {"$ref": {"kind": "dataset", "id": 1111111111, "relative": ""}},
+            {"$ref": {"kind": "dataset", "id": 2222222222, "relative": ""}}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "out_dir",
+      "type": "path",
+      "required": true,
+      "filled_by": "task_manager",
+      "is_list": false,
+      "allow_ref": false,
+      "ref_kinds": [],
+      "default": null,
+      "enum": null,
+      "description": "输出/工作目录，由任务管理器自动设置，LLM 不填写。",
+      "examples": []
+    }
+  ]
+}
+【PARAM_SPEC_JSON_END】'''
+    )
+)
+async def test_hiomics_pipeline(
+    ctx: Context,
+    train_task_dir: str,
+    test_datasets: List[str],
+    out_dir: str
+) -> dict:
+    # 1) MCP server 在 Windows 环境自动获取 private_root
+    private_root_win = _get_private_root_win()
+
+    # 2) Windows 路径转 WSL 路径
+    out_dir_wsl = _to_wsl_path(Path(out_dir))
+    private_root_wsl = _to_wsl_path(private_root_win)
+    train_task_dir_wsl = _to_wsl_path(Path(train_task_dir))
+
+    test_datasets_wsl = [_to_wsl_path(Path(p)) for p in (test_datasets or [])]
+
+    # 3) 启动 WSL 子进程运行真实脚本
+    cli_args = [
+        "--train-task-dir", train_task_dir_wsl,
+        "--test-datasets", *test_datasets_wsl,
+        "--private-root", private_root_wsl,
+        "--out-dir", out_dir_wsl,
+    ]
+
+    ri = await _launch_in_wsl_and_capture(
+        "test_hiomics_pipeline.py",
+        cli_args=cli_args,
+        out_dir=out_dir_wsl,
+        wsl_conda_env="pyhiomics",
+    )
+
+    return {
+        "run_id": ri.run_id,
+        "log_path": str(ri.log_path),
+        "status_path": str(ri.status_path),
+        "out_dir": out_dir,  # 仍返回 Windows out_dir 给 TM
+        "started": True,
+    }
+
 
 # ============================ 内部辅助工具（执行层用） ============================
 @server.tool()
