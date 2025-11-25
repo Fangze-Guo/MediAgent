@@ -55,7 +55,7 @@
                       <div class="model-description">{{ model.description }}</div>
                       <div class="model-tags">
                         <span 
-                          v-for="tag in model.tags" 
+                          v-for="tag in (model.tags || [])" 
                           :key="tag"
                           class="model-tag"
                           :class="getTagClass(tag)"
@@ -66,7 +66,7 @@
                     </div>
                     <div class="model-status" :class="model.status">
                       <div class="status-dot"></div>
-                      <span class="status-text">{{ getStatusText(model.status) }}</span>
+                      <span class="status-text">{{ getStatusText(model.status || 'online') }}</span>
                     </div>
                   </div>
                 </div>
@@ -81,16 +81,19 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { RobotOutlined, DownOutlined, SettingOutlined } from '@ant-design/icons-vue'
 import { 
-  getModelConfigs, 
-  setCurrentModel,
-  type ModelConfigDto 
-} from '@/apis/model'
+  getAvailableModels, 
+  selectModel as selectUserModel,
+  type ModelConfig 
+} from '@/apis/modelConfig'
 
 // 类型定义
-interface ModelInfo extends ModelConfigDto {
-  // 继承 ModelConfigDto 的所有属性
+interface ModelInfo extends ModelConfig {
+  // 继承 ModelConfig 的所有属性
+  tags?: string[]
+  status?: 'online' | 'maintenance' | 'offline'
 }
 
 interface ModelProvider {
@@ -124,6 +127,9 @@ const error = ref<string | null>(null)
 // 模型数据
 const modelProviders = ref<ModelProvider[]>([])
 
+// 组件是否已卸载的标志
+const isUnmounted = ref(false)
+
 // 从API加载模型配置
 const loadModelConfigs = async () => {
   try {
@@ -131,12 +137,20 @@ const loadModelConfigs = async () => {
     error.value = null
     
     console.log('开始加载模型配置...')
-    const response = await getModelConfigs()
-    console.log('API 响应:', response)
+    
+    // 获取可用模型和当前选择
+    const availableResponse = await getAvailableModels()
+    
+    // 检查组件是否已卸载
+    if (isUnmounted.value) {
+      return
+    }
+    
+    console.log('API 响应:', { availableResponse })
     
     // 检查响应数据是否有效
-    if (!response || !response.models) {
-      console.warn('API 返回的模型数据为空:', response)
+    if (!availableResponse || !availableResponse.data || !availableResponse.data.models) {
+      console.warn('API 返回的模型数据为空:', availableResponse)
       modelProviders.value = []
       return
     }
@@ -144,13 +158,34 @@ const loadModelConfigs = async () => {
     // 将模型配置转换为按提供商分组的格式
     const providersMap = new Map<string, ModelInfo[]>()
     
-    Object.values(response.models).forEach(model => {
-      if (!model) return // 跳过空值
+    Object.values(availableResponse.data.models).forEach(modelData => {
+      if (!modelData) return // 跳过空值
+      
+      const model = modelData as any
+      
+      // 转换为 ModelInfo 格式，使用新的数据结构
+      const modelInfo: ModelInfo = {
+        id: model.id,
+        name: model.name,
+        provider: model.provider,
+        description: model.description,
+        category: model.provider, // 使用provider作为category
+        capabilities: model.tags || [],
+        max_tokens: model.max_tokens,
+        input_cost_per_1k: model.input_cost_per_1k,
+        output_cost_per_1k: model.output_cost_per_1k,
+        enabled: model.enabled,
+        config: model.config,
+        requirements: model.requirements,
+        tags: model.tags || [],
+        status: model.status || 'online' as const
+      }
+      
       const provider = model.provider
       if (!providersMap.has(provider)) {
         providersMap.set(provider, [])
       }
-      providersMap.get(provider)!.push(model)
+      providersMap.get(provider)!.push(modelInfo)
     })
     
     // 转换为 ModelProvider 数组
@@ -160,14 +195,19 @@ const loadModelConfigs = async () => {
     }))
     
     console.log('加载的模型配置:', {
-      current_model_id: response.current_model_id,
+      current_model_id: availableResponse.data.current_model_id,
       providers_count: modelProviders.value.length,
       total_models: modelProviders.value.reduce((sum, p) => sum + p.models.length, 0)
     })
     
+    // 再次检查组件是否已卸载
+    if (isUnmounted.value) {
+      return
+    }
+    
     // 设置当前模型ID
-    if (response.current_model_id) {
-      modelId.value = response.current_model_id
+    if (availableResponse.data.current_model_id) {
+      modelId.value = availableResponse.data.current_model_id
     } else if (modelProviders.value.length > 0 && modelProviders.value[0].models.length > 0) {
       // 如果没有设置当前模型，使用第一个可用模型
       modelId.value = modelProviders.value[0].models[0].id
@@ -175,7 +215,6 @@ const loadModelConfigs = async () => {
     
   } catch (err) {
     console.error('加载模型配置失败:', err)
-    console.error('错误详情:', err)
     error.value = err instanceof Error ? err.message : '加载模型配置失败'
     
     // 如果API失败，清空模型列表，不显示默认配置
@@ -225,17 +264,16 @@ const selectModel = async (model: ModelInfo) => {
     error.value = null
     
     // 调用API设置当前模型
-    const success = await setCurrentModel(model.id)
+    await selectUserModel({
+      current_model_id: model.id
+    })
     
-    if (success) {
-      modelId.value = model.id
-      emit('update:value', model.id)
-      emit('model-change', model)
-      dropdownVisible.value = false
-      error.value = null  // 清除错误信息
-    } else {
-      error.value = '切换模型失败'
-    }
+    modelId.value = model.id
+    emit('update:value', model.id)
+    emit('model-change', model)
+    dropdownVisible.value = false
+    error.value = null  // 清除错误信息
+    
   } catch (err) {
     console.error('切换模型失败:', err)
     error.value = err instanceof Error ? err.message : '切换模型失败'
@@ -244,9 +282,11 @@ const selectModel = async (model: ModelInfo) => {
   }
 }
 
+const router = useRouter()
+
 const showModelConfig = () => {
-  // 触发全局事件显示模型配置对话框
-  window.dispatchEvent(new CustomEvent('show-model-config'))
+  // 跳转到设置页面的模型配置部分
+  router.push('/settings')
 }
 
 
@@ -288,6 +328,7 @@ onMounted(() => {
 
 // 组件卸载时清理事件监听
 onUnmounted(() => {
+  isUnmounted.value = true
   window.removeEventListener('model-changed', handleGlobalModelChange)
   window.removeEventListener('model-config-updated', handleModelConfigUpdated)
 })

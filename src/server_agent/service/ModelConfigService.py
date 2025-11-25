@@ -7,7 +7,7 @@ import json
 import logging
 import pathlib
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Any
+from typing import Dict, Optional, List
 
 logger = logging.getLogger(__name__)
 
@@ -51,20 +51,44 @@ class ModelConfigService:
             if 'current_model_id' in data:
                 self.current_model_id = data['current_model_id']
 
-            # 加载模型配置
+            # 加载模型配置 - 新结构中models是数组，需要从主配置获取详情
             if 'models' in data:
-                for model_id, config_dict in data['models'].items():
-                    config = ModelConfig(
-                        id=config_dict['id'],
-                        name=config_dict['name'],
-                        description=config_dict['description'],
-                        provider=config_dict['provider'],
-                        base_url=config_dict['base_url'],
-                        api_key=config_dict.get('api_key'),
-                        status=config_dict.get('status', 'online'),
-                        tags=config_dict.get('tags')
-                    )
-                    self.model_configs[model_id] = config
+                user_model_ids = data['models']
+                if isinstance(user_model_ids, list):
+                    # 新结构：models是数组，从主配置获取详情
+                    main_config_path = self.config_file.parent / "main_model_config.json"
+                    if main_config_path.exists():
+                        with open(main_config_path, 'r', encoding='utf-8') as f:
+                            main_config = json.load(f)
+                        
+                        for model_id in user_model_ids:
+                            main_model = main_config.get("models", {}).get(model_id)
+                            if main_model:
+                                config = ModelConfig(
+                                    id=main_model['id'],
+                                    name=main_model['name'],
+                                    description=main_model['description'],
+                                    provider=main_model['provider'],
+                                    base_url=main_model.get('config', {}).get('base_url', ''),
+                                    api_key=main_model.get('config', {}).get('api_key'),
+                                    status='online' if main_model.get('enabled', True) else 'offline',
+                                    tags=main_model.get('capabilities', [])
+                                )
+                                self.model_configs[model_id] = config
+                else:
+                    # 旧结构：models是字典（向后兼容）
+                    for model_id, config_dict in data['models'].items():
+                        config = ModelConfig(
+                            id=config_dict['id'],
+                            name=config_dict['name'],
+                            description=config_dict['description'],
+                            provider=config_dict['provider'],
+                            base_url=config_dict['base_url'],
+                            api_key=config_dict.get('api_key'),
+                            status=config_dict.get('status', 'online'),
+                            tags=config_dict.get('tags')
+                        )
+                        self.model_configs[model_id] = config
 
             logger.info(f"已从 {self.config_file} 加载模型配置")
 
@@ -72,25 +96,12 @@ class ModelConfigService:
             logger.error(f"加载模型配置失败: {e}")
 
     def _save_configs_to_file(self):
-        """保存配置到文件"""
+        """保存配置到文件（新结构：只保存模型ID数组）"""
         try:
             data = {
                 'current_model_id': self.current_model_id,
-                'models': {}
+                'models': list(self.model_configs.keys())  # 只保存模型ID数组
             }
-
-            for model_id, config in self.model_configs.items():
-                config_dict = {
-                    'id': config.id,
-                    'name': config.name,
-                    'description': config.description,
-                    'provider': config.provider,
-                    'base_url': config.base_url,
-                    'api_key': config.api_key,
-                    'status': config.status,
-                    'tags': config.tags
-                }
-                data['models'][model_id] = config_dict
 
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)

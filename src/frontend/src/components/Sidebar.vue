@@ -148,6 +148,7 @@ import {
   FolderOutlined,
   LogoutOutlined,
   RobotOutlined,
+  SettingOutlined,
   UnorderedListOutlined
 } from '@ant-design/icons-vue'
 import UserProfileModal from './UserProfileModal.vue'
@@ -234,6 +235,12 @@ const items = computed(() =>[
     icon: () => h(AppstoreOutlined),
     label: t('components_Sidebar.appStore'),
   },
+  // 管理员专用菜单项
+  ...(currentUser.value?.role === 'admin' ? [{
+    key: 'model-config',
+    icon: () => h(SettingOutlined),
+    label: '模型配置',
+  }] : []),
 ])
 
 /**
@@ -269,6 +276,10 @@ const selectedKeys = computed(() => {
     return ['datasets']
   }
 
+  if (path === '/model-config') {
+    return ['model-config']
+  }
+
   if (path === '/') {
     return ['home']
   }
@@ -297,6 +308,9 @@ const handleMenuClick: MenuProps['onClick'] = ({key}) => {
   } else if (key === 'app-store') {
     // 跳转到应用商店页面
     router.push('/app-store')
+  } else if (key === 'model-config') {
+    // 跳转到模型配置页面
+    router.push('/model-config')
   }
 }
 

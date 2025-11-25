@@ -33,6 +33,11 @@
         </div>
       </div>
       
+      <!-- 模型配置部分 -->
+      <div class="settings-section">
+        <UserModelSettings />
+      </div>
+      
       <div class="settings-section">
         <h2>{{ t('views_SettingsView.dataManagement') }}</h2>
         <div class="setting-item">
@@ -50,6 +55,7 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+import UserModelSettings from '@/components/model/UserModelSettings.vue'
 
 const { t } = useI18n()
 </script>

@@ -7,13 +7,12 @@
       <Layout v-else />
       <!-- 全局组件 -->
       <GlobalFileUpload />
-      <ModelConfigModal v-model:visible="showModelConfig" />
     </div>
   </a-config-provider>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import enUS from 'ant-design-vue/es/locale/en_US'
@@ -21,7 +20,6 @@ import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import Layout from '@/layout/Layout.vue'
 import LoginView from '@/views/LoginView.vue'
 import GlobalFileUpload from '@/components/file/GlobalFileUpload.vue'
-import ModelConfigModal from '@/components/ModelConfigModal.vue'
 
 const route = useRoute()
 const { locale } = useI18n()
@@ -39,22 +37,6 @@ const antdLocale = computed(() => {
 
 // 判断是否为登录页面
 const isLoginPage = computed(() => route.name === 'Login')
-
-// 模型配置模态框状态
-const showModelConfig = ref(false)
-
-// 显示模型配置模态框
-const handleShowModelConfig = () => {
-  showModelConfig.value = true
-}
-
-onMounted(() => {
-  window.addEventListener('show-model-config', handleShowModelConfig)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('show-model-config', handleShowModelConfig)
-})
 </script>
 
 <style>

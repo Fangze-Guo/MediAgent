@@ -215,7 +215,7 @@ import { useI18n } from 'vue-i18n'
 import { useConversationsStore } from '@/store/conversations'
 import FileUpload from '@/components/file/FileUpload.vue'
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
-import ModelSelector from '@/components/ModelSelector.vue'
+import ModelSelector from '@/components/model/ModelSelector.vue'
 import { type FileInfo } from '@/apis/files'
 import {
   AppstoreOutlined,

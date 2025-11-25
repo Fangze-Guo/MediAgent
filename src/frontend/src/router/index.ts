@@ -93,6 +93,16 @@ const routes: RouteRecordRaw[] = [
         }
     },
     {
+        path: '/model-config',
+        name: 'ModelConfig',
+        component: () => import('@/views/ModelConfigView.vue'),
+        meta: {
+            title: 'MediAgent - Model Config',
+            requiresAuth: true,
+            adminOnly: true
+        }
+    },
+    {
         path: '/:pathMatch(.*)*',
         name: 'NotFound',
         component: () => import('@/views/NotFoundView.vue'),
@@ -146,6 +156,13 @@ router.beforeEach(async (to, _from, next) => {
                 next('/login')
                 return
             }
+        }
+        
+        // 检查管理员权限
+        if (to.meta.adminOnly && authStore.user?.role !== 'admin') {
+            // 非管理员访问管理员页面，跳转到首页
+            next('/')
+            return
         }
     } else if (to.name === 'Login' && authStore.isLoggedIn) {
         // 已登录用户访问登录页，跳转到首页

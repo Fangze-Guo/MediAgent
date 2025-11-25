@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from src.server_agent.configs.config_provider import ConfigProvider
 from src.server_agent.exceptions import setup_exception_handlers
@@ -124,6 +125,15 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # 挂载静态文件服务（必须在路由注册之前）
+    static_dir = Path(__file__).parent.parent / "static"
+    print(f"🗂️  静态文件目录: {static_dir}")
+    if static_dir.exists():
+        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+        print(f"✅ 静态文件服务已挂载: /static -> {static_dir}")
+    else:
+        print(f"❌ 静态文件目录不存在: {static_dir}")
 
     # 创建控制器实例
     file_controller = FileController()

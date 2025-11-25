@@ -36,6 +36,7 @@ __pycache__/
 *.egg-info/
 
 /src/server_agent/.env
+/src/server_agent/configs/main_model_config.json
 /src/server_agent/configs/model_configs.json
 /src/server_agent/conversations/
 /src/server_agent/data/
