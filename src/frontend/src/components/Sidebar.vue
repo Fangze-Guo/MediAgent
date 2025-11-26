@@ -239,7 +239,7 @@ const items = computed(() =>[
   ...(currentUser.value?.role === 'admin' ? [{
     key: 'model-config',
     icon: () => h(SettingOutlined),
-    label: '模型配置',
+    label: t('components_Sidebar.modelConfig'),
   }] : []),
 ])
 

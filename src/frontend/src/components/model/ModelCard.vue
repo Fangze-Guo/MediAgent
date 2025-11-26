@@ -58,18 +58,17 @@
           </a-button>
           <template #overlay>
             <a-menu>
-              <a-menu-item @click="$emit('edit', model)">
-                <EditOutlined />
-                编辑
-              </a-menu-item>
-              <a-menu-item @click="showDetails = true">
+              <a-menu-item key="view" @click="showDetails = true">
                 <EyeOutlined />
-                查看详情
+                {{ $t('model.card.details') }}
               </a-menu-item>
-              <a-menu-divider />
-              <a-menu-item @click="$emit('delete', model)" danger>
+              <a-menu-item key="edit" @click="$emit('edit', model)">
+                <EditOutlined />
+                {{ $t('model.card.edit') }}
+              </a-menu-item>
+              <a-menu-item key="delete" @click="$emit('delete', model)" danger>
                 <DeleteOutlined />
-                删除
+                {{ $t('model.card.delete') }}
               </a-menu-item>
             </a-menu>
           </template>
@@ -118,25 +117,25 @@
     <!-- 详情弹窗 -->
     <a-modal
       v-model:open="showDetails"
-      :title="model.name + ' - 详细信息'"
+      :title="model.name + ' - ' + $t('model.card.details')"
       :width="600"
       :footer="null"
     >
       <div class="model-details">
         <a-descriptions :column="2" bordered size="small">
-          <a-descriptions-item label="模型ID">{{ model.id }}</a-descriptions-item>
-          <a-descriptions-item label="提供商">{{ model.provider }}</a-descriptions-item>
-          <a-descriptions-item label="分类">{{ category?.name || model.category }}</a-descriptions-item>
-          <a-descriptions-item label="状态">
-            <a-tag v-if="model.enabled" color="success">启用</a-tag>
-            <a-tag v-else color="default">禁用</a-tag>
+          <a-descriptions-item :label="$t('model.card.modelId')">{{ model.id }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('common.provider')">{{ model.provider }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('common.category')">{{ category?.name || model.category }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('common.status')">
+            <a-tag v-if="model.enabled" color="success">{{ $t('model.card.enabled') }}</a-tag>
+            <a-tag v-else color="default">{{ $t('model.card.disabled') }}</a-tag>
           </a-descriptions-item>
-          <a-descriptions-item label="最大Token" :span="2">{{ model.max_tokens.toLocaleString() }}</a-descriptions-item>
-          <a-descriptions-item label="输入成本">${{ model.input_cost_per_1k }}/1K tokens</a-descriptions-item>
-          <a-descriptions-item label="输出成本">${{ model.output_cost_per_1k }}/1K tokens</a-descriptions-item>
+          <a-descriptions-item :label="$t('model.card.maxTokens')" :span="2">{{ model.max_tokens.toLocaleString() }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('model.card.inputCost')">${{ model.input_cost_per_1k }}/1K tokens</a-descriptions-item>
+          <a-descriptions-item :label="$t('model.card.outputCost')">${{ model.output_cost_per_1k }}/1K tokens</a-descriptions-item>
         </a-descriptions>
         
-        <a-divider>能力列表</a-divider>
+        <a-divider>{{ $t('model.card.capabilities') }}</a-divider>
         <div class="capabilities-list">
           <span 
             v-for="capability in model.capabilities" 
@@ -148,18 +147,18 @@
           </span>
         </div>
         
-        <a-divider>API配置</a-divider>
+        <a-divider>{{ $t('model.card.apiConfig') }}</a-divider>
         <a-descriptions :column="1" bordered size="small">
-          <a-descriptions-item label="Base URL">{{ model.config.base_url }}</a-descriptions-item>
-          <a-descriptions-item label="模型标识">{{ model.config.model }}</a-descriptions-item>
-          <a-descriptions-item label="Temperature">{{ model.config.temperature }}</a-descriptions-item>
-          <a-descriptions-item label="Max Tokens">{{ model.config.max_tokens }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('model.card.baseUrl')">{{ model.config.base_url }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('model.card.modelId')">{{ model.config.model }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('model.card.temperature')">{{ model.config.temperature }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('model.card.maxTokens')">{{ model.config.max_tokens }}</a-descriptions-item>
         </a-descriptions>
         
-        <a-divider>使用要求</a-divider>
+        <a-divider>{{ $t('model.card.requirements') }}</a-divider>
         <div class="requirements-list">
-          <a-tag v-if="model.requirements.api_key_required" color="orange">需要API密钥</a-tag>
-          <a-tag v-if="model.requirements.base_url_configurable" color="blue">可配置Base URL</a-tag>
+          <a-tag v-if="model.requirements.api_key_required" color="orange">{{ $t('model.card.apiKeyRequired') }}</a-tag>
+          <a-tag v-if="model.requirements.base_url_configurable" color="blue">{{ $t('model.card.baseUrlConfigurable') }}</a-tag>
         </div>
       </div>
     </a-modal>
@@ -168,6 +167,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   DeleteOutlined,
   EditOutlined,
@@ -225,7 +225,15 @@ const getAvatarUrl = (avatar?: string) => {
  * 获取标签样式类名
  */
 const getTagClass = (tag: string) => {
+  const { t } = useI18n()
   const classMap: Record<string, string> = {
+    [t('model.capabilities.dailyChat')]: 'tag-blue',
+    [t('model.capabilities.textCreation')]: 'tag-green', 
+    [t('model.capabilities.codeGeneration')]: 'tag-orange',
+    [t('model.capabilities.mathProblems')]: 'tag-red',
+    [t('model.capabilities.logicalReasoning')]: 'tag-cyan',
+    [t('model.capabilities.complexAnalysis')]: 'tag-magenta',
+    // 兼容原有的中文标签
     '日常对话': 'tag-blue',
     '文本创作': 'tag-green',
     '代码生成': 'tag-orange',

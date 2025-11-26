@@ -21,7 +21,7 @@
       <template #overlay>
         <div class="model-dropdown">
           <div class="dropdown-header">
-            <span class="header-text">选择模型</span>
+            <span class="header-text">{{ $t('model.selector.title') }}</span>
             <a-button type="link" size="small" @click="showModelConfig">
               <SettingOutlined />
             </a-button>
@@ -35,7 +35,7 @@
             >
               <div class="provider-header">
                 <span class="provider-name">{{ provider.name }}</span>
-                <span class="provider-count">{{ provider.models.length }}个模型</span>
+                <span class="provider-count">{{ $t('model.selector.modelCount', { count: provider.models.length }) }}</span>
               </div>
               
               <div class="model-list">
@@ -82,6 +82,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { RobotOutlined, DownOutlined, SettingOutlined } from '@ant-design/icons-vue'
 import { 
   getAvailableModels, 
@@ -291,7 +292,15 @@ const showModelConfig = () => {
 
 
 const getTagClass = (tag: string) => {
+  const { t } = useI18n()
   const classMap: Record<string, string> = {
+    [t('model.capabilities.dailyChat')]: 'tag-blue',
+    [t('model.capabilities.textCreation')]: 'tag-green', 
+    [t('model.capabilities.codeGeneration')]: 'tag-orange',
+    [t('model.capabilities.mathProblems')]: 'tag-red',
+    [t('model.capabilities.logicalReasoning')]: 'tag-cyan',
+    [t('model.capabilities.complexAnalysis')]: 'tag-magenta',
+    // 兼容原有的中文标签
     '日常对话': 'tag-blue',
     '文本创作': 'tag-green',
     '代码生成': 'tag-orange',
@@ -303,12 +312,13 @@ const getTagClass = (tag: string) => {
 }
 
 const getStatusText = (status: string) => {
+  const { t } = useI18n()
   const statusMap: Record<string, string> = {
-    'online': '在线',
-    'maintenance': '维护中',
-    'offline': '离线'
+    'online': t('model.status.online'),
+    'maintenance': t('model.status.maintenance'),
+    'offline': t('model.status.offline')
   }
-  return statusMap[status] || '未知'
+  return statusMap[status] || status
 }
 
 // 监听props变化

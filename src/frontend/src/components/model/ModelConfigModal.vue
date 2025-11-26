@@ -1,7 +1,7 @@
 <template>
   <a-modal
     :open="visible"
-    title="模型配置管理"
+    :title="$t('model.config.title')"
     :width="900"
     :footer="null"
     @cancel="handleClose"
@@ -11,7 +11,7 @@
       <div class="current-model-section">
         <h3 class="section-title">
           <RobotOutlined />
-          当前模型
+          {{ $t('model.config.currentModel') }}
         </h3>
         <div class="current-model-card">
           <div class="model-info">
@@ -39,15 +39,15 @@
       <!-- 模型列表 -->
       <div class="models-section">
         <div class="section-header">
-          <h3 class="section-title">所有模型</h3>
+          <h3 class="section-title">{{ $t('model.config.allModels') }}</h3>
           <div class="section-actions">
             <a-button type="primary" @click="showAddModal">
               <PlusOutlined />
-              添加模型
+              {{ $t('model.config.addModel') }}
             </a-button>
             <a-button @click="refreshModels">
               <ReloadOutlined />
-              刷新
+              {{ $t('model.config.refresh') }}
             </a-button>
           </div>
         </div>
@@ -168,6 +168,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { message, Modal } from 'ant-design-vue'
 import { 
   RobotOutlined, 

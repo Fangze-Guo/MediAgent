@@ -6,16 +6,16 @@
         <div class="title-section">
           <h1>
             <SettingOutlined class="title-icon" />
-            模型配置管理
+            {{ $t('model.view.title') }}
           </h1>
-          <p class="subtitle">管理系统中的AI模型配置，控制用户可用的模型选项</p>
+          <p class="subtitle">{{ $t('model.view.subtitle') }}</p>
         </div>
         <div class="action-section">
           <a-button type="primary" @click="showCreateModal" size="large">
             <template #icon>
               <PlusOutlined />
             </template>
-            添加模型
+            {{ $t('model.view.addModel') }}
           </a-button>
         </div>
       </div>
@@ -27,7 +27,7 @@
         <a-col :span="6">
           <a-card class="stat-card">
             <a-statistic
-              title="总模型数"
+              :title="$t('model.view.stats.totalModels')"
               :value="totalModels"
               :value-style="{ color: '#1890ff' }"
             >
@@ -40,7 +40,7 @@
         <a-col :span="6">
           <a-card class="stat-card">
             <a-statistic
-              title="启用模型"
+              :title="$t('model.view.stats.enabledModels')"
               :value="enabledModels"
               :value-style="{ color: '#52c41a' }"
             >
@@ -53,7 +53,7 @@
         <a-col :span="6">
           <a-card class="stat-card">
             <a-statistic
-              title="模型提供商"
+              :title="$t('model.view.stats.totalProviders')"
               :value="totalProviders"
               :value-style="{ color: '#722ed1' }"
             >
@@ -66,7 +66,7 @@
         <a-col :span="6">
           <a-card class="stat-card">
             <a-statistic
-              title="模型分类"
+              :title="$t('model.view.stats.totalCategories')"
               :value="totalCategories"
               :value-style="{ color: '#fa8c16' }"
             >
@@ -86,7 +86,7 @@
           <a-col :span="8">
             <a-input-search
               v-model:value="searchText"
-              placeholder="搜索模型名称或描述"
+              :placeholder="$t('model.view.filter.searchPlaceholder')"
               @search="handleSearch"
               allow-clear
             />
@@ -94,11 +94,11 @@
           <a-col :span="4">
             <a-select
               v-model:value="filterCategory"
-              placeholder="选择分类"
+              :placeholder="$t('model.view.filter.categoryPlaceholder')"
               allow-clear
               style="width: 100%"
             >
-              <a-select-option value="">全部分类</a-select-option>
+              <a-select-option value="">{{ $t('model.view.filter.allCategories') }}</a-select-option>
               <a-select-option 
                 v-for="(category, key) in categories" 
                 :key="key" 
@@ -111,11 +111,11 @@
           <a-col :span="4">
             <a-select
               v-model:value="filterProvider"
-              placeholder="选择提供商"
+              :placeholder="$t('model.view.filter.providerPlaceholder')"
               allow-clear
               style="width: 100%"
             >
-              <a-select-option value="">全部提供商</a-select-option>
+              <a-select-option value="">{{ $t('model.view.filter.allProviders') }}</a-select-option>
               <a-select-option 
                 v-for="(provider, key) in providers" 
                 :key="key" 
@@ -128,18 +128,18 @@
           <a-col :span="4">
             <a-select
               v-model:value="filterStatus"
-              placeholder="选择状态"
+              :placeholder="$t('model.view.filter.statusPlaceholder')"
               allow-clear
               style="width: 100%"
             >
-              <a-select-option value="">全部状态</a-select-option>
-              <a-select-option value="enabled">已启用</a-select-option>
-              <a-select-option value="disabled">已禁用</a-select-option>
+              <a-select-option value="">{{ $t('model.view.filter.allStatus') }}</a-select-option>
+              <a-select-option value="enabled">{{ $t('model.view.filter.enabled') }}</a-select-option>
+              <a-select-option value="disabled">{{ $t('model.view.filter.disabled') }}</a-select-option>
             </a-select>
           </a-col>
           <a-col :span="4">
             <a-button @click="resetFilters" style="width: 100%">
-              重置筛选
+              {{ $t('model.view.filter.resetFilters') }}
             </a-button>
           </a-col>
         </a-row>
@@ -148,16 +148,16 @@
 
     <!-- 模型列表 -->
     <div class="models-section">
-      <a-card title="模型列表">
+      <a-card :title="$t('model.view.list.title')">
         <template #extra>
           <a-radio-group v-model:value="viewMode" button-style="solid">
             <a-radio-button value="grid">
               <AppstoreOutlined />
-              网格视图
+              {{ $t('model.view.list.gridView') }}
             </a-radio-button>
             <a-radio-button value="table">
               <UnorderedListOutlined />
-              表格视图
+              {{ $t('model.view.list.tableView') }}
             </a-radio-button>
           </a-radio-group>
         </template>
@@ -278,7 +278,7 @@
                   size="small" 
                   @click="handleEditModel(record)"
                 >
-                  编辑
+                  {{ $t('model.view.table.edit') }}
                 </a-button>
                 <a-button 
                   type="text" 
@@ -286,7 +286,7 @@
                   size="small" 
                   @click="handleDeleteModel(record)"
                 >
-                  删除
+                  {{ $t('model.view.table.delete') }}
                 </a-button>
               </a-space>
             </template>
@@ -308,6 +308,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, reactive } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { message, Modal } from 'ant-design-vue'
 import {
   SettingOutlined,
@@ -393,50 +394,53 @@ const filteredModels = computed(() => {
 })
 
 // 表格列配置
-const tableColumns = [
-  {
-    title: '模型名称',
-    key: 'name',
-    width: 200,
-    fixed: 'left'
-  },
-  {
-    title: '分类',
-    key: 'category',
-    width: 100
-  },
-  {
-    title: '提供商',
-    dataIndex: 'provider',
-    width: 100
-  },
-  {
-    title: '能力',
-    key: 'capabilities',
-    width: 150
-  },
-  {
-    title: '最大Token',
-    dataIndex: 'max_tokens',
-    width: 100
-  },
-  {
-    title: '成本',
-    key: 'cost',
-    width: 150
-  },
-  {
-    title: '状态',
-    key: 'status',
-    width: 80
-  },
-  {
-    title: '操作',
-    key: 'actions',
-    width: 120,
-    fixed: 'right'
-  }
-]
+const tableColumns = computed(() => {
+  const { t } = useI18n()
+  return [
+    {
+      title: t('model.view.table.modelName'),
+      key: 'name',
+      width: 200,
+      fixed: 'left'
+    },
+    {
+      title: t('model.view.table.category'),
+      key: 'category',
+      width: 100
+    },
+    {
+      title: t('model.view.table.provider'),
+      dataIndex: 'provider',
+      width: 100
+    },
+    {
+      title: t('model.card.capabilities'),
+      key: 'capabilities',
+      width: 150
+    },
+    {
+      title: t('model.view.table.maxTokens'),
+      dataIndex: 'max_tokens',
+      width: 100
+    },
+    {
+      title: t('model.view.table.inputCost') + '/' + t('model.view.table.outputCost'),
+      key: 'cost',
+      width: 150
+    },
+    {
+      title: t('model.view.table.status'),
+      key: 'status',
+      width: 80
+    },
+    {
+      title: t('model.view.table.actions'),
+      key: 'actions',
+      width: 120,
+      fixed: 'right'
+    }
+  ]
+})
 
 // ==================== 方法 ====================
 
@@ -559,21 +563,22 @@ const handleToggleModel = async (model: ModelConfig) => {
  * 表单提交处理
  */
 const handleFormSubmit = async (formData: any) => {
+  const { t } = useI18n()
   try {
     if (editingModel.value) {
       // 更新模型
       await updateModel(editingModel.value.id, formData)
-      message.success('模型更新成功')
+      message.success(t('model.view.messages.updateSuccess'))
     } else {
       // 创建模型
       await createModel(formData)
-      message.success('模型创建成功')
+      message.success(t('model.view.messages.createSuccess'))
     }
     
     formModalVisible.value = false
     await loadModels()
   } catch (error) {
-    message.error(editingModel.value ? '更新模型失败' : '创建模型失败')
+    message.error(editingModel.value ? t('model.view.messages.updateError') : t('model.view.messages.createError'))
     console.error('Form submit error:', error)
   }
 }

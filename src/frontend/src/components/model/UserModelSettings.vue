@@ -1,19 +1,19 @@
 <template>
   <div class="user-model-settings">
-    <a-card title="我的模型配置" class="settings-card">
+    <a-card :title="$t('model.settings.title')" class="settings-card">
       <template #extra>
         <a-space>
           <a-button type="primary" @click="showAddModal = true">
             <template #icon>
               <PlusOutlined />
             </template>
-            添加模型
+            {{ $t('model.settings.addModels') }}
           </a-button>
           <a-button type="link" @click="refreshModels" :loading="loading">
             <template #icon>
               <ReloadOutlined />
             </template>
-            刷新
+            {{ $t('common.refresh') }}
           </a-button>
         </a-space>
       </template>
@@ -21,9 +21,9 @@
       <!-- 已配置的模型列表 -->
       <div class="configured-models-section">
         <div v-if="userModels.length === 0" class="empty-state">
-          <a-empty description="暂无配置的模型">
+          <a-empty :description="$t('common.noData')">
             <a-button type="primary" @click="showAddModal = true">
-              添加第一个模型
+              {{ $t('model.settings.addModels') }}
             </a-button>
           </a-empty>
         </div>
@@ -79,7 +79,7 @@
                 size="small"
                 @click="setCurrentModel(model.id)"
               >
-                设为当前
+                {{ $t('model.settings.switchTo') }}
               </a-button>
               <a-button 
                 v-else
@@ -87,14 +87,14 @@
                 size="small"
                 disabled
               >
-                当前使用
+                {{ $t('model.settings.currentUsing') }}
               </a-button>
               <a-button 
                 size="small"
                 danger
                 @click="removeModel(model.id)"
               >
-                移除
+                {{ $t('model.settings.remove') }}
               </a-button>
             </div>
           </div>
@@ -105,7 +105,7 @@
     <!-- 添加模型模态框 -->
     <a-modal
       v-model:open="showAddModal"
-      title="添加模型"
+      :title="$t('model.settings.addModels')"
       :width="1000"
       :footer="null"
     >
@@ -116,18 +116,18 @@
             <a-col :span="8">
               <a-input-search
                 v-model:value="searchText"
-                placeholder="搜索模型..."
+                :placeholder="$t('model.settings.searchPlaceholder')"
                 allow-clear
               />
             </a-col>
             <a-col :span="8">
               <a-select
                 v-model:value="filterCategory"
-                placeholder="选择分类"
+                :placeholder="$t('model.settings.filterByCategory')"
                 allow-clear
                 style="width: 100%"
               >
-                <a-select-option value="">全部分类</a-select-option>
+                <a-select-option value="">{{ $t('model.settings.allCategories') }}</a-select-option>
                 <a-select-option 
                   v-for="(category, key) in categories" 
                   :key="key" 
@@ -140,11 +140,11 @@
             <a-col :span="8">
               <a-select
                 v-model:value="filterProvider"
-                placeholder="选择提供商"
+                :placeholder="$t('model.settings.filterByProvider')"
                 allow-clear
                 style="width: 100%"
               >
-                <a-select-option value="">全部提供商</a-select-option>
+                <a-select-option value="">{{ $t('model.settings.allProviders') }}</a-select-option>
                 <a-select-option 
                   v-for="(provider, key) in providers" 
                   :key="key" 
@@ -239,14 +239,14 @@
         <!-- 操作按钮 -->
         <div class="modal-actions">
           <a-space>
-            <a-button @click="showAddModal = false">取消</a-button>
+            <a-button @click="showAddModal = false">{{ $t('model.settings.cancel') }}</a-button>
             <a-button 
               type="primary" 
               :disabled="selectedModels.length === 0"
               :loading="adding"
               @click="addSelectedModels"
             >
-              添加选中的模型 ({{ selectedModels.length }})
+              {{ $t('model.settings.addSelected') }} ({{ selectedModels.length }})
             </a-button>
           </a-space>
         </div>
@@ -257,6 +257,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { message, Modal } from 'ant-design-vue'
 import {
   ReloadOutlined,
@@ -327,7 +328,15 @@ const getAvatarUrl = (avatar?: string) => {
  * 获取标签样式类名
  */
 const getTagClass = (tag: string) => {
+  const { t } = useI18n()
   const classMap: Record<string, string> = {
+    [t('model.capabilities.dailyChat')]: 'tag-blue',
+    [t('model.capabilities.textCreation')]: 'tag-green', 
+    [t('model.capabilities.codeGeneration')]: 'tag-orange',
+    [t('model.capabilities.mathProblems')]: 'tag-red',
+    [t('model.capabilities.logicalReasoning')]: 'tag-cyan',
+    [t('model.capabilities.complexAnalysis')]: 'tag-magenta',
+    // 兼容原有的中文标签
     '日常对话': 'tag-blue',
     '文本创作': 'tag-green',
     '代码生成': 'tag-orange',
