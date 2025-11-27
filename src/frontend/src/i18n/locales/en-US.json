@@ -692,7 +692,7 @@
       "clearInput": "Clear Input",
       "expandInput": "Expand",
       "inputPlaceholder": "Enter message...",
-      "inputHint": "Press Enter to send, Ctrl+Enter for new line",
+      "inputHint": "Press Enter to send, Shift+Enter for new line",
       "send": "Send",
       "uploadFileTitle": "Upload File"
     },

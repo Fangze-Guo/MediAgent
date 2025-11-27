@@ -9,6 +9,7 @@
             :auto-size="{ minRows: 2, maxRows: 6 }"
             :placeholder="t('views_HomeView.placeholder')"
             class="start-input"
+            @keydown="handleKeyDown"
         />
         <a-button type="primary" class="start-btn" :loading="creating" @click="startConversation">{{ t('views_HomeView.startConversation') }}</a-button>
       </div>
@@ -68,6 +69,25 @@ const conversationsStore = useConversationsStore()
 const draft = ref('')
 /** 是否正在创建会话 */
 const creating = ref(false)
+
+/**
+ * 处理键盘快捷键
+ * Enter: 发送消息
+ * Ctrl+Enter / Shift+Enter: 换行
+ */
+const handleKeyDown = (event: KeyboardEvent) => {
+  if (event.key === 'Enter') {
+    // Ctrl+Enter 或 Shift+Enter: 换行
+    if (event.ctrlKey || event.shiftKey) {
+      // 允许默认行为（换行）
+      return
+    }
+    
+    // 单独按 Enter: 发送消息
+    event.preventDefault()
+    startConversation()
+  }
+}
 
 /**
  * 开始新对话

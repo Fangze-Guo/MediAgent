@@ -662,12 +662,14 @@ const adjustTextareaHeight = () => {
 
 /**
  * 处理键盘事件
+ * Enter: 发送消息
+ * Ctrl+Enter / Cmd+Enter / Shift+Enter: 换行
  * @param event 键盘事件
  */
 const handleKeyDown = (event: KeyboardEvent) => {
   if (event.key === 'Enter') {
-    if (event.ctrlKey || event.metaKey) {
-      // Ctrl+Enter 或 Cmd+Enter：换行
+    if (event.ctrlKey || event.metaKey || event.shiftKey) {
+      // Ctrl+Enter、Cmd+Enter 或 Shift+Enter：换行
       // 插入换行符到当前光标位置
       const textarea = event.target as HTMLTextAreaElement
       const start = textarea.selectionStart

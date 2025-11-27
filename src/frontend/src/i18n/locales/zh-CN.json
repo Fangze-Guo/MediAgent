@@ -635,7 +635,7 @@
       "clearInput": "清空输入",
       "expandInput": "展开",
       "inputPlaceholder": "输入消息...",
-      "inputHint": "按 Enter 发送，Ctrl+Enter 换行",
+      "inputHint": "按 Enter 发送，Shift+Enter 换行",
       "send": "发送",
       "uploadFileTitle": "上传文件"
     },
