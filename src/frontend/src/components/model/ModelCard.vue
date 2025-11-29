@@ -16,12 +16,16 @@
       
       <div class="model-info">
         <div class="model-title">
-          <h3>{{ model.name }}</h3>
+          <a-tooltip :title="model.name">
+            <h3>{{ model.name }}</h3>
+          </a-tooltip>
           <a-tag :color="getCategoryColor(model.category)">
             {{ category?.name || model.category }}
           </a-tag>
         </div>
-        <p class="model-description">{{ model.description }}</p>
+        <a-tooltip :title="model.description">
+          <p class="model-description">{{ model.description }}</p>
+        </a-tooltip>
         
         <!-- 提供商链接 -->
         <div v-if="provider" class="provider-links">
