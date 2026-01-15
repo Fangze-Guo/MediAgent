@@ -21,17 +21,6 @@
     "category": "Category",
     "status": "Status"
   },
-  "layout": {
-    "sidebar": {
-      "dashboard": "Dashboard",
-      "tasks": "Tasks",
-      "datasets": "Datasets",
-      "models": "Models",
-      "appstore": "App Store",
-      "settings": "Settings",
-      "logout": "Logout"
-    }
-  },
   "task": {
     "title": "Task List",
     "searchPlaceholder": "Search task name",
@@ -597,10 +586,15 @@
       "editProfile": "Edit Profile",
       "logout": "Log out",
       "home": "New Conversation",
+      "workspace": "Workspace",
       "files": "File Management",
       "tasks": "Task Management",
       "datasets": "Dataset Management",
       "appStore": "Tool Repository",
+      "clinicalTools": "Clinical Tools",
+      "medicalConsultation": "Medical Consultation",
+      "ragKnowledgeBase": "RAG Knowledge Base",
+      "ctDiagnosis": "CT Diagnosis",
       "modelConfig": "Model Configuration",
       "logoutConfirm": {
         "title": "Confirm Logout",
@@ -931,5 +925,17 @@
         "autoRefresh": "Auto Refresh",
         "manualRefresh": "Manual Refresh"
       }
+    },
+    "views_MedicalConsultationView": {
+      "title": "Medical Consultation",
+      "placeholder": "Feature under development, stay tuned"
+    },
+    "views_RagKnowledgeBaseView": {
+      "title": "RAG Knowledge Base",
+      "placeholder": "Feature under development, stay tuned"
+    },
+    "views_CtDiagnosisView": {
+      "title": "CT Diagnosis",
+      "placeholder": "Feature under development, stay tuned"
     }
   }

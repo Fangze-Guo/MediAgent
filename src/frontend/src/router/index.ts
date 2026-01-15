@@ -2,9 +2,9 @@
  * 路由配置
  * 定义应用的所有路由规则和页面组件映射
  */
-import { createRouter, createWebHistory } from 'vue-router'
-import type { RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/store/auth'
+import type { RouteRecordRaw } from 'vue-router'
+import { createRouter, createWebHistory } from 'vue-router'
 
 /**
  * 路由配置数组
@@ -100,6 +100,33 @@ const routes: RouteRecordRaw[] = [
             title: 'MediAgent - Model Config',
             requiresAuth: true,
             adminOnly: true
+        }
+    },
+    {
+        path: '/medical-consultation',
+        name: 'MedicalConsultation',
+        component: () => import('@/views/MedicalConsultationView.vue'),
+        meta: {
+            title: 'MediAgent - Medical Consultation',
+            requiresAuth: true
+        }
+    },
+    {
+        path: '/rag-knowledge-base',
+        name: 'RagKnowledgeBase',
+        component: () => import('@/views/RagKnowledgeBaseView.vue'),
+        meta: {
+            title: 'MediAgent - Rag Knowledge Base',
+            requiresAuth: true
+        }
+    },
+    {
+        path: '/ct-diagnosis',
+        name: 'CtDiagnosis',
+        component: () => import('@/views/CtDiagnosisView.vue'),
+        meta: {
+            title: 'MediAgent - Ct Diagnosis',
+            requiresAuth: true
         }
     },
     {

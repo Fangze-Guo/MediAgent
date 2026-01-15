@@ -133,26 +133,31 @@
  * 显示应用标题、导航菜单和历史会话列表
  * 提供会话切换功能，实现正确的高亮逻辑
  */
-import { useConversationsStore } from '@/store/conversations'
 import { useAuthStore } from '@/store/auth'
-import { useRoute, useRouter } from 'vue-router'
-import { computed, h, nextTick, onMounted, ref } from 'vue'
-import { MenuProps, message, Modal } from 'ant-design-vue'
+import { useConversationsStore } from '@/store/conversations'
 import {
   AppstoreOutlined,
   BarChartOutlined,
   CommentOutlined,
   DatabaseOutlined,
   EditOutlined,
+  FileAddOutlined,
   FileTextOutlined,
   FolderOutlined,
   LogoutOutlined,
+  MedicineBoxOutlined,
+  MessageOutlined,
+  ReconciliationOutlined,
   RobotOutlined,
   SettingOutlined,
+  ToolOutlined,
   UnorderedListOutlined
 } from '@ant-design/icons-vue'
-import UserProfileModal from './UserProfileModal.vue'
+import { MenuProps, message, Modal } from 'ant-design-vue'
+import { computed, h, nextTick, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute, useRouter } from 'vue-router'
+import UserProfileModal from './UserProfileModal.vue'
 
 // 国际化
 const { t } = useI18n()
@@ -216,24 +221,53 @@ const items = computed(() =>[
     label: t('components_Sidebar.home'),
   },
   {
-    key: 'files',
-    icon: () => h(FolderOutlined),
-    label: t('components_Sidebar.files'),
-  },
-  {
-    key: 'tasks',
-    icon: () => h(UnorderedListOutlined),
-    label: t('components_Sidebar.tasks'),
-  },
-  {
-    key: 'datasets',
-    icon: () => h(DatabaseOutlined),
-    label: t('components_Sidebar.datasets'),
+    key: 'workspace',
+    icon: () => h(ToolOutlined),
+    label: t('components_Sidebar.workspace'),
+    children: [
+      {
+        key: 'files',
+        icon: () => h(FolderOutlined),
+        label: t('components_Sidebar.files'),
+      },
+      {
+        key: 'tasks',
+        icon: () => h(UnorderedListOutlined),
+        label: t('components_Sidebar.tasks'),
+      },
+      {
+        key: 'datasets',
+        icon: () => h(DatabaseOutlined),
+        label: t('components_Sidebar.datasets'),
+      },
+    ],
   },
   {
     key: 'app-store',
     icon: () => h(AppstoreOutlined),
     label: t('components_Sidebar.appStore'),
+  },
+  {
+    key: 'clinical-tools',
+    icon: () => h(MedicineBoxOutlined),
+    label: t('components_Sidebar.clinicalTools'),
+    children: [
+      {
+        key: 'medical-consultation',
+        icon: () => h(MessageOutlined),
+        label: t('components_Sidebar.medicalConsultation'),
+      },
+      {
+        key: 'rag-knowledge-base',
+        icon: () => h(FileAddOutlined),
+        label: t('components_Sidebar.ragKnowledgeBase'),
+      },
+      {
+        key: 'ct-diagnosis',
+        icon: () => h(ReconciliationOutlined),
+        label: t('components_Sidebar.ctDiagnosis'),
+      },
+    ],
   },
   // 管理员专用菜单项
   ...(currentUser.value?.role === 'admin' ? [{
@@ -284,6 +318,18 @@ const selectedKeys = computed(() => {
     return ['home']
   }
 
+  if (path === '/medical-consultation') {
+    return ['medical-consultation']
+  }
+
+  if (path === '/rag-knowledge-base') {
+    return ['rag-knowledge-base']
+  }
+
+  if (path === '/ct-diagnosis') {
+    return ['ct-diagnosis']
+  }
+
   return []
 })
 
@@ -311,6 +357,15 @@ const handleMenuClick: MenuProps['onClick'] = ({key}) => {
   } else if (key === 'model-config') {
     // 跳转到模型配置页面
     router.push('/model-config')
+  } else if (key === 'medical-consultation') {
+    // 跳转到医学咨询页面
+    router.push('/medical-consultation')
+  } else if (key === 'rag-knowledge-base') {
+    // 跳转到RAG知识库页面
+    router.push('/rag-knowledge-base')
+  } else if (key === 'ct-diagnosis') {
+    // 跳转到CT诊断页面
+    router.push('/ct-diagnosis')
   }
 }
 
@@ -604,6 +659,20 @@ const getConversationAvatarStyle = (conversation: any) => {
 }
 
 :deep(.ant-menu-item .anticon) {
+  font-size: 18px !important;
+}
+
+/* 子菜单标题样式（如 clinical-tools），与普通菜单保持一致大小 */
+:deep(.ant-menu-submenu-title) {
+  height: 48px !important;
+  line-height: 48px !important;
+  font-size: 16px !important;
+  /* 禁用选中状态的过渡动画，避免闪烁 */
+  transition: none !important;
+}
+
+/* 子菜单标题中的图标大小 */
+:deep(.ant-menu-submenu-title .anticon) {
   font-size: 18px !important;
 }
 

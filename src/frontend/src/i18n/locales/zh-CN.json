@@ -21,17 +21,6 @@
     "category": "分类",
     "status": "状态"
   },
-  "layout": {
-    "sidebar": {
-      "dashboard": "仪表板",
-      "tasks": "任务",
-      "datasets": "数据集",
-      "models": "模型",
-      "appstore": "应用商店",
-      "settings": "设置",
-      "logout": "登出"
-    }
-  },
   "task": {
     "title": "任务列表",
     "searchPlaceholder": "搜索任务名称",
@@ -540,10 +529,15 @@
       "editProfile": "编辑资料",
       "logout": "退出登录",
       "home": "新建对话",
+      "workspace": "工作区",
       "files": "文件管理",
       "tasks": "任务管理",
       "datasets": "数据集管理",
       "appStore": "工具仓库",
+      "clinicalTools": "临床工具",
+      "medicalConsultation": "医学咨询",
+      "ragKnowledgeBase": "RAG 知识库",
+      "ctDiagnosis": "CT 诊断",
       "modelConfig": "模型配置",
       "logoutConfirm": {
         "title": "确认退出",
@@ -874,5 +868,17 @@
         "autoRefresh": "自动刷新",
         "manualRefresh": "手动刷新"
       }
+    },
+    "views_MedicalConsultationView": {
+      "title": "医学咨询",
+      "placeholder": "功能开发中，敬请期待"
+    },
+    "views_RagKnowledgeBaseView": {
+      "title": "RAG 知识库",
+      "placeholder": "功能开发中，敬请期待"
+    },
+    "views_CtDiagnosisView": {
+      "title": "CT 诊断",
+      "placeholder": "功能开发中，敬请期待"
     }
   }
