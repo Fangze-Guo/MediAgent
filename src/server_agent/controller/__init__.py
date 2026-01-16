@@ -1,6 +1,7 @@
 """
 Controllers包 - 统一管理所有API控制器
 """
+
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -15,7 +16,9 @@ from src.server_agent.runtime_registry import RuntimeRegistry
 from src.server_new.mediagent.modules.conversation_manager import ConversationManager
 from src.server_new.mediagent.modules.task_manager import AsyncTaskManager
 from src.server_new.mediagent.paths import DATA_DIR, in_data, in_mediagent
+
 from .AppStoreController import AppStoreController
+from .clinical_tools.MedicalConsultationController import MedicalConsultationController
 from .ConversationController import ConversationController
 from .DatasetController import DatasetController
 from .FileController import FileController
@@ -66,7 +69,7 @@ class Services:
             public_datasets_source_root=self.settings.PUBLIC_DATASETS_ROOT,
             workspace_root=self.settings.WORKSPACE_ROOT,
             database_file=self.settings.DATABASE_FILE,
-            mcpserver_file=self.settings.MCPSERVER_FILE
+            mcpserver_file=self.settings.MCPSERVER_FILE,
         )
 
         await self.tm.astart()
@@ -95,9 +98,11 @@ async def lifespan(app: FastAPI):
     app.state.config_provider = provider
     registry = RuntimeRegistry(
         task_manager=services.tm,
-        conversation_manager=ConversationManager(str(settings.DATABASE_FILE), str("src/server_agent/conversations")),
+        conversation_manager=ConversationManager(
+            str(settings.DATABASE_FILE), str("src/server_agent/conversations")
+        ),
         database_path=str(settings.DATABASE_FILE),
-        stream_id="agentA_internal_stream"
+        stream_id="agentA_internal_stream",
     )
     app.state.runtime_registry = registry
     # 首次刷新运行实例
@@ -114,7 +119,7 @@ def create_app() -> FastAPI:
         title="MediAgent Backend",
         description="智能医学助手后端API",
         version="2.0.0",
-        lifespan=lifespan
+        lifespan=lifespan,
     )
 
     # 添加CORS中间件
@@ -143,6 +148,7 @@ def create_app() -> FastAPI:
     app_store_controller = AppStoreController()
     task_controller = TaskController()
     dataset_controller = DatasetController()
+    medical_consultation_controller = MedicalConsultationController()
 
     # 注册路由
     app.include_router(file_controller.router)
@@ -152,7 +158,7 @@ def create_app() -> FastAPI:
     app.include_router(app_store_controller.router)
     app.include_router(task_controller.router)
     app.include_router(dataset_controller.router)
-
+    app.include_router(medical_consultation_controller.router)
     # 设置异常处理器
     setup_exception_handlers(app)
 
@@ -161,12 +167,13 @@ def create_app() -> FastAPI:
 
 # 导出主要接口
 __all__ = [
-    'create_app',
-    'FileController',
-    'UserController',
-    'ConversationController',
-    'ModelController',
-    'AppStoreController',
-    'TaskController',
-    'DatasetController',
+    "create_app",
+    "FileController",
+    "UserController",
+    "ConversationController",
+    "ModelController",
+    "AppStoreController",
+    "TaskController",
+    "DatasetController",
+    "MedicalConsultationController",
 ]

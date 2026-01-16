@@ -3,7 +3,6 @@
 """
 
 from typing import List
-from pathlib import Path
 import pathlib
 
 from fastapi import UploadFile, File, Form, Depends, Header
@@ -70,7 +69,7 @@ class FileController(BaseController):
             return ResultUtils.success(fileListVO)
 
         @self.router.get("/task")
-        async def getDataSetFiles(
+        async def getTaskFiles(
             target_path: str = ".",
             userVO: UserVO = Depends(self._get_current_user)
         ) -> BaseResponse[FileListVO]:

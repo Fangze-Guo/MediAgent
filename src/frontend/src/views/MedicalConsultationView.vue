@@ -123,7 +123,7 @@
                 class="message-input"
                 @press-enter="handleSendMessage"
               />
-              <a-button type="primary" @click="handleSendMessage">
+              <a-button type="primary" @click="handleSendMessage" :loading="sendingMessage">
                 <template #icon>
                   <SendOutlined />
                 </template>
@@ -168,6 +168,8 @@ import {
   UploadOutlined,
   FileTextOutlined
 } from '@ant-design/icons-vue'
+import type { ChatMessage } from '@/apis/medicalConsultation'
+import { streamChat, parseStreamResponse } from '@/apis/medicalConsultation'
 
 const { t } = useI18n()
 
@@ -177,101 +179,30 @@ const searchKeyword = ref('')
 // 输入消息
 const inputMessage = ref('')
 
+// 发送消息加载状态
+const sendingMessage = ref(false)
+
 // 对话列表数据
-const conversations = ref([
-  {
-    id: 1,
-    patientName: '患者：张三',
-    gender: '男',
-    age: '45岁',
-    time: '2024-01-15 14:30',
-    preview: '胸部疼痛，持续3天，伴有咳嗽...',
-    messages: [
-      {
-        sender: 'patient',
-        time: '14:30',
-        text: '医生您好，我最近三天一直感觉胸部疼痛，特别是深呼吸的时候更明显，还伴有轻微的咳嗽。没有发烧，但是感觉有点乏力。'
-      },
-      {
-        sender: 'ai',
-        time: '14:31',
-        text: '根据您描述的症状，建议您：',
-        list: [
-          '尽快到医院进行胸部X光或CT检查',
-          '注意休息，避免剧烈运动',
-          '如果疼痛加剧或出现呼吸困难，请立即就医'
-        ]
-      },
-      {
-        sender: 'patient',
-        time: '14:32',
-        text: '好的，谢谢医生。我还需要做什么检查吗？'
-      },
-      {
-        sender: 'ai',
-        time: '14:33',
-        text: '建议您进行以下检查：',
-        tags: [
-          { label: '胸部X光', description: '初步筛查' },
-          { label: '血常规', description: '检查炎症指标' }
-        ]
-      }
-    ]
-  },
-  {
-    id: 2,
-    patientName: '患者：李四',
-    gender: '女',
-    age: '32岁',
-    time: '2024-01-14 10:20',
-    preview: '头痛、发热，体温38.5°C...',
-    messages: [
-      {
-        sender: 'patient',
-        time: '10:20',
-        text: '医生，我昨天开始头痛，今天早上量体温38.5°C，有点乏力。'
-      },
-      {
-        sender: 'ai',
-        time: '10:21',
-        text: '根据您的症状，建议：',
-        list: [
-          '多休息，多喝水',
-          '可以服用退热药物',
-          '如果症状持续或加重，请及时就医'
-        ]
-      }
-    ]
-  },
-  {
-    id: 3,
-    patientName: '患者：王五',
-    gender: '男',
-    age: '58岁',
-    time: '2024-01-13 16:45',
-    preview: '胃部不适，食欲不振...',
-    messages: [
-      {
-        sender: 'patient',
-        time: '16:45',
-        text: '最近一周胃部一直不舒服，食欲也不好，有时候还会恶心。'
-      },
-      {
-        sender: 'ai',
-        time: '16:46',
-        text: '建议您：',
-        list: [
-          '注意饮食，避免辛辣刺激食物',
-          '可以尝试少食多餐',
-          '如果症状持续，建议做胃镜检查'
-        ]
-      }
-    ]
-  }
-])
+interface Conversation {
+  id: number
+  patientName: string
+  gender: string
+  age: string
+  time: string
+  preview: string
+  messages: Array<{
+    sender: 'patient' | 'ai'
+    time: string
+    text?: string
+    list?: string[]
+    tags?: Array<{ label: string; description?: string }>
+  }>
+}
+
+const conversations = ref<Conversation[]>([])
 
 // 当前选中的对话
-const selectedConversation = ref<typeof conversations.value[0] | null>(conversations.value[0])
+const selectedConversation = ref<Conversation | null>(null)
 
 // 过滤后的对话列表
 const filteredConversations = computed(() => {
@@ -287,7 +218,7 @@ const filteredConversations = computed(() => {
 })
 
 // 选择对话
-const selectConversation = (conversation: typeof conversations.value[0]) => {
+const selectConversation = (conversation: Conversation) => {
   selectedConversation.value = conversation
 }
 
@@ -304,14 +235,87 @@ const handleSearch = () => {
 }
 
 // 发送消息
-const handleSendMessage = () => {
-  if (!inputMessage.value.trim()) {
+const handleSendMessage = async () => {
+  if (!inputMessage.value.trim() || !selectedConversation.value || sendingMessage.value) {
     return
   }
-  // 静态页面，仅展示
-  console.log('发送消息:', inputMessage.value)
+
+  const userMessage = inputMessage.value.trim()
   inputMessage.value = ''
-}
+  sendingMessage.value = true
+
+  // 添加用户消息到对话中
+  const userMsg = {
+    sender: 'patient' as const,
+    time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+    text: userMessage
+  }
+  selectedConversation.value.messages.push(userMsg)
+
+  // 添加 AI 消息占位符
+  const aiMsgIndex = selectedConversation.value.messages.length
+  selectedConversation.value.messages.push({
+    sender: 'ai' as const,
+    time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+    text: ''
+  })
+
+  // 准备请求数据：将历史消息转换为 API 格式（排除刚添加的用户消息和空的 AI 占位符）
+  const historyMessages: ChatMessage[] = selectedConversation.value.messages
+    .slice(0, -2) // 排除刚添加的用户消息和 AI 占位符
+    .filter(msg => msg.text) // 只保留有内容的消息
+    .map(msg => ({
+      role: (msg.sender === 'patient' ? 'user' : 'assistant') as 'user' | 'assistant',
+      content: msg.text || ''
+    }))
+
+  try {
+    // 调用流式接口
+    const stream = await streamChat({
+      messages: historyMessages,
+      message: userMessage
+    })
+
+    if (!stream) {
+      throw new Error('无法建立流式连接')
+    }
+
+    const reader = stream.getReader()
+    let fullContent = ''
+
+    await parseStreamResponse(
+      reader,
+      // onChunk: 接收到每个 chunk
+      (data) => {
+        fullContent = data.full_content
+        // 更新 AI 消息内容
+        if (selectedConversation.value) {
+          selectedConversation.value.messages[aiMsgIndex].text = fullContent
+        }
+      },
+      // onComplete: 完成
+      (finalContent) => {
+        if (selectedConversation.value) {
+          selectedConversation.value.messages[aiMsgIndex].text = finalContent
+        }
+      },
+      // onError: 错误处理
+      (error) => {
+        console.error('流式对话错误:', error)
+        if (selectedConversation.value) {
+          selectedConversation.value.messages[aiMsgIndex].text = `错误: ${error}`
+        }
+      }
+    )
+  } catch (error) {
+      console.error('发送消息失败:', error)
+      if (selectedConversation.value) {
+        selectedConversation.value.messages[aiMsgIndex].text = '发送消息失败，请重试'
+      }
+    } finally {
+      sendingMessage.value = false
+    }
+  }
 
 // 上传影像
 const handleUploadImage = () => {
