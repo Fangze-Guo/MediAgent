@@ -4,6 +4,10 @@
 """
 
 import logging
+from dotenv import load_dotenv
+
+# 加载.env文件
+load_dotenv()
 
 from src.server_agent.controller import create_app
 

@@ -1,7 +1,7 @@
 /**
  * 医学咨询API接口
  */
-import { get, post } from '@/utils/request'
+import { get, post, put, del } from '@/utils/request'
 
 /**
  * 聊天消息接口
@@ -15,6 +15,7 @@ export interface ChatMessage {
  * 聊天请求接口
  */
 export interface ChatRequest {
+  conversation_id?: string
   messages: ChatMessage[]
   message: string
 }
@@ -26,6 +27,78 @@ export interface StreamResponseData {
   content: string
   full_content: string
   done: boolean
+  error?: string
+}
+
+/**
+ * 创建会话请求接口
+ */
+export interface CreateConversationRequest {
+  patient_name?: string
+  gender?: string
+  age?: string
+  title?: string
+}
+
+/**
+ * 更新会话请求接口
+ */
+export interface UpdateConversationRequest {
+  title?: string
+  patient_name?: string
+  gender?: string
+  age?: string
+}
+
+/**
+ * 消息响应接口
+ */
+export interface MessageResponse {
+  message_id: string
+  conversation_id: string
+  role: 'user' | 'assistant'
+  content: string
+  created_at?: string
+}
+
+/**
+ * 会话信息接口
+ */
+export interface ConversationInfo {
+  conversation_id: string
+  user_id: number
+  title?: string
+  patient_name?: string
+  gender?: string
+  age?: string
+  created_at?: string
+  updated_at?: string
+  message_count: number
+  last_message?: string
+}
+
+/**
+ * 会话详情接口
+ */
+export interface ConversationDetail {
+  conversation_id: string
+  user_id: number
+  title?: string
+  patient_name?: string
+  gender?: string
+  age?: string
+  created_at?: string
+  updated_at?: string
+  messages: MessageResponse[]
+}
+
+/**
+ * 基础响应接口
+ */
+export interface BaseResponse<T = any> {
+  code: number
+  data?: T
+  message: string
 }
 
 /**
@@ -38,7 +111,7 @@ export async function streamChat(request: ChatRequest): Promise<ReadableStream<U
     // 获取 API 基础 URL
     const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
     const url = `${baseURL}/medical-consultation/taking`
-    
+
     // 获取 token（如果需要认证）
     const token = localStorage.getItem('mediagent_token')
     const headers: Record<string, string> = {
@@ -47,7 +120,7 @@ export async function streamChat(request: ChatRequest): Promise<ReadableStream<U
     if (token) {
       headers['Authorization'] = `Bearer ${token}`
     }
-    
+
     const response = await fetch(url, {
       method: 'POST',
       headers,
@@ -148,4 +221,75 @@ export async function parseStreamResponse(
   } finally {
     reader.releaseLock()
   }
+}
+
+/**
+ * 创建新会话
+ * @param request 创建会话请求
+ * @returns 会话信息
+ */
+export async function createConversation(request: CreateConversationRequest): Promise<BaseResponse<ConversationInfo>> {
+  const response = await post<BaseResponse<ConversationInfo>>('/medical-consultation/conversations', request)
+  return response.data
+}
+
+/**
+ * 获取会话列表
+ * @param limit 返回数量限制
+ * @param offset 偏移量
+ * @returns 会话信息列表
+ */
+export async function getConversations(
+  limit: number = 50,
+  offset: number = 0
+): Promise<BaseResponse<ConversationInfo[]>> {
+  const response = await get<BaseResponse<ConversationInfo[]>>(
+    `/medical-consultation/conversations?limit=${limit}&offset=${offset}`
+  )
+  return response.data
+}
+
+/**
+ * 获取会话详情
+ * @param conversationId 会话ID
+ * @returns 会话详情
+ */
+export async function getConversationDetail(
+  conversationId: string
+): Promise<BaseResponse<ConversationDetail>> {
+  const response = await get<BaseResponse<ConversationDetail>>(
+    `/medical-consultation/conversations/${conversationId}`
+  )
+  return response.data
+}
+
+/**
+ * 更新会话信息
+ * @param conversationId 会话ID
+ * @param request 更新会话请求
+ * @returns 是否更新成功
+ */
+export async function updateConversation(
+  conversationId: string,
+  request: UpdateConversationRequest
+): Promise<BaseResponse<boolean>> {
+  const response = await put<BaseResponse<boolean>>(
+    `/medical-consultation/conversations/${conversationId}`,
+    request
+  )
+  return response.data
+}
+
+/**
+ * 删除会话
+ * @param conversationId 会话ID
+ * @returns 是否删除成功
+ */
+export async function deleteConversation(
+  conversationId: string
+): Promise<BaseResponse<boolean>> {
+  const response = await del<BaseResponse<boolean>>(
+    `/medical-consultation/conversations/${conversationId}`
+  )
+  return response.data
 }

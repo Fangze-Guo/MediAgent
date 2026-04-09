@@ -943,7 +943,11 @@
       "send": "Send",
       "uploadImage": "Upload Image",
       "uploadReport": "Upload Report",
-      "selectConversation": "Please select a consultation record from the left to view details"
+      "selectConversation": "Please select a consultation record from the left to view details",
+      "noConversations": "No consultation records yet",
+      "title": "Title",
+      "male": "Male",
+      "female": "Female"
     },
     "views_RagKnowledgeBaseView": {
       "title": "RAG Knowledge Base",

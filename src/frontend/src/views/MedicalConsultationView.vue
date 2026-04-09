@@ -1,22 +1,14 @@
 <template>
   <div class="medical-consultation-container">
-    <!-- 页面标题 -->
-    <div class="page-header">
-      <h2 class="page-title">
-        <CommentOutlined />
-        {{ t('views_MedicalConsultationView.title') }}
-      </h2>
-    </div>
-
     <!-- 主要内容区域 -->
     <div class="content-grid">
       <!-- 左侧：对话列表 -->
       <div class="conversation-list-section">
-        <a-card>
+        <a-card :loading="loadingConversations" class="list-card">
           <template #title>
             <div class="card-title-row">
               <span>{{ t('views_MedicalConsultationView.conversationList') }}</span>
-              <a-button type="primary" size="small" @click="handleNewConsultation">
+              <a-button type="primary" size="small" @click="showNewConversationModal">
                 <template #icon>
                   <PlusOutlined />
                 </template>
@@ -38,18 +30,36 @@
           <div class="conversation-list">
             <div
               v-for="conversation in filteredConversations"
-              :key="conversation.id"
+              :key="conversation.conversation_id"
               class="conversation-item"
-              :class="{ active: selectedConversation?.id === conversation.id }"
+              :class="{ active: selectedConversationId === conversation.conversation_id }"
               @click="selectConversation(conversation)"
             >
               <div class="conversation-header">
-                <span class="patient-name">{{ conversation.patientName }}</span>
-                <span class="conversation-time">{{ conversation.time }}</span>
+                <span class="patient-name">
+                  {{ conversation.title || conversation.patient_name || '未命名会话' }}
+                </span>
+                <span class="conversation-time">{{ formatTime(conversation.updated_at) }}</span>
               </div>
-              <p class="conversation-preview">{{ conversation.preview }}</p>
+              <p class="conversation-preview">{{ conversation.last_message || '暂无消息' }}</p>
+              <a-button
+                type="text"
+                size="small"
+                danger
+                class="delete-btn"
+                @click.stop="handleDeleteConversation(conversation.conversation_id)"
+              >
+                <DeleteOutlined />
+              </a-button>
             </div>
           </div>
+
+          <!-- 空状态 -->
+          <a-empty
+            v-if="filteredConversations.length === 0 && !loadingConversations"
+            :description="t('views_MedicalConsultationView.noConversations')"
+            class="empty-state"
+          />
         </a-card>
       </div>
 
@@ -65,50 +75,35 @@
             class="patient-info"
           >
             <a-descriptions-item :label="t('views_MedicalConsultationView.patientName')">
-              {{ selectedConversation.patientName }}
+              {{ selectedConversation.patient_name || '-' }}
             </a-descriptions-item>
             <a-descriptions-item :label="t('views_MedicalConsultationView.gender')">
-              {{ selectedConversation.gender }}
+              {{ selectedConversation.gender || '-' }}
             </a-descriptions-item>
             <a-descriptions-item :label="t('views_MedicalConsultationView.age')">
-              {{ selectedConversation.age }}
+              {{ selectedConversation.age || '-' }}
             </a-descriptions-item>
             <a-descriptions-item :label="t('views_MedicalConsultationView.consultationTime')">
-              {{ selectedConversation.time }}
+              {{ formatTime(selectedConversation.created_at) }}
             </a-descriptions-item>
           </a-descriptions>
 
           <!-- 对话内容区域 -->
-          <div class="messages-container">
+          <div class="messages-container" ref="messagesContainer">
             <div
-              v-for="(message, index) in selectedConversation.messages"
+              v-for="(message, index) in messages"
               :key="index"
               class="message-wrapper"
-              :class="message.sender === 'patient' ? 'message-right' : 'message-left'"
+              :class="message.role === 'user' ? 'message-right' : 'message-left'"
             >
               <div class="message-header">
-                <span class="message-sender">{{ getSenderName(message.sender) }}</span>
-                <span class="message-time">{{ message.time }}</span>
+                <span class="message-sender">
+                  {{ message.role === 'user' ? t('views_MedicalConsultationView.patient') : t('views_MedicalConsultationView.aiAssistant') }}
+                </span>
+                <span class="message-time">{{ formatTime(message.created_at) }}</span>
               </div>
-              <div class="message-bubble" :class="message.sender === 'patient' ? 'bubble-patient' : 'bubble-ai'">
-                <p v-if="message.text" class="message-text">{{ message.text }}</p>
-                <ul v-if="message.list" class="message-list">
-                  <li v-for="(item, idx) in message.list" :key="idx">{{ item }}</li>
-                </ul>
-                <div v-if="message.tags" class="message-tags">
-                  <div
-                    v-for="(tag, idx) in message.tags"
-                    :key="idx"
-                    class="tag-item"
-                  >
-                    <a-tag color="blue" class="message-tag">
-                      {{ tag.label }}
-                    </a-tag>
-                    <span v-if="tag.description" class="tag-description">
-                      {{ tag.description }}
-                    </span>
-                  </div>
-                </div>
+              <div class="message-bubble" :class="message.role === 'user' ? 'bubble-patient' : 'bubble-ai'">
+                <p class="message-text">{{ message.content }}</p>
               </div>
             </div>
           </div>
@@ -122,6 +117,7 @@
                 allow-clear
                 class="message-input"
                 @press-enter="handleSendMessage"
+                :disabled="sendingMessage"
               />
               <a-button type="primary" @click="handleSendMessage" :loading="sendingMessage">
                 <template #icon>
@@ -130,46 +126,71 @@
                 {{ t('views_MedicalConsultationView.send') }}
               </a-button>
             </div>
-            <div class="input-actions">
-              <a-button type="link" size="small" @click="handleUploadImage">
-                <template #icon>
-                  <UploadOutlined />
-                </template>
-                {{ t('views_MedicalConsultationView.uploadImage') }}
-              </a-button>
-              <a-button type="link" size="small" @click="handleUploadReport">
-                <template #icon>
-                  <FileTextOutlined />
-                </template>
-                {{ t('views_MedicalConsultationView.uploadReport') }}
-              </a-button>
-            </div>
           </div>
         </a-card>
 
         <!-- 空状态 -->
         <a-empty
-          v-else
+          v-else-if="!loadingConversations"
           :description="t('views_MedicalConsultationView.selectConversation')"
           class="empty-state"
         />
       </div>
     </div>
+
+    <!-- 新建会话模态框 -->
+    <a-modal
+      v-model:open="newConversationModalVisible"
+      :title="t('views_MedicalConsultationView.newConsultation')"
+      @ok="handleCreateConversation"
+      :confirm-loading="creatingConversation"
+    >
+      <a-form :model="newConversationForm" layout="vertical">
+        <a-form-item :label="t('views_MedicalConsultationView.title')">
+          <a-input v-model:value="newConversationForm.title" />
+        </a-form-item>
+        <a-form-item :label="t('views_MedicalConsultationView.patientName')">
+          <a-input v-model:value="newConversationForm.patient_name" />
+        </a-form-item>
+        <a-form-item :label="t('views_MedicalConsultationView.gender')">
+          <a-select v-model:value="newConversationForm.gender" allow-clear>
+            <a-select-option value="男">{{ t('views_MedicalConsultationView.male') }}</a-select-option>
+            <a-select-option value="女">{{ t('views_MedicalConsultationView.female') }}</a-select-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item :label="t('views_MedicalConsultationView.age')">
+          <a-input v-model:value="newConversationForm.age" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { message } from 'ant-design-vue'
 import {
   CommentOutlined,
   PlusOutlined,
   SendOutlined,
-  UploadOutlined,
-  FileTextOutlined
+  DeleteOutlined
 } from '@ant-design/icons-vue'
-import type { ChatMessage } from '@/apis/medicalConsultation'
-import { streamChat, parseStreamResponse } from '@/apis/medicalConsultation'
+import type {
+  ChatMessage,
+  ConversationInfo,
+  ConversationDetail,
+  MessageResponse,
+  CreateConversationRequest
+} from '@/apis/medicalConsultation'
+import {
+  streamChat,
+  parseStreamResponse,
+  getConversations,
+  getConversationDetail,
+  createConversation,
+  deleteConversation
+} from '@/apis/medicalConsultation'
 
 const { t } = useI18n()
 
@@ -182,27 +203,37 @@ const inputMessage = ref('')
 // 发送消息加载状态
 const sendingMessage = ref(false)
 
+// 对话列表加载状态
+const loadingConversations = ref(false)
+
+// 创建会话加载状态
+const creatingConversation = ref(false)
+
 // 对话列表数据
-interface Conversation {
-  id: number
-  patientName: string
-  gender: string
-  age: string
-  time: string
-  preview: string
-  messages: Array<{
-    sender: 'patient' | 'ai'
-    time: string
-    text?: string
-    list?: string[]
-    tags?: Array<{ label: string; description?: string }>
-  }>
-}
+const conversations = ref<ConversationInfo[]>([])
 
-const conversations = ref<Conversation[]>([])
+// 当前选中的会话ID
+const selectedConversationId = ref<string | null>(null)
 
-// 当前选中的对话
-const selectedConversation = ref<Conversation | null>(null)
+// 当前选中的会话信息
+const selectedConversation = ref<ConversationInfo | null>(null)
+
+// 会话消息列表
+const messages = ref<MessageResponse[]>([])
+
+// 消息容器引用
+const messagesContainer = ref<HTMLElement | null>(null)
+
+// 新建会话模态框显示状态
+const newConversationModalVisible = ref(false)
+
+// 新建会话表单
+const newConversationForm = ref<CreateConversationRequest>({
+  title: '',
+  patient_name: '',
+  gender: '',
+  age: ''
+})
 
 // 过滤后的对话列表
 const filteredConversations = computed(() => {
@@ -212,26 +243,119 @@ const filteredConversations = computed(() => {
   const keyword = searchKeyword.value.toLowerCase()
   return conversations.value.filter(
     conv =>
-      conv.patientName.toLowerCase().includes(keyword) ||
-      conv.preview.toLowerCase().includes(keyword)
+      (conv.title && conv.title.toLowerCase().includes(keyword)) ||
+      (conv.patient_name && conv.patient_name.toLowerCase().includes(keyword)) ||
+      (conv.last_message && conv.last_message.toLowerCase().includes(keyword))
   )
 })
 
-// 选择对话
-const selectConversation = (conversation: Conversation) => {
-  selectedConversation.value = conversation
+// 加载对话列表
+const loadConversations = async () => {
+  loadingConversations.value = true
+  try {
+    const response = await getConversations()
+    if (response.code === 200 && response.data) {
+      conversations.value = response.data
+    } else {
+      message.error(response.message || '加载对话列表失败')
+    }
+  } catch (error) {
+    console.error('加载对话列表失败:', error)
+    message.error('加载对话列表失败')
+  } finally {
+    loadingConversations.value = false
+  }
 }
 
-// 新建咨询
-const handleNewConsultation = () => {
-  // 静态页面，仅展示
-  console.log('新建咨询')
+// 选择对话
+const selectConversation = async (conversation: ConversationInfo) => {
+  selectedConversationId.value = conversation.conversation_id
+  selectedConversation.value = conversation
+
+  // 加载会话详情和消息
+  loadingConversations.value = true
+  try {
+    const response = await getConversationDetail(conversation.conversation_id)
+    if (response.code === 200 && response.data) {
+      messages.value = response.data.messages || []
+      scrollToBottom()
+    } else {
+      message.error(response.message || '加载会话详情失败')
+    }
+  } catch (error) {
+    console.error('加载会话详情失败:', error)
+    message.error('加载会话详情失败')
+  } finally {
+    loadingConversations.value = false
+  }
 }
 
 // 搜索
 const handleSearch = () => {
-  // 静态页面，仅展示
-  console.log('搜索:', searchKeyword.value)
+  // 搜索由computed自动处理
+}
+
+// 显示新建会话模态框
+const showNewConversationModal = () => {
+  newConversationModalVisible.value = true
+  // 重置表单
+  newConversationForm.value = {
+    title: '',
+    patient_name: '',
+    gender: '',
+    age: ''
+  }
+}
+
+// 创建新会话
+const handleCreateConversation = async () => {
+  if (!newConversationForm.value.title && !newConversationForm.value.patient_name) {
+    message.warning('请填写会话标题或患者姓名')
+    return
+  }
+
+  creatingConversation.value = true
+  try {
+    const response = await createConversation(newConversationForm.value)
+    if (response.code === 200 && response.data) {
+      message.success('创建会话成功')
+      newConversationModalVisible.value = false
+      // 重新加载对话列表
+      await loadConversations()
+      // 自动选中新创建的会话
+      await selectConversation(response.data)
+    } else {
+      message.error(response.message || '创建会话失败')
+    }
+  } catch (error) {
+    console.error('创建会话失败:', error)
+    message.error('创建会话失败')
+  } finally {
+    creatingConversation.value = false
+  }
+}
+
+// 删除会话
+const handleDeleteConversation = async (conversationId: string) => {
+  try {
+    const response = await deleteConversation(conversationId)
+    if (response.code === 200 && response.data) {
+      message.success('删除会话成功')
+      // 如果删除的是当前选中的会话，清空选中状态
+      if (selectedConversationId.value === conversationId) {
+        selectedConversationId.value = null
+        selectedConversation.value = null
+        messages.value = []
+      }
+      // 重新加载对话列表
+      await loadConversations()
+    } else {
+      message.error(response.message || '删除会话失败')
+    }
+  } catch (error) {
+    console.error('删除会话失败:', error)
+    message.error('删除会话失败')
+  }
 }
 
 // 发送消息
@@ -245,33 +369,39 @@ const handleSendMessage = async () => {
   sendingMessage.value = true
 
   // 添加用户消息到对话中
-  const userMsg = {
-    sender: 'patient' as const,
-    time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
-    text: userMessage
+  const userMsg: MessageResponse = {
+    message_id: '',
+    conversation_id: selectedConversation.value!.conversation_id,
+    role: 'user',
+    content: userMessage,
+    created_at: new Date().toISOString()
   }
-  selectedConversation.value.messages.push(userMsg)
+  messages.value.push(userMsg)
+  scrollToBottom()
 
-  // 添加 AI 消息占位符
-  const aiMsgIndex = selectedConversation.value.messages.length
-  selectedConversation.value.messages.push({
-    sender: 'ai' as const,
-    time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
-    text: ''
-  })
-
-  // 准备请求数据：将历史消息转换为 API 格式（排除刚添加的用户消息和空的 AI 占位符）
-  const historyMessages: ChatMessage[] = selectedConversation.value.messages
-    .slice(0, -2) // 排除刚添加的用户消息和 AI 占位符
-    .filter(msg => msg.text) // 只保留有内容的消息
+  // 准备请求数据：将历史消息转换为 API 格式（排除刚添加的用户消息）
+  const historyMessages: ChatMessage[] = messages.value
+    .slice(0, -1) // 排除刚添加的用户消息
+    .filter(msg => msg.content) // 只保留有内容的消息
     .map(msg => ({
-      role: (msg.sender === 'patient' ? 'user' : 'assistant') as 'user' | 'assistant',
-      content: msg.text || ''
+      role: msg.role,
+      content: msg.content || ''
     }))
 
   try {
+    // 添加 AI 消息占位符
+    const aiMsgIndex = messages.value.length
+    messages.value.push({
+      message_id: '',
+      conversation_id: selectedConversation.value!.conversation_id,
+      role: 'assistant',
+      content: '',
+      created_at: new Date().toISOString()
+    })
+
     // 调用流式接口
     const stream = await streamChat({
+      conversation_id: selectedConversation.value!.conversation_id,
       messages: historyMessages,
       message: userMessage
     })
@@ -289,62 +419,83 @@ const handleSendMessage = async () => {
       (data) => {
         fullContent = data.full_content
         // 更新 AI 消息内容
-        if (selectedConversation.value) {
-          selectedConversation.value.messages[aiMsgIndex].text = fullContent
+        if (messages.value[aiMsgIndex]) {
+          messages.value[aiMsgIndex].content = fullContent
+          scrollToBottom()
         }
       },
       // onComplete: 完成
       (finalContent) => {
-        if (selectedConversation.value) {
-          selectedConversation.value.messages[aiMsgIndex].text = finalContent
+        if (messages.value[aiMsgIndex]) {
+          messages.value[aiMsgIndex].content = finalContent
         }
+        // 更新会话的最后消息
+        if (selectedConversation.value) {
+          selectedConversation.value.last_message = finalContent
+        }
+        scrollToBottom()
       },
       // onError: 错误处理
       (error) => {
         console.error('流式对话错误:', error)
-        if (selectedConversation.value) {
-          selectedConversation.value.messages[aiMsgIndex].text = `错误: ${error}`
+        if (messages.value[aiMsgIndex]) {
+          messages.value[aiMsgIndex].content = `错误: ${error}`
         }
       }
     )
   } catch (error) {
-      console.error('发送消息失败:', error)
-      if (selectedConversation.value) {
-        selectedConversation.value.messages[aiMsgIndex].text = '发送消息失败，请重试'
-      }
-    } finally {
-      sendingMessage.value = false
-    }
+    console.error('发送消息失败:', error)
+    message.error('发送消息失败，请重试')
+    // 移除失败的AI消息
+    messages.value.pop()
+  } finally {
+    sendingMessage.value = false
   }
-
-// 上传影像
-const handleUploadImage = () => {
-  // 静态页面，仅展示
-  console.log('上传影像')
 }
 
-// 上传报告
-const handleUploadReport = () => {
-  // 静态页面，仅展示
-  console.log('上传报告')
+// 滚动到底部
+const scrollToBottom = () => {
+  nextTick(() => {
+    if (messagesContainer.value) {
+      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+    }
+  })
 }
 
-// 获取发送者名称
-const getSenderName = (sender: string) => {
-  return sender === 'patient' ? t('views_MedicalConsultationView.patient') : t('views_MedicalConsultationView.aiAssistant')
+// 格式化时间
+const formatTime = (time: string | undefined) => {
+  if (!time) return ''
+  const date = new Date(time)
+  return date.toLocaleString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    month: '2-digit',
+    day: '2-digit'
+  })
 }
+
+// 组件挂载时加载对话列表
+onMounted(() => {
+  loadConversations()
+})
 </script>
 
 <style scoped>
+/* ==========================================
+   1. 整体页面布局
+========================================== */
 .medical-consultation-container {
   padding: 24px;
   height: 100%;
   display: flex;
   flex-direction: column;
   background: #f0f2f5;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .page-header {
+  flex-shrink: 0;
   margin-bottom: 24px;
 }
 
@@ -364,18 +515,34 @@ const getSenderName = (sender: string) => {
   gap: 24px;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+  align-items: stretch;
 }
 
+/* ==========================================
+   2. 左侧：对话列表区域
+========================================== */
 .conversation-list-section {
   display: flex;
   flex-direction: column;
+  height: 100%;
   min-height: 0;
 }
 
-.conversation-detail-section {
+.list-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 穿透 Ant Design Card 内部，打通 Flex 布局 */
+:deep(.list-card > .ant-card-body) {
+  flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
+  padding: 16px;
 }
 
 .card-title-row {
@@ -386,14 +553,17 @@ const getSenderName = (sender: string) => {
 
 .search-input {
   margin-bottom: 16px;
+  width: 100%;
 }
 
 .conversation-list {
-  max-height: 600px;
+  flex: 1;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  position: relative;
+  padding: 4px;
 }
 
 .conversation-item {
@@ -402,6 +572,9 @@ const getSenderName = (sender: string) => {
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.3s;
+  position: relative;
+  flex-shrink: 0;
+  min-width: 0;
 }
 
 .conversation-item:hover {
@@ -419,16 +592,30 @@ const getSenderName = (sender: string) => {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 4px;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
 }
 
 .patient-name {
   font-weight: 500;
   color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 180px;
+  flex: 1;
+  min-width: 0;
 }
 
 .conversation-time {
   font-size: 12px;
   color: #999;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 80px;
 }
 
 .conversation-preview {
@@ -437,26 +624,81 @@ const getSenderName = (sender: string) => {
   margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-clamp: 2;
+  padding-right: 30px;
+  width: 80%;
+  max-width: 80%;
+  line-height: 1.4;
+  min-height: 28px;
+}
+
+.delete-btn {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.conversation-item:hover .delete-btn {
+  opacity: 1;
+}
+
+/* ==========================================
+   3. 右侧：对话详情区域
+========================================== */
+.conversation-detail-section {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
 }
 
 .detail-card {
   height: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+:deep(.detail-card > .ant-card-body) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
 }
 
 .patient-info {
-  margin-bottom: 24px;
+  flex-shrink: 0;
+  margin: 16px 16px 0 16px;
+  padding-bottom: 16px;
+  max-height: 200px;
+  overflow-y: auto;
+  border-bottom: 1px solid #e8e8e8;
 }
 
+/* ==========================================
+   4. 右侧：聊天气泡与消息区
+========================================== */
 .messages-container {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 0;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  background: #fafafa;
+  padding: 16px;
+  scroll-behavior: smooth;
   min-height: 0;
 }
 
@@ -464,15 +706,12 @@ const getSenderName = (sender: string) => {
   display: flex;
   flex-direction: column;
   max-width: 70%;
+  flex-shrink: 0;
+  margin-bottom: 4px;
 }
 
-.message-left {
-  align-self: flex-start;
-}
-
-.message-right {
-  align-self: flex-end;
-}
+.message-left { align-self: flex-start; }
+.message-right { align-self: flex-end; }
 
 .message-header {
   display: flex;
@@ -481,28 +720,19 @@ const getSenderName = (sender: string) => {
   margin-bottom: 4px;
   font-size: 12px;
 }
+.message-left .message-header { flex-direction: row; }
+.message-right .message-header { flex-direction: row-reverse; }
 
-.message-left .message-header {
-  flex-direction: row;
-}
-
-.message-right .message-header {
-  flex-direction: row-reverse;
-}
-
-.message-sender {
-  font-weight: 500;
-  color: #666;
-}
-
-.message-time {
-  color: #999;
-}
+.message-sender { font-weight: 500; color: #666; }
+.message-time { color: #999; flex-shrink: 0; }
 
 .message-bubble {
   padding: 12px 16px;
   border-radius: 8px;
   word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  max-width: 100%;
 }
 
 .bubble-patient {
@@ -520,73 +750,101 @@ const getSenderName = (sender: string) => {
   margin: 0;
   color: #333;
   line-height: 1.6;
+  white-space: pre-wrap;
 }
 
-.message-list {
-  margin: 8px 0 0 0;
-  padding-left: 20px;
-  color: #333;
-  line-height: 1.8;
-}
-
-.message-tags {
-  margin-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.tag-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.message-tag {
-  margin: 0;
-}
-
-.tag-description {
-  font-size: 12px;
-  color: #666;
-}
-
+/* ==========================================
+   5. 右侧：输入框与通用状态
+========================================== */
 .input-area {
+  flex-shrink: 0;
   border-top: 1px solid #d9d9d9;
-  padding-top: 16px;
+  padding: 16px;
+  background: #fff;
   margin-top: 16px;
 }
 
 .input-row {
   display: flex;
   gap: 8px;
-  margin-bottom: 8px;
 }
 
-.message-input {
-  flex: 1;
-}
-
-.input-actions {
-  display: flex;
-  gap: 16px;
-}
+.message-input { flex: 1; }
+.input-actions { display: flex; gap: 16px; }
 
 .empty-state {
   height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
+  min-height: 300px;
 }
 
-/* 响应式设计 */
-@media (max-width: 1200px) {
-  .content-grid {
-    grid-template-columns: 1fr;
-  }
+/* ==========================================
+   6. 滚动条美化
+========================================== */
+.messages-container::-webkit-scrollbar,
+.conversation-list::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.messages-container::-webkit-scrollbar-track,
+.conversation-list::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+.messages-container::-webkit-scrollbar-thumb,
+.conversation-list::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+.messages-container::-webkit-scrollbar-thumb:hover,
+.conversation-list::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+.messages-container,
+.conversation-list {
+  scrollbar-width: thin;
+  scrollbar-color: #c1c1c1 #f1f1f1;
+}
 
-  .message-wrapper {
-    max-width: 85%;
+/* ==========================================
+   7. 响应式适配
+========================================== */
+@media (max-width: 1400px) {
+  .medical-consultation-container { padding: 20px; }
+  .content-grid { gap: 20px; }
+}
+
+@media (max-width: 1200px) {
+  .medical-consultation-container { padding: 16px; }
+  .content-grid { gap: 16px; }
+  .message-wrapper { max-width: 85%; }
+}
+
+@media (max-width: 768px) {
+  .medical-consultation-container { padding: 12px; }
+  .page-header { margin-bottom: 12px; }
+  .page-title { font-size: 20px; }
+  .content-grid {
+    gap: 12px;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
   }
+  .conversation-item { padding: 10px; }
+  .message-wrapper { max-width: 95%; }
+  .message-bubble { padding: 12px 16px; }
+}
+
+@media (max-width: 480px) {
+  .medical-consultation-container { padding: 8px; }
+  .page-title { font-size: 18px; }
+  .content-grid { gap: 8px; }
+  .search-input { margin-bottom: 12px; }
+  .card-title-row .ant-btn { padding: 4px 8px; font-size: 12px; }
+  .message-wrapper { max-width: 100%; }
+  .message-bubble { padding: 8px 12px; }
+  .input-row { gap: 6px; }
+  .input-actions { gap: 8px; }
 }
 </style>

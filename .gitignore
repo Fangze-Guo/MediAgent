@@ -26,6 +26,14 @@ build/
 ### VS Code ###
 .vscode/
 
+# Claude Code
+.claude/
+
+# Environment variables
+.env
+.env.local
+.env.*
+
 # Python 编译文件
 *.pyc
 *.pyo
