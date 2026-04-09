@@ -30,7 +30,19 @@ class MedicalConsultationService:
     def __init__(self):
         """初始化服务"""
         self.mapper = MedicalConsultationMapper()
-        self.qwen_agent = QwenAgent()
+
+        # 创建历史记录获取回调函数
+        async def history_provider(conversation_id: str):
+            """从数据库获取对话历史的回调函数"""
+            try:
+                messages = await self.mapper.get_messages_by_conversation(conversation_id)
+                # 转换为格式：[(role, content, message_id), ...]
+                return [(msg.role, msg.content, msg.message_id) for msg in messages]
+            except Exception as e:
+                logger.error(f"Error loading conversation history: {e}")
+                return []
+
+        self.qwen_agent = QwenAgent(history_provider=history_provider)
 
     @handle_service_exception
     async def stream_chat(
@@ -45,7 +57,8 @@ class MedicalConsultationService:
 
         Args:
             conversation_id: 会话ID（如果为None，则不保存历史消息）
-            messages: 历史消息列表，格式为 [{"role": "user|assistant", "content": "..."}]
+            messages: 历史消息列表（已弃用参数，保留以兼容接口，历史消息从数据库加载）
+                      格式为 [{"role": "user|assistant", "content": "..."}]
             current_message: 当前用户消息
             user_id: 用户ID（用于权限验证）
 
@@ -138,7 +151,7 @@ class MedicalConsultationService:
 
         Args:
             conversation_id: 会话ID（如果为None，则不保存历史消息）
-            messages: 历史消息列表
+            messages: 历史消息列表（已弃用参数，保留以兼容接口，历史消息从数据库加载）
             current_message: 当前用户消息
             user_id: 用户ID（用于权限验证）
 
@@ -331,6 +344,12 @@ class MedicalConsultationService:
                 context={"conversation_id": conversation_id, "user_id": user_id}
             )
 
+        # 关闭对应的 Qwen Code 会话
+        try:
+            await self.qwen_agent.close_session(conversation_id)
+        except Exception as e:
+            logger.error(f"Failed to close Qwen session for conversation {conversation_id}: {e}")
+
         return await self.mapper.delete_conversation(conversation_id)
 
     @handle_service_exception
@@ -385,5 +404,7 @@ class MedicalConsultationService:
         """关闭资源"""
         try:
             await self.mapper.close()
+            # 关闭所有 Qwen 会话
+            await self.qwen_agent.close_all_sessions()
         except Exception as e:
             logger.error(f"Error closing service resources: {e}")

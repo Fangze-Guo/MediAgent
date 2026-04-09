@@ -4,8 +4,7 @@
 """
 import asyncio
 import logging
-import secrets
-import string
+import uuid
 from datetime import datetime
 from typing import List, Optional
 
@@ -47,11 +46,23 @@ class MedicalConsultationMapper:
         """确保数据库表存在"""
         pool = await self._get_pool()
         async with pool.acquire() as conn:
-            # 创建会话表
+            # 检查表是否存在
+            tables_exist = await conn.fetchval("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables
+                    WHERE table_name = 'medical_conversations'
+                )
+            """)
+
+            if tables_exist:
+                logger.info("Medical consultations tables already exist")
+                return
+
+            # 创建会话表 - 使用 UUID 作为 conversation_id
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS medical_conversations (
                     id SERIAL PRIMARY KEY,
-                    conversation_id VARCHAR(255) UNIQUE NOT NULL,
+                    conversation_id UUID UNIQUE NOT NULL,
                     user_id BIGINT NOT NULL,
                     title VARCHAR(500),
                     patient_name VARCHAR(100),
@@ -66,8 +77,8 @@ class MedicalConsultationMapper:
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS medical_messages (
                     id SERIAL PRIMARY KEY,
-                    message_id VARCHAR(255) UNIQUE NOT NULL,
-                    conversation_id VARCHAR(255) NOT NULL,
+                    message_id UUID UNIQUE NOT NULL,
+                    conversation_id UUID NOT NULL,
                     role VARCHAR(20) NOT NULL CHECK (role IN ('user', 'assistant')),
                     content TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -87,12 +98,12 @@ class MedicalConsultationMapper:
             """)
 
     def _generate_conversation_id(self) -> str:
-        """生成会话ID"""
-        return "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(16))
+        """生成会话ID（UUID格式）"""
+        return str(uuid.uuid4())
 
     def _generate_message_id(self) -> str:
-        """生成消息ID"""
-        return "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(20))
+        """生成消息ID（UUID格式）"""
+        return str(uuid.uuid4())
 
     async def create_conversation(
         self,
@@ -130,7 +141,7 @@ class MedicalConsultationMapper:
 
         return MedicalConversation(
             id=record['id'],
-            conversation_id=record['conversation_id'],
+            conversation_id=str(record['conversation_id']) if record['conversation_id'] else None,
             user_id=record['user_id'],
             title=record['title'],
             patient_name=record['patient_name'],
@@ -184,7 +195,7 @@ class MedicalConsultationMapper:
 
         return [
             ConversationInfo(
-                conversation_id=row['conversation_id'],
+                conversation_id=str(row['conversation_id']) if row['conversation_id'] else None,
                 user_id=row['user_id'],
                 title=row['title'],
                 patient_name=row['patient_name'],
@@ -225,7 +236,7 @@ class MedicalConsultationMapper:
         if record:
             return MedicalConversation(
                 id=record['id'],
-                conversation_id=record['conversation_id'],
+                conversation_id=str(record['conversation_id']) if record['conversation_id'] else None,
                 user_id=record['user_id'],
                 title=record['title'],
                 patient_name=record['patient_name'],
@@ -292,8 +303,8 @@ class MedicalConsultationMapper:
         return [
             MedicalMessage(
                 id=row['id'],
-                message_id=row['message_id'],
-                conversation_id=row['conversation_id'],
+                message_id=str(row['message_id']) if row['message_id'] else None,
+                conversation_id=str(row['conversation_id']) if row['conversation_id'] else None,
                 role=row['role'],
                 content=row['content'],
                 created_at=row['created_at']
@@ -340,8 +351,8 @@ class MedicalConsultationMapper:
 
         return MedicalMessage(
             id=record['id'],
-            message_id=record['message_id'],
-            conversation_id=record['conversation_id'],
+            message_id=str(record['message_id']) if record['message_id'] else None,
+            conversation_id=str(record['conversation_id']) if record['conversation_id'] else None,
             role=record['role'],
             content=record['content'],
             created_at=record['created_at']

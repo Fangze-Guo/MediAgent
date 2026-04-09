@@ -11,7 +11,7 @@ from typing import Optional
 class MedicalConversation:
     """医学咨询会话实体"""
     id: int
-    conversation_id: str
+    conversation_id: str  # UUID 格式的会话ID
     user_id: int
     title: Optional[str] = None
     patient_name: Optional[str] = None
@@ -25,8 +25,8 @@ class MedicalConversation:
 class MedicalMessage:
     """医学咨询消息实体"""
     id: int
-    message_id: str
-    conversation_id: str
+    message_id: str  # UUID 格式的消息ID
+    conversation_id: str  # UUID 格式的会话ID
     role: str  # 'user' 或 'assistant'
     content: str
     created_at: Optional[datetime] = None

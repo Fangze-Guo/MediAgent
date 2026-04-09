@@ -21,8 +21,7 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     """聊天请求"""
-    conversation_id: Optional[str] = Field(None, description="会话ID（可选）")
-    messages: List[ChatMessage] = Field(..., min_length=0, max_length=50, description="历史消息列表")
+    conversation_id: Optional[str] = Field(None, description="会话ID（可选，UUID格式）")
     message: str = Field(..., min_length=1, max_length=5000, description="当前消息")
 
 
@@ -90,22 +89,17 @@ class MedicalConsultationController(BaseController):
         """注册所有路由"""
 
         @self.router.post("/taking")
-        async def taking(request: ChatRequest) -> None:
+        async def taking(request: ChatRequest, user_vo: UserVO = Depends(self._get_current_user)) -> None:
             """流式对话接口，支持消息历史"""
             from fastapi.responses import StreamingResponse
 
-            # 验证历史消息格式
-            messages_dict = [
-                {"role": msg.role, "content": msg.content}
-                for msg in request.messages
-            ]
-
-            # 调用 Service 的流式方法
+            # 调用 Service 的流式方法（不再需要历史消息，由Qwen Code管理）
             async def generate_stream():
                 async for chunk in self.service.stream_chat(
                     request.conversation_id,
-                    messages_dict,
-                    request.message
+                    [],  # 空的历史消息列表，由Qwen管理
+                    request.message,
+                    user_vo.uid
                 ):
                     yield chunk
 
@@ -126,16 +120,10 @@ class MedicalConsultationController(BaseController):
         ) -> BaseResponse[str]:
             """同步对话接口（用于接口文档测试）"""
             try:
-                # 验证历史消息格式
-                messages_dict = [
-                    {"role": msg.role, "content": msg.content}
-                    for msg in request.messages
-                ]
-
-                # 调用 Service 的同步方法
+                # 调用 Service 的同步方法（不再需要历史消息，由Qwen Code管理）
                 response_content = await self.service.chat(
                     request.conversation_id,
-                    messages_dict,
+                    [],  # 空的历史消息列表，由Qwen管理
                     request.message,
                     user_id=user_vo.uid
                 )

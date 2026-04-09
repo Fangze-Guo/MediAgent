@@ -229,10 +229,10 @@ const newConversationModalVisible = ref(false)
 
 // 新建会话表单
 const newConversationForm = ref<CreateConversationRequest>({
-  title: '',
-  patient_name: '',
-  gender: '',
-  age: ''
+  title: undefined,
+  patient_name: undefined,
+  gender: undefined,
+  age: undefined
 })
 
 // 过滤后的对话列表
@@ -300,10 +300,10 @@ const showNewConversationModal = () => {
   newConversationModalVisible.value = true
   // 重置表单
   newConversationForm.value = {
-    title: '',
-    patient_name: '',
-    gender: '',
-    age: ''
+    title: undefined,
+    patient_name: undefined,
+    gender: undefined,
+    age: undefined
   }
 }
 

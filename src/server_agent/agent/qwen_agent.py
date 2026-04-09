@@ -1,47 +1,29 @@
 """
-Qwen Code Agent - 通过subprocess调用Qwen Code无头模式
+Qwen Code Agent - 通过临时文件传递历史记录调用Qwen Code
 提供流式和同步的对话功能
 """
-import asyncio
+import json
 import logging
-import os
-import uuid
 from typing import AsyncGenerator
+
+from src.server_agent.agent.qwen_session_manager import QwenSessionManager
 
 logger = logging.getLogger(__name__)
 
 
 class QwenAgent:
-    """Qwen Code Agent类"""
+    """Qwen Code Agent类 - 使用会话管理器"""
 
-    def _convert_to_uuid(self, session_id: str) -> str:
-        """
-        将字符串转换为 UUID 格式
-        使用 uuid5 基于原始字符串生成确定性的 UUID
-
-        Args:
-            session_id: 原始会话ID
-
-        Returns:
-            UUID 格式的字符串
-        """
-        try:
-            # 如果已经是 UUID 格式，直接返回
-            uuid.UUID(session_id)
-            return session_id
-        except ValueError:
-            # 不是有效 UUID，生成一个确定性的 UUID
-            return str(uuid.uuid5(uuid.NAMESPACE_DNS, session_id))
-
-    def __init__(self, qwen_path: str = "qwen", timeout: int = 120):
+    def __init__(self, qwen_path: str = "qwen", timeout: int = 120, history_provider = None):
         """
         初始化Qwen Code Agent
 
         Args:
             qwen_path: qwen命令的路径，默认为"qwen"（假设在PATH中）
             timeout: 命令执行超时时间（秒）
+            history_provider: 获取历史记录的回调函数
         """
-        self.qwen_path = os.getenv("QWEN_CODE_PATH", qwen_path)
+        self.session_manager = QwenSessionManager(qwen_path, history_provider)
         self.timeout = timeout
 
     async def _execute_qwen(
@@ -55,7 +37,7 @@ class QwenAgent:
 
         Args:
             prompt: 用户提示词
-            session_id: 会话ID，用于管理历史对话
+            session_id: 会话ID（UUID格式，用于管理历史对话）
             timeout: 超时时间（秒），如果为None则使用实例默认值
 
         Yields:
@@ -63,100 +45,32 @@ class QwenAgent:
         """
         timeout = timeout or self.timeout
 
-        # 将 session_id 转换为 UUID 格式
-        uuid_session_id = self._convert_to_uuid(session_id) if session_id else None
-
         try:
-            # 构建命令
-            if os.name == 'nt':  # Windows
-                # Windows下使用shell执行
-                if uuid_session_id:
-                    command = f'"{self.qwen_path}" --session-id "{uuid_session_id}" -p "{prompt}"'
-                else:
-                    command = f'"{self.qwen_path}" -p "{prompt}"'
+            session_info = f" with session_id: {session_id}" if session_id else ""
+            logger.info(f"[QwenAgent] Sending message to Qwen Code{session_info}, prompt length: {len(prompt)}")
 
-                logger.info(f"Executing Qwen command: {command}")
-                process = await asyncio.create_subprocess_shell(
-                    command,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-            else:  # Linux/Mac
-                if uuid_session_id:
-                    command_args = [self.qwen_path, "--session-id", uuid_session_id, "-p", prompt]
-                    command_str = f'{" ".join(command_args[:3])} -p "{prompt}"'  # 隐藏完整prompt
-                    logger.info(f"Executing Qwen command: {command_str}")
-                    process = await asyncio.create_subprocess_exec(
-                        *command_args,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE
-                    )
-                else:
-                    command_args = [self.qwen_path, "-p", prompt]
-                    command_str = f'{self.qwen_path} -p "{prompt}"'  # 隐藏完整prompt
-                    logger.info(f"Executing Qwen command: {command_str}")
-                    process = await asyncio.create_subprocess_exec(
-                        *command_args,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE
-                    )
+            # 使用会话管理器发送消息
+            chunk_count = 0
+            if session_id:
+                logger.info(f"[QwenAgent] Using session manager with UUID: {session_id}")
+                async for chunk in self.session_manager.send_message(session_id, prompt):
+                    chunk_count += 1
+                    if chunk_count == 1:
+                        logger.info(f"[QwenAgent] First chunk received")
+                    if chunk_count % 10 == 0:
+                        logger.info(f"[QwenAgent] Received {chunk_count} chunks so far")
+                    yield chunk
+            else:
+                # 无会话ID，不使用会话历史
+                logger.warning(f"[QwenAgent] No session_id provided, creating temporary session")
+                async for chunk in self.session_manager.send_message(None, prompt):
+                    chunk_count += 1
+                    yield chunk
 
-            session_info = f" with session_id: {session_id} (UUID: {uuid_session_id})" if session_id else ""
-            logger.info(f"Started Qwen Code process{session_info} with prompt length: {len(prompt)}")
+            logger.info(f"[QwenAgent] Message sending completed, total chunks: {chunk_count}")
 
-            # 读取stdout流
-            try:
-                while True:
-                    try:
-                        # 等待输出，带超时
-                        line_bytes = await asyncio.wait_for(
-                            process.stdout.readline(),
-                            timeout=timeout
-                        )
-
-                        if not line_bytes:
-                            # EOF
-                            break
-
-                        # 解码文本
-                        line = line_bytes.decode('utf-8', errors='ignore')
-
-                        if line:
-                            yield line
-
-                    except asyncio.TimeoutError:
-                        logger.error(f"Qwen Code process timeout after {timeout} seconds")
-                        process.kill()
-                        await process.wait()
-                        raise TimeoutError(f"Qwen Code execution timed out after {timeout} seconds")
-
-                # 等待进程结束
-                await asyncio.wait_for(process.wait(), timeout=timeout)
-
-                # 检查stderr
-                if process.returncode != 0:
-                    stderr_output = await process.stderr.read()
-                    stderr_text = stderr_output.decode('utf-8', errors='ignore')
-                    if stderr_text:
-                        logger.error(f"Qwen Code stderr: {stderr_text}")
-                    raise RuntimeError(
-                        f"Qwen Code process exited with code {process.returncode}: {stderr_text}"
-                    )
-
-            except Exception as e:
-                # 确保进程被终止
-                if process.returncode is None:
-                    process.kill()
-                    await process.wait()
-                raise
-
-        except FileNotFoundError:
-            logger.error(f"Qwen Code command not found at: {self.qwen_path}")
-            raise FileNotFoundError(
-                f"Qwen Code command not found. Please install Qwen Code or set QWEN_CODE_PATH environment variable."
-            )
         except Exception as e:
-            logger.error(f"Error executing Qwen Code: {e}")
+            logger.error(f"[QwenAgent] Error executing Qwen Code: {e}")
             raise
 
     async def stream_chat(
@@ -174,8 +88,6 @@ class QwenAgent:
         Yields:
             每个输出片段的JSON字符串（SSE格式）
         """
-        import json
-
         # 使用当前消息和session_id执行qwen命令
         # 历史消息管理由qwen通过session_id处理
 
@@ -229,3 +141,18 @@ class QwenAgent:
             full_content += chunk
 
         return full_content
+
+    async def close_session(self, session_id: str):
+        """
+        关闭指定会话（删除临时文件）
+
+        Args:
+            session_id: 会话ID
+        """
+        await self.session_manager.delete_session_file(session_id)
+        logger.info(f"Closed session and deleted memory file: {session_id}")
+
+    async def close_all_sessions(self):
+        """关闭所有会话（删除所有临时文件）"""
+        await self.session_manager.clear_all_session_files()
+        logger.info("Closed all sessions and deleted all memory files")
