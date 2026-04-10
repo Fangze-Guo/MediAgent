@@ -121,6 +121,33 @@ const routes: RouteRecordRaw[] = [
         }
     },
     {
+        path: '/knowledge-base',
+        name: 'KnowledgeBase',
+        component: () => import('@/views/RagKnowledgeBaseView.vue'),
+        meta: {
+            title: 'MediAgent - Knowledge Base',
+            requiresAuth: true
+        }
+    },
+    {
+        path: '/knowledge-base/:id',
+        name: 'KnowledgeBaseDetail',
+        component: () => import('@/views/RagKnowledgeBaseDetailView.vue'),
+        meta: {
+            title: 'MediAgent - Knowledge Base Detail',
+            requiresAuth: true
+        }
+    },
+    {
+        path: '/knowledge-base/:kbId/document/:docId',
+        name: 'DocumentDetail',
+        component: () => import('@/views/DocumentDetailView.vue'),
+        meta: {
+            title: 'MediAgent - Document Detail',
+            requiresAuth: true
+        }
+    },
+    {
         path: '/ct-diagnosis',
         name: 'CtDiagnosis',
         component: () => import('@/views/CtDiagnosisView.vue'),

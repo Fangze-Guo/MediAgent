@@ -2,10 +2,13 @@
   <div class="rag-knowledge-base-container">
     <!-- 页面标题 -->
     <div class="page-header">
-      <h2 class="page-title">
-        <FileAddOutlined />
-        {{ t('views_RagKnowledgeBaseView.title') }}
-      </h2>
+      <div>
+        <h2 class="page-title">
+          <DatabaseOutlined />
+          {{ t('views_RagKnowledgeBaseView.title') }}
+        </h2>
+        <p class="page-subtitle">{{ t('views_RagKnowledgeBaseView.subtitle') }}</p>
+      </div>
       <a-button type="primary" @click="handleCreateKnowledgeBase">
         <template #icon>
           <PlusOutlined />
@@ -14,847 +17,651 @@
       </a-button>
     </div>
 
-    <!-- 搜索和筛选栏 -->
-    <a-card class="filter-card">
-      <div class="filter-row">
-        <a-input-search
-          v-model:value="searchKeyword"
-          :placeholder="t('views_RagKnowledgeBaseView.searchPlaceholder')"
-          allow-clear
-          style="width: 300px"
-          @search="handleSearch"
-        />
-        <a-select
-          v-model:value="statusFilter"
-          :placeholder="t('views_RagKnowledgeBaseView.statusFilter')"
-          style="width: 150px"
-          allow-clear
-        >
-          <a-select-option value="">{{ t('views_RagKnowledgeBaseView.allStatus') }}</a-select-option>
-          <a-select-option value="active">{{ t('views_RagKnowledgeBaseView.active') }}</a-select-option>
-          <a-select-option value="inactive">{{ t('views_RagKnowledgeBaseView.inactive') }}</a-select-option>
-        </a-select>
-        <a-select
-          v-model:value="typeFilter"
-          :placeholder="t('views_RagKnowledgeBaseView.typeFilter')"
-          style="width: 150px"
-          allow-clear
-        >
-          <a-select-option value="">{{ t('views_RagKnowledgeBaseView.allTypes') }}</a-select-option>
-          <a-select-option value="medical_literature">{{ t('views_RagKnowledgeBaseView.medicalLiterature') }}</a-select-option>
-          <a-select-option value="clinical_guideline">{{ t('views_RagKnowledgeBaseView.clinicalGuideline') }}</a-select-option>
-          <a-select-option value="case_library">{{ t('views_RagKnowledgeBaseView.caseLibrary') }}</a-select-option>
-        </a-select>
-        <a-button type="primary" @click="handleSearch">
-          <template #icon>
-            <SearchOutlined />
-          </template>
-          {{ t('views_RagKnowledgeBaseView.search') }}
-        </a-button>
-        <a-button @click="handleReset">
-          <template #icon>
-            <ReloadOutlined />
-          </template>
-          {{ t('views_RagKnowledgeBaseView.reset') }}
-        </a-button>
-      </div>
-    </a-card>
+    <!-- 加载状态 -->
+    <div v-if="loading" class="loading-container">
+      <a-spin size="large" />
+      <p class="loading-text">{{ t('views_RagKnowledgeBaseView.loading') }}</p>
+    </div>
 
-    <!-- 知识库列表 -->
-    <a-card class="table-card">
-      <a-table
-        :columns="columns"
-        :data-source="filteredKnowledgeBases"
-        :loading="loading"
-        :pagination="paginationConfig"
-        :row-selection="{ selectedRowKeys: selectedRowKeys, onChange: onSelectChange }"
-        :row-key="(record: any) => record.id"
+    <!-- 错误状态 -->
+    <div v-else-if="error" class="error-container">
+      <a-alert type="error" :message="error" show-icon />
+    </div>
+
+    <!-- 空状态 -->
+    <div v-else-if="knowledgeBases.length === 0" class="empty-container">
+      <DatabaseOutlined class="empty-icon" />
+      <h3 class="empty-title">{{ t('views_RagKnowledgeBaseView.emptyTitle') }}</h3>
+      <p class="empty-description">{{ t('views_RagKnowledgeBaseView.emptyDescription') }}</p>
+    </div>
+
+    <!-- 知识库网格 -->
+    <div v-else class="knowledge-bases-grid">
+      <div
+        v-for="kb in knowledgeBases"
+        :key="kb.id"
+        class="knowledge-base-card"
       >
-        <template #bodyCell="{ column, record }: { column: any; record: any }">
-          <template v-if="column.key === 'name'">
-            <div class="knowledge-base-name">
-              <FileTextOutlined class="name-icon" />
-              <div class="name-content">
-                <div class="name-title">{{ record.name }}</div>
-                <div class="name-description">{{ record.description }}</div>
-              </div>
+        <div class="card-header">
+          <div class="card-title-section">
+            <h3 class="card-title">{{ kb.name }}</h3>
+            <p class="card-description">{{ kb.description || 'No description' }}</p>
+          </div>
+          <div class="card-actions">
+            <a-button type="text" size="small" @click="handleEdit(kb)">
+              Edit
+            </a-button>
+            <a-popconfirm
+              title="Are you sure you want to delete this knowledge base?"
+              @confirm="handleDelete(kb)"
+            >
+              <a-button type="text" danger size="small">
+                Delete
+              </a-button>
+            </a-popconfirm>
+          </div>
+        </div>
+
+        <div class="card-stats">
+          <div class="stat-item">
+            <FileTextOutlined class="stat-icon" />
+            <div class="stat-content">
+              <span class="stat-value">{{ kb.document_count || kb.documents.length }}</span>
+              <span class="stat-label">Documents</span>
             </div>
-          </template>
-          <template v-else-if="column.key === 'type'">
-            <a-tag :color="getTypeColor(record.type)">
-              {{ getTypeName(record.type) }}
-            </a-tag>
-          </template>
-          <template v-else-if="column.key === 'documentCount'">
-            <span class="number-cell">{{ formatNumber(record.documentCount) }}</span>
-          </template>
-          <template v-else-if="column.key === 'vectorDimension'">
-            <span class="number-cell">{{ record.vectorDimension }}</span>
-          </template>
-          <template v-else-if="column.key === 'status'">
-            <a-tag :color="record.status === 'active' ? 'success' : 'default'">
-              {{ record.status === 'active' ? t('views_RagKnowledgeBaseView.active') : t('views_RagKnowledgeBaseView.inactive') }}
-            </a-tag>
-          </template>
-          <template v-else-if="column.key === 'createTime'">
-            <span class="time-cell">{{ record.createTime }}</span>
-          </template>
-          <template v-else-if="column.key === 'action'">
-            <div class="action-buttons">
-              <a-button type="link" size="small" @click="handleUploadDocuments(record)">
-                <template #icon>
-                  <UploadOutlined />
-                </template>
-                {{ t('views_RagKnowledgeBaseView.upload') }}
-              </a-button>
-              <a-button type="link" size="small" @click="handleViewDocuments(record)">
-                <template #icon>
-                  <EyeOutlined />
-                </template>
-                {{ t('views_RagKnowledgeBaseView.view') }}
-              </a-button>
-              <a-button type="link" size="small" @click="handleEdit(record)">
-                <template #icon>
-                  <EditOutlined />
-                </template>
-                {{ t('views_RagKnowledgeBaseView.edit') }}
-              </a-button>
-              <a-popconfirm
-                :title="t('views_RagKnowledgeBaseView.deleteConfirm')"
-                @confirm="handleDelete(record)"
-              >
-                <a-button type="link" danger size="small">
-                  <template #icon>
-                    <DeleteOutlined />
-                  </template>
-                  {{ t('views_RagKnowledgeBaseView.delete') }}
-                </a-button>
-              </a-popconfirm>
+          </div>
+          <div class="stat-item">
+            <DatabaseOutlined class="stat-icon" />
+            <div class="stat-content">
+              <span class="stat-value">{{ kb.chunk_count || 0 }}</span>
+              <span class="stat-label">Chunks</span>
             </div>
-          </template>
-        </template>
-      </a-table>
-    </a-card>
+          </div>
+        </div>
+
+        <div class="card-documents">
+          <h4 class="documents-title">Recent Documents</h4>
+          <div class="documents-grid">
+            <div
+              v-for="doc in kb.documents.slice(0, 5)"
+              :key="doc.id"
+              class="document-item"
+              @click="handleViewDocument(kb, doc)"
+            >
+              <FileTextOutlined class="document-icon" />
+              <span class="document-name">{{ doc.file_name }}</span>
+            </div>
+            <div
+              v-if="kb.documents.length > 5"
+              class="document-item view-all"
+              @click="handleViewKnowledgeBase(kb)"
+            >
+              <span class="document-count">+{{ kb.documents.length - 5 }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-footer">
+          <a-button block @click="handleViewKnowledgeBase(kb)">
+            View Details
+          </a-button>
+        </div>
+      </div>
+    </div>
 
     <!-- 创建/编辑知识库模态框 -->
     <a-modal
       v-model:open="createModalVisible"
       :title="editingKnowledgeBase ? t('views_RagKnowledgeBaseView.editKnowledgeBase') : t('views_RagKnowledgeBaseView.createKnowledgeBase')"
+      :confirm-loading="isLoading"
       @ok="handleSubmitKnowledgeBase"
       @cancel="handleCancelKnowledgeBase"
     >
-      <a-form :model="knowledgeBaseForm" layout="vertical">
-        <a-form-item :label="t('views_RagKnowledgeBaseView.name')" required>
-          <a-input v-model:value="knowledgeBaseForm.name" :placeholder="t('views_RagKnowledgeBaseView.namePlaceholder')" />
+      <a-form layout="vertical">
+        <a-form-item :label="t('views_RagKnowledgeBaseView.name')">
+          <a-input
+            v-model:value="knowledgeBaseForm.name"
+            :placeholder="t('views_RagKnowledgeBaseView.namePlaceholder')"
+          />
         </a-form-item>
         <a-form-item :label="t('views_RagKnowledgeBaseView.description')">
           <a-textarea
             v-model:value="knowledgeBaseForm.description"
             :placeholder="t('views_RagKnowledgeBaseView.descriptionPlaceholder')"
-            :rows="3"
-          />
-        </a-form-item>
-        <a-form-item :label="t('views_RagKnowledgeBaseView.type')" required>
-          <a-select v-model:value="knowledgeBaseForm.type" :placeholder="t('views_RagKnowledgeBaseView.selectType')">
-            <a-select-option value="medical_literature">{{ t('views_RagKnowledgeBaseView.medicalLiterature') }}</a-select-option>
-            <a-select-option value="clinical_guideline">{{ t('views_RagKnowledgeBaseView.clinicalGuideline') }}</a-select-option>
-            <a-select-option value="case_library">{{ t('views_RagKnowledgeBaseView.caseLibrary') }}</a-select-option>
-          </a-select>
-        </a-form-item>
-        <a-form-item :label="t('views_RagKnowledgeBaseView.vectorDimension')" required>
-          <a-input-number
-            v-model:value="knowledgeBaseForm.vectorDimension"
-            :min="128"
-            :max="2048"
-            :step="128"
-            style="width: 100%"
+            :rows="4"
           />
         </a-form-item>
       </a-form>
-    </a-modal>
-
-    <!-- 上传文档模态框 -->
-    <a-modal
-      v-model:open="uploadModalVisible"
-      :title="t('views_RagKnowledgeBaseView.uploadDocuments')"
-      width="800px"
-      @ok="handleConfirmUpload"
-      @cancel="handleCancelUpload"
-    >
-      <div v-if="currentKnowledgeBase" class="upload-content">
-        <div class="upload-info">
-          <a-descriptions :column="2" size="small" bordered>
-            <a-descriptions-item :label="t('views_RagKnowledgeBaseView.knowledgeBaseName')">
-              {{ currentKnowledgeBase.name }}
-            </a-descriptions-item>
-            <a-descriptions-item :label="t('views_RagKnowledgeBaseView.currentDocuments')">
-              {{ formatNumber(currentKnowledgeBase.documentCount) }}
-            </a-descriptions-item>
-            <a-descriptions-item :label="t('views_RagKnowledgeBaseView.vectorDimension')" :span="2">
-              {{ currentKnowledgeBase.vectorDimension }}
-            </a-descriptions-item>
-          </a-descriptions>
-        </div>
-
-        <a-upload-dragger
-          v-model:file-list="fileList"
-          :multiple="true"
-          :before-upload="beforeUpload"
-          accept=".pdf"
-          class="upload-dragger"
-        >
-          <p class="ant-upload-drag-icon">
-            <InboxOutlined />
-          </p>
-          <p class="ant-upload-text">
-            {{ t('views_RagKnowledgeBaseView.uploadText') }}
-          </p>
-          <p class="ant-upload-hint">
-            {{ t('views_RagKnowledgeBaseView.uploadHint') }}
-          </p>
-        </a-upload-dragger>
-
-        <div v-if="fileList.length > 0" class="file-list">
-          <div class="file-list-header">
-            <span>{{ t('views_RagKnowledgeBaseView.selectedFiles') }} ({{ fileList.length }})</span>
-            <a-button type="link" size="small" @click="fileList = []">
-              {{ t('views_RagKnowledgeBaseView.clearAll') }}
-            </a-button>
-          </div>
-          <div class="file-items">
-            <div v-for="(file, index) in fileList" :key="index" class="file-item">
-              <FileTextOutlined class="file-icon" />
-              <span class="file-name">{{ file.name }}</span>
-              <span class="file-size">{{ formatFileSize(file.size || 0) }}</span>
-              <a-button type="link" danger size="small" @click="removeFile(index)">
-                <DeleteOutlined />
-              </a-button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </a-modal>
-
-    <!-- 文档列表模态框 -->
-    <a-modal
-      v-model:open="documentsModalVisible"
-      :title="t('views_RagKnowledgeBaseView.documentsList')"
-      width="900px"
-      :footer="null"
-    >
-      <div v-if="currentKnowledgeBase" class="documents-content">
-        <a-table
-          :columns="documentColumns"
-          :data-source="currentDocuments"
-          :pagination="{ pageSize: 10 }"
-          :row-key="(record: any) => record.id"
-        >
-          <template #bodyCell="{ column, record }: { column: any; record: any }">
-            <template v-if="column.key === 'name'">
-              <div class="document-name">
-                <FilePdfOutlined class="document-icon" />
-                <span>{{ record.name }}</span>
-              </div>
-            </template>
-            <template v-else-if="column.key === 'size'">
-              <span>{{ formatFileSize(record.size) }}</span>
-            </template>
-            <template v-else-if="column.key === 'status'">
-              <a-tag :color="getDocumentStatusColor(record.status)">
-                {{ getDocumentStatusText(record.status) }}
-              </a-tag>
-            </template>
-            <template v-else-if="column.key === 'action'">
-              <a-button type="link" size="small" @click="handleAnalyzeDocument(record)">
-                <template #icon>
-                  <ThunderboltOutlined />
-                </template>
-                {{ t('views_RagKnowledgeBaseView.analyze') }}
-              </a-button>
-              <a-button type="link" danger size="small" @click="handleDeleteDocument(record)">
-                <template #icon>
-                  <DeleteOutlined />
-                </template>
-                {{ t('views_RagKnowledgeBaseView.delete') }}
-              </a-button>
-            </template>
-          </template>
-        </a-table>
-      </div>
     </a-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { message } from 'ant-design-vue'
 import {
-  FileAddOutlined,
+  DatabaseOutlined,
   PlusOutlined,
-  FileTextOutlined,
-  ThunderboltOutlined,
-  SearchOutlined,
-  ReloadOutlined,
-  UploadOutlined,
-  EyeOutlined,
-  EditOutlined,
-  DeleteOutlined,
-  InboxOutlined,
-  FilePdfOutlined
+  FileTextOutlined
 } from '@ant-design/icons-vue'
-import type { UploadFile } from 'ant-design-vue'
+import type { KnowledgeBase, Document } from '../types/knowledge-base'
 
 const { t } = useI18n()
+const router = useRouter()
 
-// 加载状态
-const loading = ref(false)
+// 状态管理
+const loading = ref(true)
+const isLoading = ref(false)
+const error = ref<string | null>(null)
+const knowledgeBases = ref<KnowledgeBase[]>([])
 
-// 搜索和筛选
-const searchKeyword = ref('')
-const statusFilter = ref('')
-const typeFilter = ref('')
-
-// 选中的行
-const selectedRowKeys = ref<string[]>([])
-
-// 知识库列表数据
-const knowledgeBases = ref([
-  {
-    id: '1',
-    name: '心血管疾病诊疗指南',
-    description: '包含常见心血管疾病的诊断和治疗方案',
-    type: 'clinical_guideline',
-    documentCount: 1234,
-    vectorDimension: 768,
-    status: 'active',
-    createTime: '2024-01-10 10:30'
-  },
-  {
-    id: '2',
-    name: '肿瘤学文献库',
-    description: '收录最新肿瘤学研究论文和临床报告',
-    type: 'medical_literature',
-    documentCount: 5678,
-    vectorDimension: 1536,
-    status: 'active',
-    createTime: '2024-01-08 14:20'
-  },
-  {
-    id: '3',
-    name: '罕见病病例库',
-    description: '收集各类罕见疾病的诊断和治疗案例',
-    type: 'case_library',
-    documentCount: 892,
-    vectorDimension: 768,
-    status: 'active',
-    createTime: '2024-01-05 09:15'
-  },
-  {
-    id: '4',
-    name: '儿科疾病诊疗指南',
-    description: '涵盖儿科常见疾病的诊断和治疗规范',
-    type: 'clinical_guideline',
-    documentCount: 2345,
-    vectorDimension: 1024,
-    status: 'active',
-    createTime: '2024-01-03 16:45'
-  },
-  {
-    id: '5',
-    name: '神经内科文献库',
-    description: '神经内科相关医学文献和研究资料',
-    type: 'medical_literature',
-    documentCount: 3456,
-    vectorDimension: 1536,
-    status: 'inactive',
-    createTime: '2023-12-28 11:20'
-  }
-])
-
-// 表格列定义
-const columns = [
-  {
-    title: t('views_RagKnowledgeBaseView.name'),
-    key: 'name',
-    width: '30%'
-  },
-  {
-    title: t('views_RagKnowledgeBaseView.type'),
-    key: 'type',
-    width: '12%'
-  },
-  {
-    title: t('views_RagKnowledgeBaseView.documentCount'),
-    key: 'documentCount',
-    width: '12%',
-    align: 'right' as const
-  },
-  {
-    title: t('views_RagKnowledgeBaseView.vectorDimension'),
-    key: 'vectorDimension',
-    width: '12%',
-    align: 'right' as const
-  },
-  {
-    title: t('views_RagKnowledgeBaseView.status'),
-    key: 'status',
-    width: '10%'
-  },
-  {
-    title: t('views_RagKnowledgeBaseView.createTime'),
-    key: 'createTime',
-    width: '14%'
-  },
-  {
-    title: t('views_RagKnowledgeBaseView.action'),
-    key: 'action',
-    width: '10%'
-  }
-]
-
-// 文档表格列定义
-const documentColumns = [
-  {
-    title: t('views_RagKnowledgeBaseView.documentName'),
-    key: 'name',
-    width: '40%'
-  },
-  {
-    title: t('views_RagKnowledgeBaseView.fileSize'),
-    key: 'size',
-    width: '15%'
-  },
-  {
-    title: t('views_RagKnowledgeBaseView.status'),
-    key: 'status',
-    width: '15%'
-  },
-  {
-    title: t('views_RagKnowledgeBaseView.uploadTime'),
-    key: 'uploadTime',
-    width: '20%'
-  },
-  {
-    title: t('views_RagKnowledgeBaseView.action'),
-    key: 'action',
-    width: '10%'
-  }
-]
-
-// 分页配置
-const paginationConfig = {
-  current: 1,
-  pageSize: 10,
-  total: 0,
-  showSizeChanger: true,
-  showTotal: (total: number) => `${t('views_RagKnowledgeBaseView.total')} ${total} ${t('views_RagKnowledgeBaseView.records')}`
-}
-
-// 过滤后的知识库列表
-const filteredKnowledgeBases = computed(() => {
-  let result = knowledgeBases.value
-
-  if (searchKeyword.value) {
-    const keyword = searchKeyword.value.toLowerCase()
-    result = result.filter(
-      kb =>
-        kb.name.toLowerCase().includes(keyword) ||
-        kb.description.toLowerCase().includes(keyword)
-    )
-  }
-
-  if (statusFilter.value) {
-    result = result.filter(kb => kb.status === statusFilter.value)
-  }
-
-  if (typeFilter.value) {
-    result = result.filter(kb => kb.type === typeFilter.value)
-  }
-
-  paginationConfig.total = result.length
-  return result
-})
-
-// 当前知识库
-const currentKnowledgeBase = ref<any>(null)
-
-// 模态框显示状态
+// 模态框状态
 const createModalVisible = ref(false)
-const uploadModalVisible = ref(false)
-const documentsModalVisible = ref(false)
+const editingKnowledgeBase = ref<KnowledgeBase | null>(null)
 
-// 编辑中的知识库
-const editingKnowledgeBase = ref<any>(null)
-
-// 知识库表单
+// 表单数据
 const knowledgeBaseForm = ref({
   name: '',
-  description: '',
-  type: '',
-  vectorDimension: 768
+  description: ''
 })
 
-// 文件列表
-const fileList = ref<UploadFile[]>([])
+// 获取知识库列表（静态演示数据）
+const fetchKnowledgeBases = async () => {
+  loading.value = true
+  error.value = null
 
-// 当前文档列表
-const currentDocuments = ref([
-  {
-    id: '1',
-    name: '心血管疾病诊疗指南_2024版.pdf',
-    size: 2456789,
-    status: 'processed',
-    uploadTime: '2024-01-10 10:30'
-  },
-  {
-    id: '2',
-    name: '急性心肌梗死诊断与治疗.pdf',
-    size: 1234567,
-    status: 'processing',
-    uploadTime: '2024-01-10 11:20'
-  },
-  {
-    id: '3',
-    name: '高血压管理指南.pdf',
-    size: 3456789,
-    status: 'processed',
-    uploadTime: '2024-01-09 14:15'
-  }
-])
+  // 模拟API延迟
+  await new Promise(resolve => setTimeout(resolve, 500))
 
-// 方法
+  // 静态演示数据
+  knowledgeBases.value = [
+    {
+      id: 1,
+      name: '医学文献知识库',
+      description: '包含最新的医学研究文献、临床试验报告和医学期刊文章',
+      created_at: '2024-01-15T10:30:00Z',
+      updated_at: '2024-03-20T14:22:00Z',
+      document_count: 128,
+      chunk_count: 15240,
+      documents: [
+        {
+          id: 1,
+          file_name: '心血管疾病诊疗指南2024.pdf',
+          file_path: '/uploads/cardio_guidelines_2024.pdf',
+          file_size: 2458624,
+          content_type: 'application/pdf',
+          knowledge_base_id: 1,
+          created_at: '2024-03-15T10:30:00Z',
+          updated_at: '2024-03-20T14:22:00Z',
+          processing_tasks: []
+        },
+        {
+          id: 2,
+          file_name: '糖尿病管理手册.docx',
+          file_path: '/uploads/diabetes_manual.docx',
+          file_size: 1524288,
+          content_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          knowledge_base_id: 1,
+          created_at: '2024-03-18T09:15:00Z',
+          updated_at: '2024-03-19T11:45:00Z',
+          processing_tasks: []
+        }
+      ]
+    },
+    {
+      id: 2,
+      name: '临床指南库',
+      description: '各种疾病的临床诊断和治疗指南，包括国际标准和本地化建议',
+      created_at: '2024-02-01T09:15:00Z',
+      updated_at: '2024-03-18T11:45:00Z',
+      document_count: 56,
+      chunk_count: 8340,
+      documents: [
+        {
+          id: 3,
+          file_name: '高血压治疗方案.txt',
+          file_path: '/uploads/hypertension_treatment.txt',
+          file_size: 45678,
+          content_type: 'text/plain',
+          knowledge_base_id: 2,
+          created_at: '2024-03-20T16:00:00Z',
+          updated_at: '2024-03-20T16:05:00Z',
+          processing_tasks: []
+        }
+      ]
+    },
+    {
+      id: 3,
+      name: '药物数据库',
+      description: '药品说明书、药物相互作用、副作用和用法用量信息',
+      created_at: '2024-02-20T16:00:00Z',
+      updated_at: '2024-03-19T13:30:00Z',
+      document_count: 234,
+      chunk_count: 35100,
+      documents: []
+    }
+  ]
+
+  loading.value = false
+}
+
+// 创建知识库
 const handleCreateKnowledgeBase = () => {
   editingKnowledgeBase.value = null
   knowledgeBaseForm.value = {
     name: '',
-    description: '',
-    type: '',
-    vectorDimension: 768
+    description: ''
   }
   createModalVisible.value = true
 }
 
-const handleEdit = (record: any) => {
-  editingKnowledgeBase.value = record
-  knowledgeBaseForm.value = {
-    name: record.name,
-    description: record.description,
-    type: record.type,
-    vectorDimension: record.vectorDimension
+// 提交知识库表单（静态演示）
+const handleSubmitKnowledgeBase = async () => {
+  if (!knowledgeBaseForm.value.name) {
+    message.error('Please enter a name')
+    return
   }
-  createModalVisible.value = true
-}
 
-const handleSubmitKnowledgeBase = () => {
-  // 静态页面，仅展示
-  console.log('提交知识库:', knowledgeBaseForm.value)
+  isLoading.value = true
+
+  // 模拟API延迟
+  await new Promise(resolve => setTimeout(resolve, 500))
+
+  if (editingKnowledgeBase.value) {
+    // 编辑现有知识库
+    const index = knowledgeBases.value.findIndex(kb => kb.id === editingKnowledgeBase.value!.id)
+    if (index !== -1) {
+      knowledgeBases.value[index] = {
+        ...knowledgeBases.value[index],
+        name: knowledgeBaseForm.value.name,
+        description: knowledgeBaseForm.value.description,
+        updated_at: new Date().toISOString()
+      }
+    }
+    message.success('Knowledge base updated successfully')
+  } else {
+    // 创建新知识库
+    const newKB: KnowledgeBase = {
+      id: Date.now(),
+      name: knowledgeBaseForm.value.name,
+      description: knowledgeBaseForm.value.description,
+      documents: [],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      document_count: 0,
+      chunk_count: 0
+    }
+
+    knowledgeBases.value.push(newKB)
+    message.success('Knowledge base created successfully')
+  }
+
+  isLoading.value = false
   createModalVisible.value = false
 }
 
+// 编辑知识库
+const handleEdit = (kb: KnowledgeBase) => {
+  editingKnowledgeBase.value = kb
+  knowledgeBaseForm.value = {
+    name: kb.name,
+    description: kb.description || ''
+  }
+  createModalVisible.value = true
+}
+
+// 取消编辑
 const handleCancelKnowledgeBase = () => {
   createModalVisible.value = false
   editingKnowledgeBase.value = null
 }
 
-const handleUploadDocuments = (record: any) => {
-  currentKnowledgeBase.value = record
-  fileList.value = []
-  uploadModalVisible.value = true
+// 删除知识库（静态演示）
+const handleDelete = (kb: KnowledgeBase) => {
+  // 静态演示：删除知识库
+  knowledgeBases.value = knowledgeBases.value.filter(item => item.id !== kb.id)
+  message.success('Knowledge base deleted successfully')
 }
 
-const handleConfirmUpload = () => {
-  // 静态页面，仅展示
-  console.log('上传文档:', fileList.value)
-  uploadModalVisible.value = false
+// 查看知识库详情
+const handleViewKnowledgeBase = (kb: KnowledgeBase) => {
+  router.push(`/knowledge-base/${kb.id}`)
 }
 
-const handleCancelUpload = () => {
-  uploadModalVisible.value = false
-  fileList.value = []
+// 测试检索
+const handleTestRetrieval = (kb: KnowledgeBase) => {
+  router.push(`/knowledge-base/${kb.id}/test`)
 }
 
-const handleViewDocuments = (record: any) => {
-  currentKnowledgeBase.value = record
-  documentsModalVisible.value = true
+// 查看文档详情
+const handleViewDocument = (kb: KnowledgeBase, doc: Document) => {
+  router.push(`/knowledge-base/${kb.id}/document/${doc.id}`)
 }
 
-const handleDelete = (record: any) => {
-  // 静态页面，仅展示
-  console.log('删除知识库:', record)
+// 工具函数
+const isPDF = (contentType: string): boolean => {
+  return contentType.toLowerCase().includes('pdf')
 }
 
-const handleSearch = () => {
-  // 静态页面，仅展示
-  console.log('搜索')
+const isWord = (contentType: string): boolean => {
+  return contentType.toLowerCase().includes('word') ||
+         contentType.toLowerCase().includes('docx')
 }
 
-const handleReset = () => {
-  searchKeyword.value = ''
-  statusFilter.value = ''
-  typeFilter.value = ''
+const formatDate = (dateString: string): string => {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffSecs = Math.floor(diffMs / 1000)
+  const diffMins = Math.floor(diffSecs / 60)
+  const diffHours = Math.floor(diffMins / 60)
+  const diffDays = Math.floor(diffHours / 24)
+
+  if (diffSecs < 60) return 'just now'
+  if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`
+  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`
+  if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`
+
+  return date.toLocaleDateString()
 }
 
-const handleAnalyzeDocument = (record: any) => {
-  // 静态页面，仅展示
-  console.log('分析文档:', record)
-}
-
-const handleDeleteDocument = (record: any) => {
-  // 静态页面，仅展示
-  console.log('删除文档:', record)
-}
-
-const onSelectChange = (keys: string[]) => {
-  selectedRowKeys.value = keys
-}
-
-const beforeUpload = (file: File) => {
-  // 只允许 PDF 文件
-  const isPDF = file.type === 'application/pdf'
-  if (!isPDF) {
-    // 这里应该显示错误消息
-    return false
-  }
-  return false // 阻止自动上传
-}
-
-const removeFile = (index: number) => {
-  fileList.value.splice(index, 1)
-}
-
-const getTypeColor = (type: string) => {
-  const colors: Record<string, string> = {
-    medical_literature: 'blue',
-    clinical_guideline: 'green',
-    case_library: 'orange'
-  }
-  return colors[type] || 'default'
-}
-
-const getTypeName = (type: string) => {
-  const names: Record<string, string> = {
-    medical_literature: t('views_RagKnowledgeBaseView.medicalLiterature'),
-    clinical_guideline: t('views_RagKnowledgeBaseView.clinicalGuideline'),
-    case_library: t('views_RagKnowledgeBaseView.caseLibrary')
-  }
-  return names[type] || type
-}
-
-const getDocumentStatusColor = (status: string) => {
-  const colors: Record<string, string> = {
-    processed: 'success',
-    processing: 'processing',
-    failed: 'error'
-  }
-  return colors[status] || 'default'
-}
-
-const getDocumentStatusText = (status: string) => {
-  const texts: Record<string, string> = {
-    processed: t('views_RagKnowledgeBaseView.processed'),
-    processing: t('views_RagKnowledgeBaseView.processing'),
-    failed: t('views_RagKnowledgeBaseView.failed')
-  }
-  return texts[status] || status
-}
-
-const formatNumber = (num: number) => {
-  return num.toLocaleString()
-}
-
-const formatFileSize = (bytes: number) => {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
-}
-
+// 初始化
 onMounted(() => {
-  // 初始化数据
+  fetchKnowledgeBases()
 })
 </script>
 
 <style scoped>
 .rag-knowledge-base-container {
   padding: 24px;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  background: #f0f2f5;
+  min-height: 100vh;
+  background: #f5f5f5;
 }
 
 .page-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 24px;
+  margin-bottom: 32px;
+  gap: 16px;
 }
 
 .page-title {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 0;
-  font-size: 24px;
+  margin: 0 0 8px 0;
+  font-size: 28px;
   font-weight: 600;
-  color: #333;
+  color: #1a1a1a;
 }
 
-.filter-card {
+.page-subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: #666;
+  line-height: 1.5;
+}
+
+.loading-container,
+.error-container,
+.empty-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  padding: 48px;
+  text-align: center;
+}
+
+.loading-text {
+  margin-top: 16px;
+  font-size: 14px;
+  color: #666;
+}
+
+.empty-icon {
+  font-size: 64px;
+  color: #d9d9d9;
   margin-bottom: 16px;
 }
 
-.filter-row {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  flex-wrap: wrap;
+.empty-title {
+  margin: 0 0 8px 0;
+  font-size: 20px;
+  font-weight: 500;
+  color: #333;
 }
 
-.table-card {
-  flex: 1;
+.empty-description {
+  margin: 0;
+  font-size: 14px;
+  color: #666;
+  max-width: 400px;
+  line-height: 1.5;
+}
+
+/* 知识库网格布局 */
+.knowledge-bases-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+/* 知识库卡片 */
+.knowledge-base-card {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  border: 1px solid #e8e8e8;
+  transition: all 0.3s ease;
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  gap: 20px;
 }
 
-.knowledge-base-name {
+.knowledge-base-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-color: #1890ff;
+  transform: translateY(-2px);
+}
+
+.card-header {
   display: flex;
+  justify-content: space-between;
   align-items: flex-start;
-  gap: 12px;
+  gap: 16px;
 }
 
-.name-icon {
-  font-size: 20px;
-  color: #1890ff;
-  margin-top: 2px;
-}
-
-.name-content {
+.card-title-section {
   flex: 1;
   min-width: 0;
 }
 
-.name-title {
-  font-weight: 500;
-  color: #333;
-  margin-bottom: 4px;
-}
-
-.name-description {
-  font-size: 12px;
-  color: #999;
+.card-title {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1a1a;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.number-cell {
-  font-weight: 500;
-  color: #333;
-}
-
-.time-cell {
+.card-description {
+  margin: 0;
+  font-size: 14px;
   color: #666;
-  font-size: 13px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.action-buttons {
+.card-actions {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
-.upload-content {
+.card-stats {
   display: flex;
-  flex-direction: column;
   gap: 24px;
+  padding: 16px 0;
+  border-top: 1px solid #f0f0f0;
+  border-bottom: 1px solid #f0f0f0;
 }
 
-.upload-info {
-  margin-bottom: 8px;
-}
-
-.upload-dragger {
-  margin-top: 16px;
-}
-
-.file-list {
-  margin-top: 16px;
-  border: 1px solid #d9d9d9;
-  border-radius: 4px;
-  padding: 12px;
-  background: #fafafa;
-}
-
-.file-list-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-  font-weight: 500;
-}
-
-.file-items {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.file-item {
+.stat-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px;
-  background: white;
-  border-radius: 4px;
-  border: 1px solid #e8e8e8;
 }
 
-.file-icon {
-  font-size: 18px;
+.stat-icon {
+  font-size: 20px;
   color: #1890ff;
 }
 
-.file-name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.file-size {
-  color: #999;
-  font-size: 12px;
-}
-
-.documents-content {
-  margin-top: 16px;
-}
-
-.document-name {
+.stat-content {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stat-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1a1a;
+  line-height: 1;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* 文档部分 */
+.card-documents {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.documents-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+}
+
+.documents-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
 
+.document-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px 8px;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  background: #fafafa;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-height: 100px;
+}
+
+.document-item:hover {
+  background: #f0f7ff;
+  border-color: #1890ff;
+}
+
+.document-item.view-all {
+  background: #e6f7ff;
+  border-color: #1890ff;
+}
+
+.document-item.view-all:hover {
+  background: #bae7ff;
+}
+
 .document-icon {
-  font-size: 16px;
-  color: #f5222d;
+  font-size: 24px;
+  color: #1890ff;
+}
+
+.document-name {
+  font-size: 12px;
+  color: #333;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+  line-height: 1.2;
+}
+
+.document-count {
+  font-size: 10px;
+  color: #666;
+  font-weight: 500;
 }
 
 /* 响应式设计 */
 @media (max-width: 768px) {
-  .filter-row {
-    flex-direction: column;
-    align-items: stretch;
+  .rag-knowledge-base-container {
+    padding: 16px;
   }
 
-  .filter-row > * {
-    width: 100% !important;
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .page-title {
+    font-size: 24px;
+  }
+
+  .knowledge-bases-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .card-stats {
+    gap: 16px;
+  }
+
+  .documents-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .documents-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .card-header {
+    flex-direction: column;
+  }
+
+  .card-actions {
+    width: 100%;
+    justify-content: flex-end;
   }
 }
 </style>
