@@ -26,10 +26,26 @@ class QwenSessionManager:
         self.qwen_path = os.getenv("QWEN_CODE_PATH", qwen_path)
         self.history_provider = history_provider
 
+        # 检查是否使用WSL
+        self.use_wsl = os.getenv("QWEN_USE_WSL", "").lower() == "true"
+
         # 创建临时文件目录
-        self.temp_dir = Path(tempfile.gettempdir()) / "qwen_sessions"
-        self.temp_dir.mkdir(exist_ok=True)
-        logger.info(f"Qwen session temp directory: {self.temp_dir}")
+        if self.use_wsl:
+            # 使用WSL的临时目录 /tmp，但在Windows上不能直接使用绝对路径
+            # 我们需要在WSL环境中创建目录
+            self.temp_dir_str = "/tmp/qwen_sessions"
+            self.temp_dir = Path(self.temp_dir_str)  # 用于路径转换
+            # 添加WSL前缀到qwen命令
+            self.qwen_path = f"wsl {self.qwen_path}"
+
+            # 在WSL中创建临时目录
+            import subprocess
+            subprocess.run(["wsl", "mkdir", "-p", self.temp_dir_str], check=True)
+        else:
+            # 使用系统临时目录
+            self.temp_dir = Path(tempfile.gettempdir()) / "qwen_sessions"
+            self.temp_dir.mkdir(exist_ok=True, parents=True)
+        logger.info(f"Qwen session temp directory: {self.temp_dir} (WSL: {self.use_wsl})")
 
     @staticmethod
     async def test_qwen_command(qwen_path: str) -> dict:
@@ -109,11 +125,26 @@ class QwenSessionManager:
             history = []
 
         # 将历史记录写入临时文件
-        memory_file_path = self.temp_dir / f"{session_id}.md" if session_id else self.temp_dir / "temp.md"
         memory_content = self._build_memory_content(history)
 
-        # 写入临时文件
-        memory_file_path.write_text(memory_content, encoding='utf-8')
+        if self.use_wsl:
+            # WSL模式：使用WSL路径
+            memory_file_path_str = f"{self.temp_dir_str}/{session_id}.md" if session_id else f"{self.temp_dir_str}/temp.md"
+            memory_file_path = Path(memory_file_path_str)  # 用于日志显示
+
+            # 通过WSL写入文件
+            import subprocess
+            subprocess.run(
+                ["wsl", "bash", "-c", f"cat > {memory_file_path_str} << 'EOF'\n{memory_content}\nEOF"],
+                check=True,
+                capture_output=True,
+                text=True
+            )
+        else:
+            # Windows模式：直接写入
+            memory_file_path = self.temp_dir / f"{session_id}.md" if session_id else self.temp_dir / "temp.md"
+            memory_file_path.write_text(memory_content, encoding='utf-8')
+
         logger.info(f"Memory file written to: {memory_file_path}")
         logger.info(f"Memory file content length: {len(memory_content)} 字符")
 
@@ -160,6 +191,24 @@ class QwenSessionManager:
 
         return memory_content
 
+    def _convert_to_wsl_path(self, windows_path: Path) -> str:
+        """
+        将Windows路径转换为WSL路径
+
+        Args:
+            windows_path: Windows路径对象
+
+        Returns:
+            WSL格式的路径字符串
+        """
+        path_str = str(windows_path)
+        # 将 C:\path\to\file 转换为 /mnt/c/path/to/file
+        if len(path_str) >= 2 and path_str[1] == ':':
+            drive = path_str[0].lower()
+            rest = path_str[2:].replace('\\', '/')
+            return f"/mnt/{drive}{rest}"
+        return path_str
+
     async def _execute_with_memory_file(self, memory_file_path: Path, current_prompt: str) -> AsyncGenerator[str, None]:
         """
         使用临时文件执行命令：type file | qwen -p "当前prompt"
@@ -179,9 +228,14 @@ class QwenSessionManager:
             # 注意：Windows cmd 中的转义规则比较复杂，这里处理常见情况
             escaped_prompt = current_prompt.replace('"', '""')  # 双引号转义为两个双引号
 
-            # 构建命令（Windows: type file | qwen -p "prompt"）
-            # Linux/Mac: cat file | qwen -p "prompt"
-            if os.name == 'nt':  # Windows
+            # 构建命令
+            if self.use_wsl:
+                # WSL环境：路径已经是WSL格式
+                wsl_path = str(memory_file_path)
+                # WSL shell 中需要处理单引号
+                escaped_prompt_linux = escaped_prompt.replace("'", "'\\''")
+                command = f'wsl bash -c "cat {wsl_path} | qwen -p \'{escaped_prompt_linux}\'"'
+            elif os.name == 'nt':  # Windows
                 command = f'type "{memory_file_path}" | "{self.qwen_path}" -p "{escaped_prompt}"'
             else:  # Linux/Mac
                 # Linux shell 中需要处理单引号
@@ -239,18 +293,32 @@ class QwenSessionManager:
         Args:
             session_id: 会话ID
         """
-        memory_file_path = self.temp_dir / f"{session_id}.md"
-        if memory_file_path.exists():
-            memory_file_path.unlink()
+        if self.use_wsl:
+            # WSL模式：使用wsl命令删除
+            import subprocess
+            memory_file_path = f"{self.temp_dir_str}/{session_id}.md"
+            subprocess.run(["wsl", "rm", "-f", memory_file_path], check=False)
             logger.info(f"Deleted memory file: {memory_file_path}")
+        else:
+            # Windows模式：直接删除
+            memory_file_path = self.temp_dir / f"{session_id}.md"
+            if memory_file_path.exists():
+                memory_file_path.unlink()
+                logger.info(f"Deleted memory file: {memory_file_path}")
 
     async def clear_all_session_files(self):
         """清除所有会话临时文件"""
-        # 删除所有临时文件
-        for file_path in self.temp_dir.glob("*.md"):
-            try:
-                file_path.unlink()
-                logger.info(f"Deleted memory file: {file_path}")
-            except Exception as e:
-                logger.error(f"Error deleting memory file {file_path}: {e}")
-        logger.info("Cleared all session memory files")
+        if self.use_wsl:
+            # WSL模式：使用wsl命令删除
+            import subprocess
+            subprocess.run(["wsl", "rm", "-rf", f"{self.temp_dir_str}/*.md"], check=False)
+            logger.info(f"Cleared all session memory files in {self.temp_dir_str}")
+        else:
+            # Windows模式：直接删除
+            for file_path in self.temp_dir.glob("*.md"):
+                try:
+                    file_path.unlink()
+                    logger.info(f"Deleted memory file: {file_path}")
+                except Exception as e:
+                    logger.error(f"Error deleting memory file {file_path}: {e}")
+            logger.info("Cleared all session memory files")
