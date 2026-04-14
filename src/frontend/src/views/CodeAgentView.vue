@@ -1,5 +1,5 @@
 <template>
-  <div class="medical-consultation-container">
+  <div class="code-agent-container">
     <!-- 主要内容区域 -->
     <div class="content-grid">
       <!-- 左侧：对话列表 -->
@@ -7,12 +7,12 @@
         <a-card :loading="loadingConversations" class="list-card">
           <template #title>
             <div class="card-title-row">
-              <span>{{ t('views_MedicalConsultationView.conversationList') }}</span>
+              <span>{{ t('views_CodeAgentView.conversationList') }}</span>
               <a-button type="primary" size="small" @click="showNewConversationModal">
                 <template #icon>
                   <PlusOutlined />
                 </template>
-                {{ t('views_MedicalConsultationView.newConsultation') }}
+                {{ t('views_CodeAgentView.newSession') }}
               </a-button>
             </div>
           </template>
@@ -20,7 +20,7 @@
           <!-- 搜索框 -->
           <a-input-search
             v-model:value="searchKeyword"
-            :placeholder="t('views_MedicalConsultationView.searchPlaceholder')"
+            :placeholder="t('views_CodeAgentView.searchPlaceholder')"
             allow-clear
             class="search-input"
             @search="handleSearch"
@@ -37,7 +37,7 @@
             >
               <div class="conversation-header">
                 <span class="patient-name">
-                  {{ conversation.title || conversation.patient_name || '未命名会话' }}
+                  {{ conversation.title || '未命名会话' }}
                 </span>
                 <span class="conversation-time">{{ formatTime(conversation.updated_at) }}</span>
               </div>
@@ -57,7 +57,7 @@
           <!-- 空状态 -->
           <a-empty
             v-if="filteredConversations.length === 0 && !loadingConversations"
-            :description="t('views_MedicalConsultationView.noConversations')"
+            :description="t('views_CodeAgentView.noConversations')"
             class="empty-state"
           />
         </a-card>
@@ -66,27 +66,7 @@
       <!-- 右侧：对话详情 -->
       <div class="conversation-detail-section">
         <a-card v-if="selectedConversation" class="detail-card">
-          <!-- 患者信息卡片 -->
-          <a-descriptions
-            :title="t('views_MedicalConsultationView.patientInfo')"
-            bordered
-            :column="2"
-            size="small"
-            class="patient-info"
-          >
-            <a-descriptions-item :label="t('views_MedicalConsultationView.patientName')">
-              {{ selectedConversation.patient_name || '-' }}
-            </a-descriptions-item>
-            <a-descriptions-item :label="t('views_MedicalConsultationView.gender')">
-              {{ selectedConversation.gender || '-' }}
-            </a-descriptions-item>
-            <a-descriptions-item :label="t('views_MedicalConsultationView.age')">
-              {{ selectedConversation.age || '-' }}
-            </a-descriptions-item>
-            <a-descriptions-item :label="t('views_MedicalConsultationView.consultationTime')">
-              {{ formatTime(selectedConversation.created_at) }}
-            </a-descriptions-item>
-          </a-descriptions>
+
 
           <!-- 对话内容区域 -->
           <div class="messages-container" ref="messagesContainer">
@@ -98,7 +78,7 @@
             >
               <div class="message-header">
                 <span class="message-sender">
-                  {{ message.role === 'user' ? t('views_MedicalConsultationView.patient') : t('views_MedicalConsultationView.aiAssistant') }}
+                  {{ message.role === 'user' ? t('views_CodeAgentView.patient') : t('views_CodeAgentView.aiAssistant') }}
                 </span>
                 <span class="message-time">{{ formatTime(message.created_at) }}</span>
               </div>
@@ -113,7 +93,7 @@
             <div class="input-row">
               <a-input
                 v-model:value="inputMessage"
-                :placeholder="t('views_MedicalConsultationView.inputPlaceholder')"
+                :placeholder="t('views_CodeAgentView.inputPlaceholder')"
                 allow-clear
                 class="message-input"
                 @press-enter="handleSendMessage"
@@ -123,7 +103,7 @@
                 <template #icon>
                   <SendOutlined />
                 </template>
-                {{ t('views_MedicalConsultationView.send') }}
+                {{ t('views_CodeAgentView.send') }}
               </a-button>
             </div>
           </div>
@@ -132,7 +112,7 @@
         <!-- 空状态 -->
         <a-empty
           v-else-if="!loadingConversations"
-          :description="t('views_MedicalConsultationView.selectConversation')"
+          :description="t('views_CodeAgentView.selectConversation')"
           class="empty-state"
         />
       </div>
@@ -141,25 +121,16 @@
     <!-- 新建会话模态框 -->
     <a-modal
       v-model:open="newConversationModalVisible"
-      :title="t('views_MedicalConsultationView.newConsultation')"
+      :title="t('views_CodeAgentView.newSession')"
       @ok="handleCreateConversation"
       :confirm-loading="creatingConversation"
     >
       <a-form :model="newConversationForm" layout="vertical">
-        <a-form-item :label="t('views_MedicalConsultationView.title')">
-          <a-input v-model:value="newConversationForm.title" />
-        </a-form-item>
-        <a-form-item :label="t('views_MedicalConsultationView.patientName')">
-          <a-input v-model:value="newConversationForm.patient_name" />
-        </a-form-item>
-        <a-form-item :label="t('views_MedicalConsultationView.gender')">
-          <a-select v-model:value="newConversationForm.gender" allow-clear>
-            <a-select-option value="男">{{ t('views_MedicalConsultationView.male') }}</a-select-option>
-            <a-select-option value="女">{{ t('views_MedicalConsultationView.female') }}</a-select-option>
-          </a-select>
-        </a-form-item>
-        <a-form-item :label="t('views_MedicalConsultationView.age')">
-          <a-input v-model:value="newConversationForm.age" />
+        <a-form-item :label="t('views_CodeAgentView.sessionTitle')">
+          <a-input
+            v-model:value="newConversationForm.title"
+            :placeholder="t('views_CodeAgentView.sessionTitlePlaceholder')"
+          />
         </a-form-item>
       </a-form>
     </a-modal>
@@ -171,7 +142,6 @@ import { ref, computed, onMounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { message } from 'ant-design-vue'
 import {
-  CommentOutlined,
   PlusOutlined,
   SendOutlined,
   DeleteOutlined
@@ -179,10 +149,9 @@ import {
 import type {
   ChatMessage,
   ConversationInfo,
-  ConversationDetail,
   MessageResponse,
   CreateConversationRequest
-} from '@/apis/medicalConsultation'
+} from '@/apis/codeAgent'
 import {
   streamChat,
   parseStreamResponse,
@@ -190,7 +159,7 @@ import {
   getConversationDetail,
   createConversation,
   deleteConversation
-} from '@/apis/medicalConsultation'
+} from '@/apis/codeAgent'
 
 const { t } = useI18n()
 
@@ -229,10 +198,7 @@ const newConversationModalVisible = ref(false)
 
 // 新建会话表单
 const newConversationForm = ref<CreateConversationRequest>({
-  title: undefined,
-  patient_name: undefined,
-  gender: undefined,
-  age: undefined
+  title: undefined
 })
 
 // 过滤后的对话列表
@@ -244,7 +210,6 @@ const filteredConversations = computed(() => {
   return conversations.value.filter(
     conv =>
       (conv.title && conv.title.toLowerCase().includes(keyword)) ||
-      (conv.patient_name && conv.patient_name.toLowerCase().includes(keyword)) ||
       (conv.last_message && conv.last_message.toLowerCase().includes(keyword))
   )
 })
@@ -300,17 +265,14 @@ const showNewConversationModal = () => {
   newConversationModalVisible.value = true
   // 重置表单
   newConversationForm.value = {
-    title: undefined,
-    patient_name: undefined,
-    gender: undefined,
-    age: undefined
+    title: undefined
   }
 }
 
 // 创建新会话
 const handleCreateConversation = async () => {
-  if (!newConversationForm.value.title && !newConversationForm.value.patient_name) {
-    message.warning('请填写会话标题或患者姓名')
+  if (!newConversationForm.value.title || !newConversationForm.value.title.trim()) {
+    message.warning('请填写会话标题')
     return
   }
 
@@ -444,7 +406,7 @@ const handleSendMessage = async () => {
       }
     )
   } catch (error) {
-    console.error('发送消息失败:', error)
+    console.error('发送消息失败', error)
     message.error('发送消息失败，请重试')
     // 移除失败的AI消息
     messages.value.pop()
@@ -484,12 +446,12 @@ onMounted(() => {
 /* ==========================================
    1. 整体页面布局
 ========================================== */
-.medical-consultation-container {
+.code-agent-container {
   padding: 24px;
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #f0f2f5;
+  background: #f5f7fa;
   box-sizing: border-box;
   overflow: hidden;
 }
@@ -533,6 +495,16 @@ onMounted(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+/* 穿透 Ant Design Card 内部，打通 Flex 布局 */
+:deep(.list-card > .ant-card-head) {
+  border-bottom: 1px solid #e8e8e8;
+  background: #fafbfc;
+  border-radius: 8px 8px 0 0;
 }
 
 /* 穿透 Ant Design Card 内部，打通 Flex 布局 */
@@ -568,23 +540,26 @@ onMounted(() => {
 
 .conversation-item {
   padding: 12px;
-  border: 1px solid #d9d9d9;
-  border-radius: 4px;
+  border: 1px solid #e8e8e8;
+  border-radius: 6px;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all 0.3s ease;
   position: relative;
   flex-shrink: 0;
   min-width: 0;
+  background: #fff;
 }
 
 .conversation-item:hover {
-  background-color: #f5f5f5;
+  background-color: #f9f9f9;
   border-color: #40a9ff;
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.15);
 }
 
 .conversation-item.active {
-  background-color: #e6f7ff;
+  background: linear-gradient(135deg, #e6f7ff 0%, #f0f5ff 100%);
   border-color: #1890ff;
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.25);
 }
 
 .conversation-header {
@@ -666,7 +641,7 @@ onMounted(() => {
   border: 1px solid #e8e8e8;
   border-radius: 8px;
   background: #fff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
 
 :deep(.detail-card > .ant-card-body) {
@@ -679,12 +654,7 @@ onMounted(() => {
 }
 
 .patient-info {
-  flex-shrink: 0;
-  margin: 16px 16px 0 16px;
-  padding-bottom: 16px;
-  max-height: 200px;
-  overflow-y: auto;
-  border-bottom: 1px solid #e8e8e8;
+  display: none;
 }
 
 /* ==========================================
@@ -696,8 +666,9 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  background: #fafafa;
+  background: #f9f9fb;
   padding: 16px;
+  margin-top: 16px;
   scroll-behavior: smooth;
   min-height: 0;
 }
@@ -723,12 +694,19 @@ onMounted(() => {
 .message-left .message-header { flex-direction: row; }
 .message-right .message-header { flex-direction: row-reverse; }
 
-.message-sender { font-weight: 500; color: #666; }
+.message-sender { 
+  font-weight: 600; 
+  color: #1890ff;
+  font-size: 13px;
+}
+.message-right .message-sender {
+  color: #0050b3;
+}
 .message-time { color: #999; flex-shrink: 0; }
 
 .message-bubble {
   padding: 12px 16px;
-  border-radius: 8px;
+  border-radius: 12px;
   word-wrap: break-word;
   overflow-wrap: break-word;
   word-break: break-word;
@@ -736,14 +714,16 @@ onMounted(() => {
 }
 
 .bubble-patient {
-  background-color: #e6f7ff;
-  border: 1px solid #91d5ff;
+  background: linear-gradient(135deg, #1890ff 0%, #0050b3 100%);
+  color: #fff;
+  border: none;
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
 }
 
 .bubble-ai {
   background-color: #fff;
-  border: 1px solid #d9d9d9;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  border: 1px solid #e8e8e8;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .message-text {
@@ -753,23 +733,33 @@ onMounted(() => {
   white-space: pre-wrap;
 }
 
+.message-right .message-text {
+  color: #fff;
+}
+
 /* ==========================================
    5. 右侧：输入框与通用状态
 ========================================== */
 .input-area {
   flex-shrink: 0;
-  border-top: 1px solid #d9d9d9;
+  border-top: 1px solid #e8e8e8;
   padding: 16px;
-  background: #fff;
+  background: linear-gradient(to bottom, #fafbfc, #fff);
   margin-top: 16px;
 }
 
 .input-row {
   display: flex;
-  gap: 8px;
+  gap: 12px;
 }
 
-.message-input { flex: 1; }
+.message-input { 
+  flex: 1;
+}
+
+:deep(.message-input .ant-input:focus) {
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.15) !important;
+}
 .input-actions { display: flex; gap: 16px; }
 
 .empty-state {
@@ -812,18 +802,18 @@ onMounted(() => {
    7. 响应式适配
 ========================================== */
 @media (max-width: 1400px) {
-  .medical-consultation-container { padding: 20px; }
+  .code-agent-container { padding: 20px; }
   .content-grid { gap: 20px; }
 }
 
 @media (max-width: 1200px) {
-  .medical-consultation-container { padding: 16px; }
+  .code-agent-container { padding: 16px; }
   .content-grid { gap: 16px; }
   .message-wrapper { max-width: 85%; }
 }
 
 @media (max-width: 768px) {
-  .medical-consultation-container { padding: 12px; }
+  .code-agent-container { padding: 12px; }
   .page-header { margin-bottom: 12px; }
   .page-title { font-size: 20px; }
   .content-grid {
@@ -837,7 +827,7 @@ onMounted(() => {
 }
 
 @media (max-width: 480px) {
-  .medical-consultation-container { padding: 8px; }
+  .code-agent-container { padding: 8px; }
   .page-title { font-size: 18px; }
   .content-grid { gap: 8px; }
   .search-input { margin-bottom: 12px; }

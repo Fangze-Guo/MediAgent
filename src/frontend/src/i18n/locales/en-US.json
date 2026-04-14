@@ -592,7 +592,7 @@
       "datasets": "Dataset Management",
       "appStore": "Tool Repository",
       "clinicalTools": "Clinical Tools",
-      "medicalConsultation": "Medical Consultation",
+      "medicalConsultation": "Code Agent",
       "ragKnowledgeBase": "RAG Knowledge Base",
       "ctDiagnosis": "CT Diagnosis",
       "modelConfig": "Model Configuration",
@@ -926,28 +926,22 @@
         "manualRefresh": "Manual Refresh"
       }
     },
-    "views_MedicalConsultationView": {
-      "title": "Medical Consultation",
+    "views_CodeAgentView": {
+      "title": "Code Agent",
       "placeholder": "Feature under development, stay tuned",
-      "conversationList": "Consultation Records",
-      "newConsultation": "New Consultation",
-      "searchPlaceholder": "Search consultation records...",
-      "patientInfo": "Patient Information",
-      "patientName": "Patient Name",
-      "gender": "Gender",
-      "age": "Age",
-      "consultationTime": "Consultation Time",
-      "patient": "Patient",
+      "conversationList": "Conversation List",
+      "newSession": "New Session",
+      "searchPlaceholder": "Search sessions...",
+      "sessionTitle": "Session Title",
+      "sessionTitlePlaceholder": "Please enter session title",
       "aiAssistant": "AI Assistant",
       "inputPlaceholder": "Enter your question...",
       "send": "Send",
+      "selectConversation": "Please select a session from the left to view details",
+      "noConversations": "No sessions yet",
+      "patient": "User",
       "uploadImage": "Upload Image",
-      "uploadReport": "Upload Report",
-      "selectConversation": "Please select a consultation record from the left to view details",
-      "noConversations": "No consultation records yet",
-      "title": "Title",
-      "male": "Male",
-      "female": "Female"
+      "uploadReport": "Upload Report"
     },
     "views_RagKnowledgeBaseView": {
       "title": "RAG Knowledge Base",

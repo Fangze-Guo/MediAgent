@@ -1,16 +1,18 @@
 """
-医学咨询控制器
-提供医学咨询相关的API接口
+CodeAgent控制器
+提供Agent相关的API接口
 """
 from typing import List, Optional
 
 from fastapi import Depends, Header, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from src.server_agent.common import BaseResponse, ResultUtils
 from src.server_agent.controller.base import BaseController
+from src.server_agent.exceptions import NotFoundError
 from src.server_agent.model.vo.UserVO import UserVO
-from src.server_agent.service.clinical_tools.MedicalConsultationService import MedicalConsultationService
+from src.server_agent.service.clinical_tools.CodeAgentService import CodeAgentService
 
 
 class ChatMessage(BaseModel):
@@ -27,18 +29,12 @@ class ChatRequest(BaseModel):
 
 class CreateConversationRequest(BaseModel):
     """创建会话请求"""
-    patient_name: Optional[str] = Field(None, max_length=100, description="患者姓名")
-    gender: Optional[str] = Field(None, max_length=20, description="性别")
-    age: Optional[str] = Field(None, max_length=20, description="年龄")
     title: Optional[str] = Field(None, max_length=500, description="会话标题")
 
 
 class UpdateConversationRequest(BaseModel):
     """更新会话请求"""
     title: Optional[str] = Field(None, max_length=500, description="新标题")
-    patient_name: Optional[str] = Field(None, max_length=100, description="患者姓名")
-    gender: Optional[str] = Field(None, max_length=20, description="性别")
-    age: Optional[str] = Field(None, max_length=20, description="年龄")
 
 
 class ConversationInfoResponse(BaseModel):
@@ -46,9 +42,6 @@ class ConversationInfoResponse(BaseModel):
     conversation_id: str
     user_id: int
     title: Optional[str] = None
-    patient_name: Optional[str] = None
-    gender: Optional[str] = None
-    age: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
     message_count: int
@@ -69,27 +62,24 @@ class ConversationDetailResponse(BaseModel):
     conversation_id: str
     user_id: int
     title: Optional[str] = None
-    patient_name: Optional[str] = None
-    gender: Optional[str] = None
-    age: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
     messages: List[MessageResponse]
 
 
-class MedicalConsultationController(BaseController):
-    """医学咨询控制器"""
+class CodeAgentController(BaseController):
+    """代码智能体控制器"""
 
     def __init__(self):
-        super().__init__(prefix="/medical-consultation", tags=["医学咨询"])
-        self.service = MedicalConsultationService()
+        super().__init__(prefix="/code-agent")
+        self.service = CodeAgentService()
         self._register_routes()
 
     def _register_routes(self):
         """注册所有路由"""
 
         @self.router.post("/taking")
-        async def taking(request: ChatRequest, user_vo: UserVO = Depends(self._get_current_user)) -> None:
+        async def taking(request: ChatRequest, user_vo: UserVO = Depends(self._get_current_user)) -> StreamingResponse:
             """流式对话接口，支持消息历史"""
             from fastapi.responses import StreamingResponse
 
@@ -139,9 +129,6 @@ class MedicalConsultationController(BaseController):
             """创建新会话"""
             conversation = await self.service.create_conversation(
                 user_id=user_vo.uid,
-                patient_name=request.patient_name,
-                gender=request.gender,
-                age=request.age,
                 title=request.title
             )
 
@@ -149,9 +136,6 @@ class MedicalConsultationController(BaseController):
                 conversation_id=conversation.conversation_id,
                 user_id=conversation.user_id,
                 title=conversation.title,
-                patient_name=conversation.patient_name,
-                gender=conversation.gender,
-                age=conversation.age,
                 created_at=conversation.created_at.isoformat() if conversation.created_at else None,
                 updated_at=conversation.updated_at.isoformat() if conversation.updated_at else None,
                 message_count=conversation.message_count,
@@ -178,9 +162,6 @@ class MedicalConsultationController(BaseController):
                     conversation_id=conv.conversation_id,
                     user_id=conv.user_id,
                     title=conv.title,
-                    patient_name=conv.patient_name,
-                    gender=conv.gender,
-                    age=conv.age,
                     created_at=conv.created_at.isoformat() if conv.created_at else None,
                     updated_at=conv.updated_at.isoformat() if conv.updated_at else None,
                     message_count=conv.message_count,
@@ -201,6 +182,9 @@ class MedicalConsultationController(BaseController):
                 conversation_id=conversation_id,
                 user_id=user_vo.uid
             )
+            
+            if detail is None:
+                raise NotFoundError(detail="会话不存在")
 
             messages_response = [
                 MessageResponse(
@@ -217,9 +201,6 @@ class MedicalConsultationController(BaseController):
                 conversation_id=detail.conversation.conversation_id,
                 user_id=detail.conversation.user_id,
                 title=detail.conversation.title,
-                patient_name=detail.conversation.patient_name,
-                gender=detail.conversation.gender,
-                age=detail.conversation.age,
                 created_at=detail.conversation.created_at.isoformat() if detail.conversation.created_at else None,
                 updated_at=detail.conversation.updated_at.isoformat() if detail.conversation.updated_at else None,
                 messages=messages_response
@@ -237,10 +218,7 @@ class MedicalConsultationController(BaseController):
             success = await self.service.update_conversation_info(
                 conversation_id=conversation_id,
                 user_id=user_vo.uid,
-                title=request.title,
-                patient_name=request.patient_name,
-                gender=request.gender,
-                age=request.age
+                title=request.title
             )
 
             return ResultUtils.success(success)

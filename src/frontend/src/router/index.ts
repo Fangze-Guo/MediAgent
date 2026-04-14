@@ -103,11 +103,11 @@ const routes: RouteRecordRaw[] = [
         }
     },
     {
-        path: '/medical-consultation',
-        name: 'MedicalConsultation',
-        component: () => import('@/views/MedicalConsultationView.vue'),
+        path: '/code-agent',
+        name: 'CodeAgent',
+        component: () => import('@/views/CodeAgentView.vue'),
         meta: {
-            title: 'MediAgent - Medical Consultation',
+            title: 'MediAgent - Code Agent',
             requiresAuth: true
         }
     },

@@ -253,7 +253,7 @@ const items = computed(() =>[
     label: t('components_Sidebar.clinicalTools'),
     children: [
       {
-        key: 'medical-consultation',
+        key: 'code-agent',
         icon: () => h(MessageOutlined),
         label: t('components_Sidebar.medicalConsultation'),
       },
@@ -318,8 +318,8 @@ const selectedKeys = computed(() => {
     return ['home']
   }
 
-  if (path === '/medical-consultation') {
-    return ['medical-consultation']
+  if (path === '/code-agent') {
+    return ['code-agent']
   }
 
   if (path === '/rag-knowledge-base') {
@@ -357,9 +357,9 @@ const handleMenuClick: MenuProps['onClick'] = ({key}) => {
   } else if (key === 'model-config') {
     // 跳转到模型配置页面
     router.push('/model-config')
-  } else if (key === 'medical-consultation') {
-    // 跳转到医学咨询页面
-    router.push('/medical-consultation')
+  } else if (key === 'code-agent') {
+    // 跳转到Code智能体页面
+    router.push('/code-agent')
   } else if (key === 'rag-knowledge-base') {
     // 跳转到RAG知识库页面
     router.push('/rag-knowledge-base')

@@ -11,17 +11,17 @@ from typing import List, Optional
 import asyncpg
 
 from src.server_agent.configs.pg_config import get_pg_config
-from src.server_agent.model.entity.MedicalConsultationConversation import (
+from src.server_agent.model.entity.CodeAgentConversation import (
     ConversationDetail,
     ConversationInfo,
-    MedicalConversation,
-    MedicalMessage
+    CodeAgentConversation,
+    CodeAgentMessage
 )
 
 logger = logging.getLogger(__name__)
 
 
-class MedicalConsultationMapper:
+class CodeAgentMapper:
     """医学咨询数据访问层"""
 
     def __init__(self):
@@ -65,9 +65,6 @@ class MedicalConsultationMapper:
                     conversation_id UUID UNIQUE NOT NULL,
                     user_id BIGINT NOT NULL,
                     title VARCHAR(500),
-                    patient_name VARCHAR(100),
-                    gender VARCHAR(20),
-                    age VARCHAR(20),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -108,19 +105,13 @@ class MedicalConsultationMapper:
     async def create_conversation(
         self,
         user_id: int,
-        patient_name: Optional[str] = None,
-        gender: Optional[str] = None,
-        age: Optional[str] = None,
         title: Optional[str] = None
-    ) -> MedicalConversation:
+    ) -> CodeAgentConversation:
         """
         创建新会话
 
         Args:
             user_id: 用户ID
-            patient_name: 患者姓名（可选）
-            gender: 性别（可选）
-            age: 年龄（可选）
             title: 会话标题（可选）
 
         Returns:
@@ -134,19 +125,16 @@ class MedicalConsultationMapper:
         async with pool.acquire() as conn:
             record = await conn.fetchrow("""
                 INSERT INTO medical_conversations
-                (conversation_id, user_id, patient_name, gender, age, title)
-                VALUES ($1, $2, $3, $4, $5, $6)
-                RETURNING id, conversation_id, user_id, title, patient_name, gender, age, created_at, updated_at
-            """, conversation_id, user_id, patient_name, gender, age, title)
+                (conversation_id, user_id, title)
+                VALUES ($1, $2, $3)
+                RETURNING id, conversation_id, user_id, title, created_at, updated_at
+            """, conversation_id, user_id, title)
 
-        return MedicalConversation(
+        return CodeAgentConversation(
             id=record['id'],
             conversation_id=str(record['conversation_id']) if record['conversation_id'] else None,
             user_id=record['user_id'],
             title=record['title'],
-            patient_name=record['patient_name'],
-            gender=record['gender'],
-            age=record['age'],
             created_at=record['created_at'],
             updated_at=record['updated_at']
         )
@@ -175,8 +163,8 @@ class MedicalConsultationMapper:
             # 获取会话基本信息
             rows = await conn.fetch("""
                 SELECT
-                    c.id, c.conversation_id, c.user_id, c.title, c.patient_name,
-                    c.gender, c.age, c.created_at, c.updated_at,
+                    c.id, c.conversation_id, c.user_id, c.title,
+                    c.created_at, c.updated_at,
                     COUNT(m.id) as message_count,
                     (
                         SELECT m2.content
@@ -198,9 +186,6 @@ class MedicalConsultationMapper:
                 conversation_id=str(row['conversation_id']) if row['conversation_id'] else None,
                 user_id=row['user_id'],
                 title=row['title'],
-                patient_name=row['patient_name'],
-                gender=row['gender'],
-                age=row['age'],
                 created_at=row['created_at'],
                 updated_at=row['updated_at'],
                 message_count=row['message_count'],
@@ -212,7 +197,7 @@ class MedicalConsultationMapper:
     async def get_conversation_by_id(
         self,
         conversation_id: str
-    ) -> Optional[MedicalConversation]:
+    ) -> Optional[CodeAgentConversation]:
         """
         根据会话ID获取会话
 
@@ -227,21 +212,18 @@ class MedicalConsultationMapper:
 
         async with pool.acquire() as conn:
             record = await conn.fetchrow("""
-                SELECT id, conversation_id, user_id, title, patient_name,
-                       gender, age, created_at, updated_at
+                SELECT id, conversation_id, user_id, title,
+                       created_at, updated_at
                 FROM medical_conversations
                 WHERE conversation_id = $1
             """, conversation_id)
 
         if record:
-            return MedicalConversation(
+            return CodeAgentConversation(
                 id=record['id'],
                 conversation_id=str(record['conversation_id']) if record['conversation_id'] else None,
                 user_id=record['user_id'],
                 title=record['title'],
-                patient_name=record['patient_name'],
-                gender=record['gender'],
-                age=record['age'],
                 created_at=record['created_at'],
                 updated_at=record['updated_at']
             )
@@ -276,7 +258,7 @@ class MedicalConsultationMapper:
         conversation_id: str,
         limit: int = 100,
         offset: int = 0
-    ) -> List[MedicalMessage]:
+    ) -> List[CodeAgentMessage]:
         """
         获取会话的消息列表
 
@@ -301,7 +283,7 @@ class MedicalConsultationMapper:
             """, conversation_id, limit, offset)
 
         return [
-            MedicalMessage(
+            CodeAgentMessage(
                 id=row['id'],
                 message_id=str(row['message_id']) if row['message_id'] else None,
                 conversation_id=str(row['conversation_id']) if row['conversation_id'] else None,
@@ -317,7 +299,7 @@ class MedicalConsultationMapper:
         conversation_id: str,
         role: str,
         content: str
-    ) -> MedicalMessage:
+    ) -> CodeAgentMessage:
         """
         添加消息到会话
 
@@ -349,7 +331,7 @@ class MedicalConsultationMapper:
                 WHERE conversation_id = $1
             """, conversation_id)
 
-        return MedicalMessage(
+        return CodeAgentMessage(
             id=record['id'],
             message_id=str(record['message_id']) if record['message_id'] else None,
             conversation_id=str(record['conversation_id']) if record['conversation_id'] else None,
@@ -384,10 +366,7 @@ class MedicalConsultationMapper:
     async def update_conversation_info(
         self,
         conversation_id: str,
-        title: Optional[str] = None,
-        patient_name: Optional[str] = None,
-        gender: Optional[str] = None,
-        age: Optional[str] = None
+        title: Optional[str] = None
     ) -> bool:
         """
         更新会话信息
@@ -395,9 +374,6 @@ class MedicalConsultationMapper:
         Args:
             conversation_id: 会话ID
             title: 新标题（可选）
-            patient_name: 患者姓名（可选）
-            gender: 性别（可选）
-            age: 年龄（可选）
 
         Returns:
             是否更新成功
@@ -413,21 +389,6 @@ class MedicalConsultationMapper:
         if title is not None:
             update_fields.append(f"title = ${param_index}")
             params.append(title)
-            param_index += 1
-
-        if patient_name is not None:
-            update_fields.append(f"patient_name = ${param_index}")
-            params.append(patient_name)
-            param_index += 1
-
-        if gender is not None:
-            update_fields.append(f"gender = ${param_index}")
-            params.append(gender)
-            param_index += 1
-
-        if age is not None:
-            update_fields.append(f"age = ${param_index}")
-            params.append(age)
             param_index += 1
 
         if not update_fields:

@@ -535,7 +535,7 @@
       "datasets": "数据集管理",
       "appStore": "工具仓库",
       "clinicalTools": "临床工具",
-      "medicalConsultation": "医学咨询",
+      "medicalConsultation": "Code 智能体",
       "ragKnowledgeBase": "RAG 知识库",
       "ctDiagnosis": "CT 诊断",
       "modelConfig": "模型配置",
@@ -869,28 +869,22 @@
         "manualRefresh": "手动刷新"
       }
     },
-    "views_MedicalConsultationView": {
-      "title": "医学咨询",
+    "views_CodeAgentView": {
+      "title": "Code 智能体",
       "placeholder": "功能开发中，敬请期待",
-      "conversationList": "咨询记录",
-      "newConsultation": "新建咨询",
-      "searchPlaceholder": "搜索咨询记录...",
-      "patientInfo": "患者信息",
-      "patientName": "患者姓名",
-      "gender": "性别",
-      "age": "年龄",
-      "consultationTime": "咨询时间",
-      "patient": "患者",
+      "conversationList": "会话列表",
+      "newSession": "新建会话",
+      "searchPlaceholder": "搜索会话...",
+      "sessionTitle": "会话标题",
+      "sessionTitlePlaceholder": "请输入会话标题",
       "aiAssistant": "AI 助手",
       "inputPlaceholder": "输入您的问题...",
       "send": "发送",
+      "selectConversation": "请选择左侧的会话查看详情",
+      "noConversations": "暂无会话",
+      "patient": "用户",
       "uploadImage": "上传影像",
-      "uploadReport": "上传报告",
-      "selectConversation": "请选择左侧的咨询记录查看详情",
-      "noConversations": "暂无咨询记录",
-      "title": "标题",
-      "male": "男",
-      "female": "女"
+      "uploadReport": "上传报告"
     },
     "views_RagKnowledgeBaseView": {
       "title": "RAG 知识库",

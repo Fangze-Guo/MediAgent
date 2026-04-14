@@ -1,5 +1,5 @@
 /**
- * 医学咨询API接口
+ * Code智能体API接口
  */
 import { get, post, put, del } from '@/utils/request'
 
@@ -16,7 +16,6 @@ export interface ChatMessage {
  */
 export interface ChatRequest {
   conversation_id?: string
-  messages: ChatMessage[]
   message: string
 }
 
@@ -34,9 +33,6 @@ export interface StreamResponseData {
  * 创建会话请求接口
  */
 export interface CreateConversationRequest {
-  patient_name?: string
-  gender?: string
-  age?: string
   title?: string
 }
 
@@ -45,9 +41,6 @@ export interface CreateConversationRequest {
  */
 export interface UpdateConversationRequest {
   title?: string
-  patient_name?: string
-  gender?: string
-  age?: string
 }
 
 /**
@@ -68,9 +61,6 @@ export interface ConversationInfo {
   conversation_id: string
   user_id: number
   title?: string
-  patient_name?: string
-  gender?: string
-  age?: string
   created_at?: string
   updated_at?: string
   message_count: number
@@ -84,9 +74,6 @@ export interface ConversationDetail {
   conversation_id: string
   user_id: number
   title?: string
-  patient_name?: string
-  gender?: string
-  age?: string
   created_at?: string
   updated_at?: string
   messages: MessageResponse[]
@@ -110,7 +97,7 @@ export async function streamChat(request: ChatRequest): Promise<ReadableStream<U
   try {
     // 获取 API 基础 URL
     const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
-    const url = `${baseURL}/medical-consultation/taking`
+    const url = `${baseURL}/code-agent/taking`
 
     // 获取 token（如果需要认证）
     const token = localStorage.getItem('mediagent_token')
@@ -144,7 +131,7 @@ export async function streamChat(request: ChatRequest): Promise<ReadableStream<U
  * @returns 响应数据
  */
 export async function syncChat(request: ChatRequest): Promise<BaseResponse<string>> {
-  const response = await post<BaseResponse<string>>('/medical-consultation/taking/sync', request)
+  const response = await post<BaseResponse<string>>('/code-agent/taking/sync', request)
   return response.data
 }
 
@@ -229,7 +216,7 @@ export async function parseStreamResponse(
  * @returns 会话信息
  */
 export async function createConversation(request: CreateConversationRequest): Promise<BaseResponse<ConversationInfo>> {
-  const response = await post<BaseResponse<ConversationInfo>>('/medical-consultation/conversations', request)
+  const response = await post<BaseResponse<ConversationInfo>>('/code-agent/conversations', request)
   return response.data
 }
 
@@ -244,7 +231,7 @@ export async function getConversations(
   offset: number = 0
 ): Promise<BaseResponse<ConversationInfo[]>> {
   const response = await get<BaseResponse<ConversationInfo[]>>(
-    `/medical-consultation/conversations?limit=${limit}&offset=${offset}`
+    `/code-agent/conversations?limit=${limit}&offset=${offset}`
   )
   return response.data
 }
@@ -258,7 +245,7 @@ export async function getConversationDetail(
   conversationId: string
 ): Promise<BaseResponse<ConversationDetail>> {
   const response = await get<BaseResponse<ConversationDetail>>(
-    `/medical-consultation/conversations/${conversationId}`
+    `/code-agent/conversations/${conversationId}`
   )
   return response.data
 }
@@ -274,7 +261,7 @@ export async function updateConversation(
   request: UpdateConversationRequest
 ): Promise<BaseResponse<boolean>> {
   const response = await put<BaseResponse<boolean>>(
-    `/medical-consultation/conversations/${conversationId}`,
+    `/code-agent/conversations/${conversationId}`,
     request
   )
   return response.data
@@ -289,7 +276,7 @@ export async function deleteConversation(
   conversationId: string
 ): Promise<BaseResponse<boolean>> {
   const response = await del<BaseResponse<boolean>>(
-    `/medical-consultation/conversations/${conversationId}`
+    `/code-agent/conversations/${conversationId}`
   )
   return response.data
 }
