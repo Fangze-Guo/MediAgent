@@ -1,51 +1,38 @@
 """
-Qwen Code 会话管理器 - 使用临时文件存储历史记录作为 memory
+Qwen Code 会话管理器 - 使用 --resume 机制实现有状态对话
+移除临时文件方案，完全依赖 Qwen 的 JSONL 文件管理上下文
 """
 import asyncio
 import logging
 import os
-import tempfile
+import re
 from pathlib import Path
-from typing import AsyncGenerator, Callable, Optional, List, Tuple
+from typing import AsyncGenerator, Optional, Dict
+import json
 
 logger = logging.getLogger(__name__)
 
 
 class QwenSessionManager:
-    """Qwen Code 会话管理器 - 使用临时文件存储历史记录作为 memory"""
+    """Qwen Code 会话管理器 - 使用 --resume 机制"""
 
-    def __init__(self, qwen_path: str = "qwen", history_provider: Optional[Callable] = None):
+    def __init__(self, qwen_path: str = "qwen"):
         """
         初始化会话管理器
 
         Args:
             qwen_path: qwen 命令路径
-            history_provider: 获取历史记录的回调函数，签名为 async def get_history(conversation_id: str) -> List[Tuple[str, str, str]]
-                           返回格式：[(role, content, message_id), ...]
         """
         self.qwen_path = os.getenv("QWEN_CODE_PATH", qwen_path)
-        self.history_provider = history_provider
 
         # 检查是否使用WSL
         self.use_wsl = os.getenv("QWEN_USE_WSL", "").lower() == "true"
 
-        # 创建临时文件目录
         if self.use_wsl:
-            # 使用WSL的临时目录 /tmp，但在Windows上不能直接使用绝对路径
-            # 我们需要在WSL环境中创建目录
-            self.temp_dir_str = "/tmp/qwen_sessions"
-            self.temp_dir = Path(self.temp_dir_str)  # 用于路径转换
             # 添加WSL前缀到qwen命令
             self.qwen_path = f"wsl {self.qwen_path}"
 
-            # 在WSL中创建临时目录
-            import subprocess
-            subprocess.run(["wsl", "mkdir", "-p", self.temp_dir_str], check=True)
-        else:
-            # 使用系统临时目录
-            self.temp_dir = Path(tempfile.gettempdir()) / "qwen_sessions"
-            self.temp_dir.mkdir(exist_ok=True, parents=True)
-        logger.info(f"Qwen session temp directory: {self.temp_dir} (WSL: {self.use_wsl})")
+        logger.info(f"Qwen session manager initialized (WSL: {self.use_wsl}, qwen_path: {self.qwen_path})")
 
     @staticmethod
     async def test_qwen_command(qwen_path: str) -> dict:
@@ -97,14 +84,14 @@ class QwenSessionManager:
 
     async def send_message(
         self,
-        session_id: str,
-        prompt: str
+        session_id: str = None,
+        prompt: str = ""
     ) -> AsyncGenerator[str, None]:
         """
         发送消息到指定会话
 
         Args:
-            session_id: 会话ID（UUID格式，为None则不使用会话历史）
+            session_id: 会话ID（UUID格式），为None则创建新会话
             prompt: 用户消息
 
         Yields:
@@ -112,140 +99,53 @@ class QwenSessionManager:
         """
         # 捕获用户输入
         logger.info(f"用户：{prompt}")
+        logger.info(f"会话ID: {session_id if session_id else '新会话'}")
 
-        # 获取历史记录并写入临时文件
-        history = None
-        if session_id and self.history_provider:
-            # 从数据库加载历史记录
-            logger.info(f"Loading conversation history from database for {session_id}")
-            history = await self.history_provider(session_id)
-            logger.info(f"Loaded {len(history)} turns from database")
-        else:
-            logger.info("No history provider or no session_id, using empty history")
-            history = []
-
-        # 将历史记录写入临时文件
-        memory_content = self._build_memory_content(history)
-
-        if self.use_wsl:
-            # WSL模式：使用WSL路径
-            memory_file_path_str = f"{self.temp_dir_str}/{session_id}.md" if session_id else f"{self.temp_dir_str}/temp.md"
-            memory_file_path = Path(memory_file_path_str)  # 用于日志显示
-
-            # 通过WSL写入文件
-            import subprocess
-            subprocess.run(
-                ["wsl", "bash", "-c", f"cat > {memory_file_path_str} << 'EOF'\n{memory_content}\nEOF"],
-                check=True,
-                capture_output=True,
-                text=True
-            )
-        else:
-            # Windows模式：直接写入
-            memory_file_path = self.temp_dir / f"{session_id}.md" if session_id else self.temp_dir / "temp.md"
-            memory_file_path.write_text(memory_content, encoding='utf-8')
-
-        logger.info(f"Memory file written to: {memory_file_path}")
-        logger.info(f"Memory file content length: {len(memory_content)} 字符")
-
-        # 打印临时文件内容（仅记录摘要，避免日志过大）
-        logger.info(f"=== 临时文件内容 ===")
-        logger.info(f"{memory_content[:500]}{'...' if len(memory_content) > 500 else ''}")
-        logger.info(f"=== 文件内容结束 ===")
-
-        # 使用管道方式执行：cat file | qwen -p "当前消息"
         full_response = ""
-        async for chunk in self._execute_with_memory_file(memory_file_path, prompt):
-            full_response += chunk
-            yield chunk
+
+        if session_id:
+            # 继续会话：使用 --resume
+            logger.info(f"恢复会话: {session_id}")
+            async for chunk in self._resume_session(session_id, prompt):
+                full_response += chunk
+                yield chunk
+        else:
+            # 新建会话：直接发送消息
+            logger.info("创建新会话")
+            async for chunk in self._create_new_session(prompt):
+                full_response += chunk
+                yield chunk
 
         # 捕获 Qwen Code 输出
         logger.info(f"助手：{full_response}")
 
-        # 注意：不更新临时文件，因为下次对话会重新从数据库加载最新历史
-
-    def _build_memory_content(self, history: List[Tuple[str, str, str]]) -> str:
+    async def _create_new_session(self, prompt: str) -> AsyncGenerator[str, None]:
         """
-        构建内存文件内容
+        创建新会话并发送消息
 
         Args:
-            history: 历史对话记录，格式：[(role, content, message_id), ...]
-
-        Returns:
-            内存文件内容
-        """
-        if not history:
-            return ""
-
-        # 限制历史长度
-        max_history_turns = 20  # 最多保留20轮对话
-        if len(history) > max_history_turns:
-            history = history[-max_history_turns:]
-
-        # 构建历史对话文本
-        memory_content = "## 对话历史\n\n"
-        for i, (role, content, message_id) in enumerate(history):
-            role_name = "用户" if role == "user" else "助手"
-            memory_content += f"**第{i+1}轮对话**\n\n"
-            memory_content += f"**{role_name}**：{content}\n\n"
-
-        return memory_content
-
-    def _convert_to_wsl_path(self, windows_path: Path) -> str:
-        """
-        将Windows路径转换为WSL路径
-
-        Args:
-            windows_path: Windows路径对象
-
-        Returns:
-            WSL格式的路径字符串
-        """
-        path_str = str(windows_path)
-        # 将 C:\path\to\file 转换为 /mnt/c/path/to/file
-        if len(path_str) >= 2 and path_str[1] == ':':
-            drive = path_str[0].lower()
-            rest = path_str[2:].replace('\\', '/')
-            return f"/mnt/{drive}{rest}"
-        return path_str
-
-    async def _execute_with_memory_file(self, memory_file_path: Path, current_prompt: str) -> AsyncGenerator[str, None]:
-        """
-        使用临时文件执行命令：type file | qwen -p "当前prompt"
-
-        Args:
-            memory_file_path: 内存文件路径
-            current_prompt: 当前用户消息
+            prompt: 用户消息
 
         Yields:
             流式响应的文本片段
-
-        Raises:
-            RuntimeError: 当命令执行失败时
         """
         try:
-            # 转义 prompt 中的特殊字符（双引号、反引号等）
-            # 注意：Windows cmd 中的转义规则比较复杂，这里处理常见情况
-            escaped_prompt = current_prompt.replace('"', '""')  # 双引号转义为两个双引号
+            # 转义 prompt 中的特殊字符
+            escaped_prompt = self._escape_prompt(prompt)
 
-            # 构建命令
+            # 构建命令：qwen -p "prompt"
             if self.use_wsl:
-                # WSL环境：路径已经是WSL格式
-                wsl_path = str(memory_file_path)
-                # WSL shell 中需要处理单引号
                 escaped_prompt_linux = escaped_prompt.replace("'", "'\\''")
-                command = f'wsl bash -c "cat {wsl_path} | qwen -p \'{escaped_prompt_linux}\'"'
+                command = f'wsl bash -c "qwen -p \'{escaped_prompt_linux}\'"'
             elif os.name == 'nt':  # Windows
-                command = f'type "{memory_file_path}" | "{self.qwen_path}" -p "{escaped_prompt}"'
+                command = f'"{self.qwen_path}" -p "{escaped_prompt}"'
             else:  # Linux/Mac
-                # Linux shell 中需要处理单引号
                 escaped_prompt_linux = escaped_prompt.replace("'", "'\\''")
-                command = f'cat "{memory_file_path}" | "{self.qwen_path}" -p \'{escaped_prompt_linux}\''
+                command = f'"{self.qwen_path}" -p \'{escaped_prompt_linux}\''
 
-            # 记录命令摘要（隐藏 prompt 内容以保护隐私）
+            # 记录命令摘要
             command_preview = command[:100] + "..." if len(command) > 100 else command
-            logger.info(f"Executing command: {command_preview}")
-            logger.debug(f"Prompt length: {len(current_prompt)} characters")
+            logger.info(f"Executing new session command: {command_preview}")
 
             process = await asyncio.create_subprocess_shell(
                 command,
@@ -269,7 +169,7 @@ class QwenSessionManager:
                     stderr_output = await process.stderr.read()
                     stderr_text = stderr_output.decode('utf-8', errors='ignore')
                     if stderr_text:
-                        logger.error(f"Command stderr: {stderr_text[:500]}")  # 限制日志长度
+                        logger.error(f"Command stderr: {stderr_text[:500]}")
                     raise RuntimeError(f"Qwen Code command exited with code {process.returncode}")
 
             except Exception as e:
@@ -283,42 +183,130 @@ class QwenSessionManager:
                 raise
 
         except Exception as e:
-            logger.error(f"Error executing command with memory file: {e}")
+            logger.error(f"Error creating new session: {e}")
             raise
 
-    async def delete_session_file(self, session_id: str):
+    async def _resume_session(self, session_id: str, prompt: str) -> AsyncGenerator[str, None]:
         """
-        删除指定会话的临时文件
+        恢复现有会话并发送消息
 
         Args:
             session_id: 会话ID
-        """
-        if self.use_wsl:
-            # WSL模式：使用wsl命令删除
-            import subprocess
-            memory_file_path = f"{self.temp_dir_str}/{session_id}.md"
-            subprocess.run(["wsl", "rm", "-f", memory_file_path], check=False)
-            logger.info(f"Deleted memory file: {memory_file_path}")
-        else:
-            # Windows模式：直接删除
-            memory_file_path = self.temp_dir / f"{session_id}.md"
-            if memory_file_path.exists():
-                memory_file_path.unlink()
-                logger.info(f"Deleted memory file: {memory_file_path}")
+            prompt: 用户消息
 
-    async def clear_all_session_files(self):
-        """清除所有会话临时文件"""
-        if self.use_wsl:
-            # WSL模式：使用wsl命令删除
-            import subprocess
-            subprocess.run(["wsl", "rm", "-rf", f"{self.temp_dir_str}/*.md"], check=False)
-            logger.info(f"Cleared all session memory files in {self.temp_dir_str}")
-        else:
-            # Windows模式：直接删除
-            for file_path in self.temp_dir.glob("*.md"):
-                try:
-                    file_path.unlink()
-                    logger.info(f"Deleted memory file: {file_path}")
-                except Exception as e:
-                    logger.error(f"Error deleting memory file {file_path}: {e}")
-            logger.info("Cleared all session memory files")
+        Yields:
+            流式响应的文本片段
+        """
+        try:
+            # 转义 prompt 中的特殊字符
+            escaped_prompt = self._escape_prompt(prompt)
+
+            # 构建命令：qwen --resume {session_id} -p "prompt"
+            if self.use_wsl:
+                escaped_prompt_linux = escaped_prompt.replace("'", "'\\''")
+                command = f'wsl bash -c "qwen --resume {session_id} -p \'{escaped_prompt_linux}\'"'
+            elif os.name == 'nt':  # Windows
+                command = f'"{self.qwen_path}" --resume {session_id} -p "{escaped_prompt}"'
+            else:  # Linux/Mac
+                escaped_prompt_linux = escaped_prompt.replace("'", "'\\''")
+                command = f'"{self.qwen_path}" --resume {session_id} -p \'{escaped_prompt_linux}\''
+
+            # 记录命令摘要
+            command_preview = command[:100] + "..." if len(command) > 100 else command
+            logger.info(f"Executing resume session command: {command_preview}")
+
+            process = await asyncio.create_subprocess_shell(
+                command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+
+            try:
+                while True:
+                    line_bytes = await process.stdout.readline()
+                    if not line_bytes:
+                        break
+                    line = line_bytes.decode('utf-8', errors='ignore')
+                    if line:
+                        yield line
+
+                # 等待进程结束
+                await process.wait()
+
+                if process.returncode != 0:
+                    stderr_output = await process.stderr.read()
+                    stderr_text = stderr_output.decode('utf-8', errors='ignore')
+                    if stderr_text:
+                        logger.error(f"Command stderr: {stderr_text[:500]}")
+                    raise RuntimeError(f"Qwen Code command exited with code {process.returncode}")
+
+            except Exception as e:
+                # 确保进程被清理
+                if process.returncode is None:
+                    try:
+                        process.kill()
+                        await process.wait()
+                    except Exception:
+                        pass
+                raise
+
+        except Exception as e:
+            logger.error(f"Error resuming session {session_id}: {e}")
+            raise
+
+    def _escape_prompt(self, prompt: str) -> str:
+        """
+        转义 prompt 中的特殊字符
+
+        Args:
+            prompt: 用户消息
+
+        Returns:
+            转义后的 prompt
+        """
+        # 根据不同的 shell 转义规则
+        if os.name == 'nt':  # Windows cmd
+            # 转义双引号
+            escaped = prompt.replace('"', '""')
+            return escaped
+        else:  # Linux/Mac bash
+            # 转义单引号为 '\''
+            escaped = prompt.replace("'", "'\\''")
+            return escaped
+
+    async def get_session_info_from_qwen(self) -> Optional[Dict]:
+        """
+        尝试从 Qwen 获取当前会话信息
+
+        Returns:
+            包含 session_id 等信息的字典，如果无法获取则返回 None
+        """
+        try:
+            # 尝试获取会话列表
+            command = f'"{self.qwen_path}" --list'
+            if self.use_wsl:
+                command = f'wsl bash -c "qwen --list"'
+
+            logger.info(f"Getting session list: {command}")
+            process = await asyncio.create_subprocess_shell(
+                command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=10.0)
+
+            if process.returncode == 0:
+                output = stdout.decode('utf-8', errors='ignore')
+                logger.info(f"Session list output: {output[:500]}")
+
+                # 尝试解析输出获取会话信息
+                # 这里需要根据实际的 --list 输出格式进行调整
+                return {"raw_output": output}
+            else:
+                logger.warning(f"Failed to get session list: {stderr.decode('utf-8', errors='ignore')}")
+                return None
+
+        except Exception as e:
+            logger.warning(f"Error getting session info: {e}")
+            return None

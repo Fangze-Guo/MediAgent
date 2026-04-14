@@ -1,6 +1,6 @@
 """
-Qwen Code Agent - 通过临时文件传递历史记录调用Qwen Code
-提供流式和同步的对话功能
+Qwen Code Agent - 使用 --resume 机制实现有状态对话
+移除临时文件方案，完全依赖 Qwen 的 JSONL 文件管理上下文
 """
 import json
 import logging
@@ -12,18 +12,17 @@ logger = logging.getLogger(__name__)
 
 
 class QwenAgent:
-    """Qwen Code Agent类 - 使用会话管理器"""
+    """Qwen Code Agent类 - 使用 --resume 机制"""
 
-    def __init__(self, qwen_path: str = "qwen", timeout: int = 120, history_provider = None):
+    def __init__(self, qwen_path: str = "qwen", timeout: int = 120):
         """
         初始化Qwen Code Agent
 
         Args:
             qwen_path: qwen命令的路径，默认为"qwen"（假设在PATH中）
             timeout: 命令执行超时时间（秒）
-            history_provider: 获取历史记录的回调函数
         """
-        self.session_manager = QwenSessionManager(qwen_path, history_provider)
+        self.session_manager = QwenSessionManager(qwen_path)
         self.timeout = timeout
 
     async def _execute_qwen(
@@ -46,13 +45,13 @@ class QwenAgent:
         timeout = timeout or self.timeout
 
         try:
-            session_info = f" with session_id: {session_id}" if session_id else ""
+            session_info = f" with session_id: {session_id}" if session_id else " (new session)"
             logger.info(f"[QwenAgent] Sending message to Qwen Code{session_info}, prompt length: {len(prompt)}")
 
             # 使用会话管理器发送消息
             chunk_count = 0
             if session_id:
-                logger.info(f"[QwenAgent] Using session manager with UUID: {session_id}")
+                logger.info(f"[QwenAgent] Resuming session with UUID: {session_id}")
                 async for chunk in self.session_manager.send_message(session_id, prompt):
                     chunk_count += 1
                     if chunk_count == 1:
@@ -61,10 +60,14 @@ class QwenAgent:
                         logger.info(f"[QwenAgent] Received {chunk_count} chunks so far")
                     yield chunk
             else:
-                # 无会话ID，不使用会话历史
-                logger.warning(f"[QwenAgent] No session_id provided, creating temporary session")
+                # 新会话
+                logger.info(f"[QwenAgent] Creating new session")
                 async for chunk in self.session_manager.send_message(None, prompt):
                     chunk_count += 1
+                    if chunk_count == 1:
+                        logger.info(f"[QwenAgent] First chunk received")
+                    if chunk_count % 10 == 0:
+                        logger.info(f"[QwenAgent] Received {chunk_count} chunks so far")
                     yield chunk
 
             logger.info(f"[QwenAgent] Message sending completed, total chunks: {chunk_count}")
@@ -89,7 +92,7 @@ class QwenAgent:
             每个输出片段的JSON字符串（SSE格式）
         """
         # 使用当前消息和session_id执行qwen命令
-        # 历史消息管理由qwen通过session_id处理
+        # 历史消息管理由qwen通过session_id和JSONL文件处理
 
         full_content = ""
         try:
@@ -144,15 +147,15 @@ class QwenAgent:
 
     async def close_session(self, session_id: str):
         """
-        关闭指定会话（删除临时文件）
+        关闭指定会话（仅标记状态，不删除Qwen的JSONL文件）
 
         Args:
             session_id: 会话ID
         """
-        await self.session_manager.delete_session_file(session_id)
-        logger.info(f"Closed session and deleted memory file: {session_id}")
+        # 注意：不再删除Qwen的JSONL文件，因为由审计服务管理会话状态
+        logger.info(f"Session closed (status marked): {session_id}")
 
     async def close_all_sessions(self):
-        """关闭所有会话（删除所有临时文件）"""
-        await self.session_manager.clear_all_session_files()
-        logger.info("Closed all sessions and deleted all memory files")
+        """关闭所有会话（仅标记状态，不删除Qwen的JSONL文件）"""
+        # 注意：不再删除Qwen的JSONL文件，因为由审计服务管理会话状态
+        logger.info("All sessions closed (status marked)")

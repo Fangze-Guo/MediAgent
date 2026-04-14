@@ -1,7 +1,8 @@
 """
 医学咨询服务类
 处理医学咨询相关的业务逻辑
-集成Qwen Code和PostgreSQL持久化
+集成Qwen Code的--resume机制和PostgreSQL持久化
+使用新的会话管理方式，第一次对话不使用resume，后续对话使用resume
 """
 import json
 import logging
@@ -14,6 +15,7 @@ from src.server_agent.exceptions import (
     ConflictError, handle_service_exception
 )
 from src.server_agent.mapper.MedicalConsultationMapper import MedicalConsultationMapper
+from src.server_agent.service.SessionAuditService import SessionAuditService
 from src.server_agent.model.entity.MedicalConsultationConversation import (
     ConversationDetail,
     ConversationInfo,
@@ -25,24 +27,16 @@ logger = logging.getLogger(__name__)
 
 
 class MedicalConsultationService:
-    """医学咨询服务类"""
+    """医学咨询服务类 - 正确的 --resume 流程"""
 
     def __init__(self):
         """初始化服务"""
         self.mapper = MedicalConsultationMapper()
+        self.session_audit_service = SessionAuditService()
 
-        # 创建历史记录获取回调函数
-        async def history_provider(conversation_id: str):
-            """从数据库获取对话历史的回调函数"""
-            try:
-                messages = await self.mapper.get_messages_by_conversation(conversation_id)
-                # 转换为格式：[(role, content, message_id), ...]
-                return [(msg.role, msg.content, msg.message_id) for msg in messages]
-            except Exception as e:
-                logger.error(f"Error loading conversation history: {e}")
-                return []
-
-        self.qwen_agent = QwenAgent(history_provider=history_provider)
+        # 创建 Qwen Code Agent（移除 history_provider 参数）
+        # 历史消息管理完全由 Qwen 的 --resume 机制处理
+        self.qwen_agent = QwenAgent()
 
     @handle_service_exception
     async def stream_chat(
@@ -57,7 +51,7 @@ class MedicalConsultationService:
 
         Args:
             conversation_id: 会话ID（如果为None，则不保存历史消息）
-            messages: 历史消息列表（已弃用参数，保留以兼容接口，历史消息从数据库加载）
+            messages: 历史消息列表（已弃用参数，保留以兼容接口）
                       格式为 [{"role": "user|assistant", "content": "..."}]
             current_message: 当前用户消息
             user_id: 用户ID（用于权限验证）
@@ -65,7 +59,10 @@ class MedicalConsultationService:
         Yields:
             SSE 格式的 JSON 字符串，每个 chunk 都使用 BaseResponse 格式
         """
-        # 保存用户消息到数据库
+        # 获取或创建会话审计记录
+        session_audit = None
+        qwen_session_id = None
+
         if conversation_id:
             # 验证会话是否存在且属于该用户
             conversation = await self.mapper.get_conversation_by_id(conversation_id)
@@ -82,7 +79,27 @@ class MedicalConsultationService:
                     context={"conversation_id": conversation_id, "user_id": user_id}
                 )
 
-            # 保存用户消息
+            # 获取会话审计记录
+            session_audit = await self.session_audit_service.get_conversation_audit(conversation_id)
+
+            # 检查是否是第一次对话
+            is_first_message = await self.session_audit_service.is_first_message(conversation_id)
+
+            if is_first_message:
+                # 第一次对话：不使用 --resume，直接创建新会话
+                logger.info(f"First message for conversation {conversation_id}, creating new Qwen session")
+                qwen_session_id = None  # 不使用 --resume
+            else:
+                # 后续对话：使用 --resume
+                qwen_session_id = await self.session_audit_service.get_qwen_session_id(conversation_id)
+                if not qwen_session_id:
+                    logger.warning(f"Qwen session_id not found for conversation {conversation_id}, treating as first message")
+                    qwen_session_id = None
+                else:
+                    logger.info(f"Resuming Qwen session {qwen_session_id} for conversation {conversation_id}")
+
+        # 保存用户消息到数据库
+        if conversation_id:
             try:
                 await self.mapper.add_message(conversation_id, "user", current_message)
             except Exception as e:
@@ -93,8 +110,9 @@ class MedicalConsultationService:
             full_content = ""
 
             # 调用 Qwen Code Agent
-            # 使用 conversation_id 作为 session_id，让 Qwen 管理历史消息
-            async for chunk_json in self.qwen_agent.stream_chat(current_message, conversation_id):
+            # 第一次对话：session_id 为 None，创建新会话
+            # 后续对话：使用 --resume {session_id}
+            async for chunk_json in self.qwen_agent.stream_chat(current_message, qwen_session_id):
                 chunk_data = json.loads(chunk_json)
 
                 if "error" in chunk_data:
@@ -127,6 +145,11 @@ class MedicalConsultationService:
                     except Exception as e:
                         logger.error(f"Failed to save assistant message: {e}")
 
+                    # 第一次对话后，提取并保存 session_id
+                    if qwen_session_id is None:
+                        logger.info(f"First message completed, extracting session_id...")
+                        await self.session_audit_service.update_session_id_after_first_message(conversation_id)
+
         except Exception as e:
             # 发送错误响应
             logger.error(f"Stream chat error: {e}")
@@ -151,14 +174,17 @@ class MedicalConsultationService:
 
         Args:
             conversation_id: 会话ID（如果为None，则不保存历史消息）
-            messages: 历史消息列表（已弃用参数，保留以兼容接口，历史消息从数据库加载）
+            messages: 历史消息列表（已弃用参数，保留以兼容接口）
             current_message: 当前用户消息
             user_id: 用户ID（用于权限验证）
 
         Returns:
             AI 回复内容
         """
-        # 保存用户消息到数据库
+        # 获取或创建会话审计记录
+        session_audit = None
+        qwen_session_id = None
+
         if conversation_id:
             # 验证会话是否存在且属于该用户
             conversation = await self.mapper.get_conversation_by_id(conversation_id)
@@ -175,7 +201,27 @@ class MedicalConsultationService:
                     context={"conversation_id": conversation_id, "user_id": user_id}
                 )
 
-            # 保存用户消息
+            # 获取会话审计记录
+            session_audit = await self.session_audit_service.get_conversation_audit(conversation_id)
+
+            # 检查是否是第一次对话
+            is_first_message = await self.session_audit_service.is_first_message(conversation_id)
+
+            if is_first_message:
+                # 第一次对话：不使用 --resume，直接创建新会话
+                logger.info(f"First message for conversation {conversation_id}, creating new Qwen session")
+                qwen_session_id = None  # 不使用 --resume
+            else:
+                # 后续对话：使用 --resume
+                qwen_session_id = await self.session_audit_service.get_qwen_session_id(conversation_id)
+                if not qwen_session_id:
+                    logger.warning(f"Qwen session_id not found for conversation {conversation_id}, treating as first message")
+                    qwen_session_id = None
+                else:
+                    logger.info(f"Resuming Qwen session {qwen_session_id} for conversation {conversation_id}")
+
+        # 保存用户消息到数据库
+        if conversation_id:
             try:
                 await self.mapper.add_message(conversation_id, "user", current_message)
             except Exception as e:
@@ -183,8 +229,7 @@ class MedicalConsultationService:
 
         # 调用 Qwen Code Agent
         try:
-            # 使用 conversation_id 作为 session_id，让 Qwen 管理历史消息
-            response_content = await self.qwen_agent.chat(current_message, conversation_id)
+            response_content = await self.qwen_agent.chat(current_message, qwen_session_id)
 
             # 保存AI回复
             if conversation_id:
@@ -192,6 +237,11 @@ class MedicalConsultationService:
                     await self.mapper.add_message(conversation_id, "assistant", response_content)
                 except Exception as e:
                     logger.error(f"Failed to save assistant message: {e}")
+
+                # 第一次对话后，提取并保存 session_id
+                if qwen_session_id is None:
+                    logger.info(f"First message completed, extracting session_id...")
+                    await self.session_audit_service.update_session_id_after_first_message(conversation_id)
 
             return response_content
         except Exception as e:
@@ -237,6 +287,16 @@ class MedicalConsultationService:
             gender=gender,
             age=age,
             title=title
+        )
+
+        # 创建对应的会话审计记录（session_id 为 None，第一次对话后才设置）
+        await self.session_audit_service.create_conversation_audit(
+            user_id=user_id,
+            conversation_id=conversation.conversation_id,
+            extra={
+                "patient_name": patient_name,
+                "title": title
+            }
         )
 
         return ConversationInfo(
@@ -344,11 +404,17 @@ class MedicalConsultationService:
                 context={"conversation_id": conversation_id, "user_id": user_id}
             )
 
-        # 关闭对应的 Qwen Code 会话
+        # 关闭对应的会话审计记录
         try:
-            await self.qwen_agent.close_session(conversation_id)
+            await self.session_audit_service.close_session(conversation_id)
         except Exception as e:
-            logger.error(f"Failed to close Qwen session for conversation {conversation_id}: {e}")
+            logger.error(f"Failed to close session audit for conversation {conversation_id}: {e}")
+
+        # 删除会话审计记录
+        try:
+            await self.session_audit_service.delete_session(conversation_id)
+        except Exception as e:
+            logger.error(f"Failed to delete session audit for conversation {conversation_id}: {e}")
 
         return await self.mapper.delete_conversation(conversation_id)
 
@@ -392,6 +458,19 @@ class MedicalConsultationService:
                 context={"conversation_id": conversation_id, "user_id": user_id}
             )
 
+        # 更新会话审计记录的额外信息
+        try:
+            extra = {}
+            if title:
+                extra["title"] = title
+            if patient_name:
+                extra["patient_name"] = patient_name
+
+            if extra:
+                await self.session_audit_service.update_session_extra(conversation_id, extra)
+        except Exception as e:
+            logger.error(f"Failed to update session audit for conversation {conversation_id}: {e}")
+
         return await self.mapper.update_conversation_info(
             conversation_id,
             title=title,
@@ -404,7 +483,6 @@ class MedicalConsultationService:
         """关闭资源"""
         try:
             await self.mapper.close()
-            # 关闭所有 Qwen 会话
-            await self.qwen_agent.close_all_sessions()
+            # 不再关闭所有 Qwen 会话，因为会话状态由审计服务管理
         except Exception as e:
             logger.error(f"Error closing service resources: {e}")
