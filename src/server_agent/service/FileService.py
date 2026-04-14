@@ -136,8 +136,14 @@ class FileService:
                 context={"file_size": file.size, "max_size": self.MAX_FILE_SIZE}
             )
 
-        # 检查文件扩展名
-        file_ext = pathlib.Path(file.filename).suffix.lower()
+        # 检查文件扩展名 - 支持 .nii.gz 这样的复合扩展名
+        file_path_obj = pathlib.Path(file.filename)
+        file_ext = file_path_obj.suffix.lower()
+        
+        # 特殊处理 .nii.gz 等复合扩展名
+        if file_ext == '.gz' and file_path_obj.stem.endswith('.nii'):
+            file_ext = '.nii.gz'
+        
         if file_ext not in self.ALLOWED_EXTENSIONS:
             raise ValidationError(
                 detail=f"不支持的文件类型: {file_ext}",
@@ -234,7 +240,7 @@ class FileService:
                     # 使用相对路径作为 file_id（用于 /files/serve/{file_id} API）
                     relative_path = str(item.relative_to(files_dir)).replace('\\', '/')
                     file_id = relative_path
-                    file_type = "directory" if is_directory else self._get_content_type(item.suffix)
+                    file_type = "directory" if is_directory else self._get_content_type(item.name)
 
                     file_info: FileInfo = FileInfo(
                         id=file_id,
@@ -643,7 +649,7 @@ class FileService:
             return None
 
     @staticmethod
-    def _get_content_type(ext: str) -> str:
+    def _get_content_type(filename_or_ext: str) -> str:
         """根据文件扩展名获取内容类型"""
         content_types = {
             '.jpg': 'image/jpeg',
@@ -660,7 +666,13 @@ class FileService:
             '.nii': 'application/nifti',
             '.nii.gz': 'application/nifti'
         }
-        return content_types.get(ext.lower(), 'application/octet-stream')
+        
+        # 处理复合扩展名 (如 .nii.gz)
+        ext = filename_or_ext.lower()
+        if ext.endswith('.nii.gz'):
+            return content_types['.nii.gz']
+        
+        return content_types.get(ext, 'application/octet-stream')
 
     @staticmethod
     def _get_safe_path(root_dir: pathlib.Path, path: str) -> pathlib.Path:
