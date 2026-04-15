@@ -83,7 +83,15 @@
                 <span class="message-time">{{ formatTime(message.created_at) }}</span>
               </div>
               <div class="message-bubble" :class="message.role === 'user' ? 'bubble-patient' : 'bubble-ai'">
-                <p class="message-text">{{ message.content }}</p>
+                <div v-if="message.loading" class="loading-wrapper">
+                  <div class="loading-dots">
+                    <span class="dot"></span>
+                    <span class="dot"></span>
+                    <span class="dot"></span>
+                  </div>
+                  <span class="loading-text">{{ t('views_CodeAgentView.loading') }}</span>
+                </div>
+                <p v-else class="message-text">{{ message.content }}</p>
               </div>
             </div>
           </div>
@@ -238,11 +246,14 @@ const selectConversation = async (conversation: ConversationInfo) => {
   selectedConversation.value = conversation
 
   // 加载会话详情和消息
-  loadingConversations.value = true
   try {
     const response = await getConversationDetail(conversation.conversation_id)
     if (response.code === 200 && response.data) {
+      // 一次性更新消息，避免两次DOM更新导致的闪烁
       messages.value = response.data.messages || []
+      // 多次 nextTick 确保所有 DOM 渲染完全
+      await nextTick()
+      await nextTick()
       scrollToBottom()
     } else {
       message.error(response.message || '加载会话详情失败')
@@ -250,8 +261,6 @@ const selectConversation = async (conversation: ConversationInfo) => {
   } catch (error) {
     console.error('加载会话详情失败:', error)
     message.error('加载会话详情失败')
-  } finally {
-    loadingConversations.value = false
   }
 }
 
@@ -351,19 +360,22 @@ const handleSendMessage = async () => {
     }))
 
   try {
-    // 添加 AI 消息占位符
+    // 添加 AI 消息占位符，标记为加载中
     const aiMsgIndex = messages.value.length
+    const currentConversationId = selectedConversation.value!.conversation_id
     messages.value.push({
       message_id: '',
-      conversation_id: selectedConversation.value!.conversation_id,
+      conversation_id: currentConversationId,
       role: 'assistant',
       content: '',
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
+      loading: true
     })
+    scrollToBottom()
 
     // 调用流式接口
     const stream = await streamChat({
-      conversation_id: selectedConversation.value!.conversation_id,
+      conversation_id: currentConversationId,
       messages: historyMessages,
       message: userMessage
     })
@@ -379,20 +391,24 @@ const handleSendMessage = async () => {
       reader,
       // onChunk: 接收到每个 chunk
       (data) => {
-        fullContent = data.full_content
-        // 更新 AI 消息内容
-        if (messages.value[aiMsgIndex]) {
+        // 检查是否还在当前的对话中
+        if (messages.value[aiMsgIndex] && messages.value[aiMsgIndex].conversation_id === currentConversationId) {
+          fullContent = data.full_content
+          // 更新 AI 消息内容
           messages.value[aiMsgIndex].content = fullContent
+          messages.value[aiMsgIndex].loading = false
           scrollToBottom()
         }
       },
       // onComplete: 完成
       (finalContent) => {
-        if (messages.value[aiMsgIndex]) {
+        // 检查是否还在当前的对话中
+        if (messages.value[aiMsgIndex] && messages.value[aiMsgIndex].conversation_id === currentConversationId) {
           messages.value[aiMsgIndex].content = finalContent
+          messages.value[aiMsgIndex].loading = false
         }
         // 更新会话的最后消息
-        if (selectedConversation.value) {
+        if (selectedConversation.value && selectedConversation.value.conversation_id === currentConversationId) {
           selectedConversation.value.last_message = finalContent
         }
         scrollToBottom()
@@ -400,8 +416,10 @@ const handleSendMessage = async () => {
       // onError: 错误处理
       (error) => {
         console.error('流式对话错误:', error)
-        if (messages.value[aiMsgIndex]) {
+        // 检查是否还在当前的对话中
+        if (messages.value[aiMsgIndex] && messages.value[aiMsgIndex].conversation_id === currentConversationId) {
           messages.value[aiMsgIndex].content = `错误: ${error}`
+          messages.value[aiMsgIndex].loading = false
         }
       }
     )
@@ -409,7 +427,9 @@ const handleSendMessage = async () => {
     console.error('发送消息失败', error)
     message.error('发送消息失败，请重试')
     // 移除失败的AI消息
-    messages.value.pop()
+    if (messages.value[aiMsgIndex]) {
+      messages.value[aiMsgIndex].loading = false
+    }
   } finally {
     sendingMessage.value = false
   }
@@ -419,7 +439,12 @@ const handleSendMessage = async () => {
 const scrollToBottom = () => {
   nextTick(() => {
     if (messagesContainer.value) {
-      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+      // 使用 setTimeout 确保在同一帧的最后执行，避免与 DOM 更新冲突
+      requestAnimationFrame(() => {
+        if (messagesContainer.value) {
+          messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+        }
+      })
     }
   })
 }
@@ -473,7 +498,7 @@ onMounted(() => {
 
 .content-grid {
   display: grid;
-  grid-template-columns: 1fr 2fr;
+  grid-template-columns: 300px 1fr;
   gap: 24px;
   flex: 1;
   min-height: 0;
@@ -489,6 +514,7 @@ onMounted(() => {
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  contain: layout;
 }
 
 .list-card {
@@ -536,6 +562,7 @@ onMounted(() => {
   gap: 8px;
   position: relative;
   padding: 4px;
+  scrollbar-gutter: stable;
 }
 
 .conversation-item {
@@ -631,6 +658,7 @@ onMounted(() => {
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  contain: layout;
 }
 
 .detail-card {
@@ -642,6 +670,7 @@ onMounted(() => {
   border-radius: 8px;
   background: #fff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  contain: layout;
 }
 
 :deep(.detail-card > .ant-card-body) {
@@ -669,8 +698,9 @@ onMounted(() => {
   background: #f9f9fb;
   padding: 16px;
   margin-top: 16px;
-  scroll-behavior: smooth;
   min-height: 0;
+  scrollbar-gutter: stable;
+  overflow-anchor: none;
 }
 
 .message-wrapper {
@@ -737,6 +767,59 @@ onMounted(() => {
   color: #fff;
 }
 
+@keyframes dot-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.7;
+  }
+  30% {
+    transform: translateY(-8px);
+    opacity: 1;
+  }
+}
+
+.loading-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 24px;
+  padding: 4px 0;
+}
+
+.loading-dots {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #1890ff 0%, #0050b3 100%);
+  animation: dot-bounce 1.4s infinite;
+}
+
+.dot:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+.loading-text {
+  color: #666;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
 /* ==========================================
    5. 右侧：输入框与通用状态
 ========================================== */
@@ -768,6 +851,7 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   min-height: 300px;
+  contain: layout;
 }
 
 /* ==========================================

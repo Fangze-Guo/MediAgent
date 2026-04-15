@@ -884,7 +884,8 @@
       "noConversations": "暂无会话",
       "patient": "用户",
       "uploadImage": "上传影像",
-      "uploadReport": "上传报告"
+      "uploadReport": "上传报告",
+      "loading": "AI 正在思考..."
     },
     "views_RagKnowledgeBaseView": {
       "title": "RAG 知识库",

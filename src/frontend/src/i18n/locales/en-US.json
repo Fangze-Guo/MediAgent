@@ -941,7 +941,8 @@
       "noConversations": "No sessions yet",
       "patient": "User",
       "uploadImage": "Upload Image",
-      "uploadReport": "Upload Report"
+      "uploadReport": "Upload Report",
+      "loading": "AI is thinking..."
     },
     "views_RagKnowledgeBaseView": {
       "title": "RAG Knowledge Base",

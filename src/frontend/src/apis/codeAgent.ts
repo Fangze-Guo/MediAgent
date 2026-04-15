@@ -52,6 +52,7 @@ export interface MessageResponse {
   role: 'user' | 'assistant'
   content: string
   created_at?: string
+  loading?: boolean
 }
 
 /**
