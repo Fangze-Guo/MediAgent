@@ -4,6 +4,9 @@ Code 智能体服务 - 处理处理 Code 智能体相关的业务逻辑
 """
 import json
 import logging
+import os
+import tempfile
+from pathlib import Path
 from typing import AsyncGenerator, List, Optional, Union
 
 from src.server_agent.agent.qwen_agent import QwenAgent
@@ -60,6 +63,7 @@ class CodeAgentService:
         # 获取或创建会话审计记录
         session_audit = None
         qwen_session_id = None
+        is_first_message = False
 
         if conversation_id:
             # 验证会话是否存在且属于该用户
@@ -95,6 +99,30 @@ class CodeAgentService:
                     qwen_session_id = None
                 else:
                     logger.info(f"Resuming Qwen session {qwen_session_id} for conversation {conversation_id}")
+        else:
+            # 没有 conversation_id 的情况，也认为是新对话，需要注入上下文
+            is_first_message = True
+
+        # 第一次对话时注入用户上下文
+        context_file_path = None
+        if is_first_message and user_id:
+            # 创建临时文件保存上下文
+            user_context = f"""[SYSTEM]
+当前用户ID: {user_id}
+用户数据目录: /mnt/c/MediaLab/MediAgent/src/server_new/data/files/private/{user_id}/dataset
+工作空间路径: /mnt/c/MediaLab/MediAgent/src/server_new/data/files/private/{user_id}/workspace
+
+当用户询问数据集或文件时，请优先在上述目录中查找。
+
+{current_message}
+"""
+            # 创建临时文件
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
+                f.write(user_context)
+                context_file_path = f.name
+            logger.info(f"User context written to temp file: {context_file_path}")
+        else:
+            context_file_path = None
 
         # 保存用户消息到数据库
         if conversation_id:
@@ -102,14 +130,14 @@ class CodeAgentService:
                 await self.mapper.add_message(conversation_id, "user", current_message)
             except Exception as e:
                 logger.error(f"Failed to save user message: {e}")
-                # 不影响对话流程，只记录错�?
         try:
             full_content = ""
 
             # 调用 Qwen Code Agent
-            # 第一次对话:session_id 为 None，创建新会话
-            # 后续对话:使用 --resume {session_id}
-            async for chunk_json in self.qwen_agent.stream_chat(current_message, qwen_session_id):  # type: ignore
+            # 第一次对话:session_id 为 None，创建新会话，使用 context_file_path 或 current_message
+            # 后续对话:使用 --resume {session_id}，使用 current_message
+            message_to_send = context_file_path if context_file_path else current_message
+            async for chunk_json in self.qwen_agent.stream_chat(message_to_send, qwen_session_id, is_file=context_file_path is not None):  # type: ignore
                 chunk_data = json.loads(chunk_json)
 
                 if "error" in chunk_data:
@@ -157,6 +185,14 @@ class CodeAgentService:
                 "message": error_response.message,
             }, ensure_ascii=False)
             yield f"data: {error_data}\n\n"
+        finally:
+            # 清理临时文件
+            if context_file_path and os.path.exists(context_file_path):
+                try:
+                    os.unlink(context_file_path)
+                    logger.info(f"Temp file deleted: {context_file_path}")
+                except Exception as e:
+                    logger.error(f"Failed to delete temp file {context_file_path}: {e}")
 
     @handle_service_exception
     async def chat(
@@ -180,6 +216,7 @@ class CodeAgentService:
         # 获取或创建会话审计记录
         session_audit = None
         qwen_session_id = None
+        is_first_message = False
 
         if conversation_id:
             # 验证会话是否存在且属于该用户
@@ -215,6 +252,30 @@ class CodeAgentService:
                     qwen_session_id = None
                 else:
                     logger.info(f"Resuming Qwen session {qwen_session_id} for conversation {conversation_id}")
+        else:
+            # 没有 conversation_id 的情况，也认为是新对话，需要注入上下文
+            is_first_message = True
+
+        # 第一次对话时注入用户上下文
+        context_file_path = None
+        if is_first_message and user_id:
+            # 创建临时文件保存上下文
+            user_context = f"""[SYSTEM]
+当前用户ID: {user_id}
+用户数据目录: /mnt/c/MediaLab/MediAgent/src/server_new/data/files/private/{user_id}/dataset
+工作空间路径: /mnt/c/MediaLab/MediAgent/src/server_new/data/files/private/{user_id}/workspace
+
+当用户询问数据集或文件时，请优先在上述目录中查找。
+
+{current_message}
+"""
+            # 创建临时文件
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
+                f.write(user_context)
+                context_file_path = f.name
+            logger.info(f"User context written to temp file: {context_file_path}")
+        else:
+            context_file_path = None
 
         # 保存用户消息到数据库
         if conversation_id:
@@ -225,7 +286,10 @@ class CodeAgentService:
 
         # 调用 Qwen Code Agent
         try:
-            response_content = await self.qwen_agent.chat(current_message, qwen_session_id)  # type: ignore
+            # 第一次对话:session_id 为 None，创建新会话，使用 context_file_path 或 current_message
+            # 后续对话:使用 --resume {session_id}，使用 current_message
+            message_to_send = context_file_path if context_file_path else current_message
+            response_content = await self.qwen_agent.chat(message_to_send, qwen_session_id, is_file=context_file_path is not None)  # type: ignore
 
             # 保存AI回复
             if conversation_id:
@@ -243,6 +307,14 @@ class CodeAgentService:
         except Exception as e:
             logger.error(f"Chat error: {e}")
             raise
+        finally:
+            # 清理临时文件
+            if context_file_path and os.path.exists(context_file_path):
+                try:
+                    os.unlink(context_file_path)
+                    logger.info(f"Temp file deleted: {context_file_path}")
+                except Exception as e:
+                    logger.error(f"Failed to delete temp file {context_file_path}: {e}")
 
     @handle_service_exception
     async def create_conversation(

@@ -29,15 +29,17 @@ class QwenAgent:
         self,
         prompt: str,
         session_id: str = None,
-        timeout: int = None
+        timeout: int = None,
+        is_file: bool = False
     ) -> AsyncGenerator[str, None]:
         """
         异步执行qwen命令并流式输出结果
 
         Args:
-            prompt: 用户提示词
+            prompt: 用户提示词（如果是is_file=True，则为文件路径）
             session_id: 会话ID（UUID格式，用于管理历史对话）
             timeout: 超时时间（秒），如果为None则使用实例默认值
+            is_file: 是否为文件路径（使用管道输入）
 
         Yields:
             流式输出的文本片段
@@ -46,13 +48,14 @@ class QwenAgent:
 
         try:
             session_info = f" with session_id: {session_id}" if session_id else " (new session)"
-            logger.info(f"[QwenAgent] Sending message to Qwen Code{session_info}, prompt length: {len(prompt)}")
+            file_info = f" from file: {prompt}" if is_file else f", prompt length: {len(prompt)}"
+            logger.info(f"[QwenAgent] Sending message to Qwen Code{session_info}{file_info}")
 
             # 使用会话管理器发送消息
             chunk_count = 0
             if session_id:
                 logger.info(f"[QwenAgent] Resuming session with UUID: {session_id}")
-                async for chunk in self.session_manager.send_message(session_id, prompt):
+                async for chunk in self.session_manager.send_message(session_id, prompt, is_file=is_file):
                     chunk_count += 1
                     if chunk_count == 1:
                         logger.info(f"[QwenAgent] First chunk received")
@@ -62,7 +65,7 @@ class QwenAgent:
             else:
                 # 新会话
                 logger.info(f"[QwenAgent] Creating new session")
-                async for chunk in self.session_manager.send_message(None, prompt):
+                async for chunk in self.session_manager.send_message(None, prompt, is_file=is_file):
                     chunk_count += 1
                     if chunk_count == 1:
                         logger.info(f"[QwenAgent] First chunk received")
@@ -79,14 +82,16 @@ class QwenAgent:
     async def stream_chat(
         self,
         current_message: str,
-        session_id: str = None
+        session_id: str = None,
+        is_file: bool = False
     ) -> AsyncGenerator[str, None]:
         """
         流式对话（适合前端SSE流式响应）
 
         Args:
-            current_message: 当前用户消息
+            current_message: 当前用户消息（如果是is_file=True，则为文件路径）
             session_id: 会话ID，用于管理历史对话
+            is_file: 是否为文件路径（使用管道输入）
 
         Yields:
             每个输出片段的JSON字符串（SSE格式）
@@ -96,7 +101,7 @@ class QwenAgent:
 
         full_content = ""
         try:
-            async for chunk in self._execute_qwen(current_message, session_id):
+            async for chunk in self._execute_qwen(current_message, session_id, is_file=is_file):
                 full_content += chunk
                 # 返回SSE格式的数据
                 data = {
@@ -127,20 +132,22 @@ class QwenAgent:
     async def chat(
         self,
         current_message: str,
-        session_id: str = None
+        session_id: str = None,
+        is_file: bool = False
     ) -> str:
         """
         同步对话（非流式，用于测试）
 
         Args:
-            current_message: 当前用户消息
+            current_message: 当前用户消息（如果是is_file=True，则为文件路径）
             session_id: 会话ID，用于管理历史对话
+            is_file: 是否为文件路径（使用管道输入）
 
         Returns:
             AI的完整回复
         """
         full_content = ""
-        async for chunk in self._execute_qwen(current_message, session_id):
+        async for chunk in self._execute_qwen(current_message, session_id, is_file=is_file):
             full_content += chunk
 
         return full_content
