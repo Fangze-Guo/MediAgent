@@ -1,31 +1,33 @@
 """
-Qwen Code Agent - 使用 --resume 机制实现有状态对话
-移除临时文件方案，完全依赖 Qwen 的 JSONL 文件管理上下文
+Claude Code Agent - 使用 --resume 机制实现有状态对话
+继承自 BaseCodeAgent
 """
 import json
 import logging
 from typing import AsyncGenerator, Optional
 
-from src.server_agent.agent.qwen_session_manager import QwenSessionManager
+from src.server_agent.agent.code_agent.base import BaseCodeAgent
+from src.server_agent.agent.code_agent.claude.claude_session_manager import ClaudeSessionManager
 
 logger = logging.getLogger(__name__)
 
 
-class QwenAgent:
-    """Qwen Code Agent类 - 使用 --resume 机制"""
+class ClaudeAgent(BaseCodeAgent):
+    """Claude Code Agent类 - 使用 --resume 机制"""
 
-    def __init__(self, qwen_path: str = "qwen", timeout: int = 120):
+    def __init__(self, claude_path: str = "claude", timeout: int = 120):
         """
-        初始化Qwen Code Agent
+        初始化Claude Code Agent
 
         Args:
-            qwen_path: qwen命令的路径，默认为"qwen"（假设在PATH中）
+            claude_path: claude命令的路径，默认为"claude"（假设在PATH中）
             timeout: 命令执行超时时间（秒）
         """
-        self.session_manager = QwenSessionManager(qwen_path)
+        super().__init__(agent_type="claude")
+        self.session_manager = ClaudeSessionManager(claude_path)
         self.timeout = timeout
 
-    async def _execute_qwen(
+    async def _execute(
         self,
         prompt: str,
         session_id: Optional[str] = None,
@@ -34,7 +36,7 @@ class QwenAgent:
         use_stream_json: bool = True
     ) -> AsyncGenerator[str, None]:
         """
-        异步执行qwen命令并流式输出结果
+        异步执行claude命令并流式输出结果
 
         Args:
             prompt: 用户提示词（如果是is_file=True，则为文件路径）
@@ -51,34 +53,34 @@ class QwenAgent:
         try:
             session_info = f" with session_id: {session_id}" if session_id else " (new session)"
             file_info = f" from file: {prompt}" if is_file else f", prompt length: {len(prompt)}"
-            logger.info(f"[QwenAgent] Sending message to Qwen Code{session_info}{file_info}")
+            logger.info(f"[ClaudeAgent] 正在发送消息到 Claude Code{session_info}{file_info}")
 
             # 使用会话管理器发送消息
             chunk_count = 0
             if session_id:
-                logger.info(f"[QwenAgent] Resuming session with UUID: {session_id}")
+                logger.info(f"[ClaudeAgent] 正在恢复会话，UUID: {session_id}")
                 async for chunk in self.session_manager.send_message(session_id, prompt, is_file=is_file, use_stream_json=use_stream_json):
                     chunk_count += 1
                     if chunk_count == 1:
-                        logger.info(f"[QwenAgent] First chunk received")
+                        logger.info(f"[ClaudeAgent] 已收到第一个数据块")
                     if chunk_count % 10 == 0:
-                        logger.info(f"[QwenAgent] Received {chunk_count} chunks so far")
+                        logger.info(f"[ClaudeAgent] 已收到 {chunk_count} 个数据块")
                     yield chunk
             else:
                 # 新会话
-                logger.info(f"[QwenAgent] Creating new session")
+                logger.info(f"[ClaudeAgent] 正在创建新会话")
                 async for chunk in self.session_manager.send_message(None, prompt, is_file=is_file, use_stream_json=use_stream_json):
                     chunk_count += 1
                     if chunk_count == 1:
-                        logger.info(f"[QwenAgent] First chunk received")
+                        logger.info(f"[ClaudeAgent] 已收到第一个数据块")
                     if chunk_count % 10 == 0:
-                        logger.info(f"[QwenAgent] Received {chunk_count} chunks so far")
+                        logger.info(f"[ClaudeAgent] 已收到 {chunk_count} 个数据块")
                     yield chunk
 
-            logger.info(f"[QwenAgent] Message sending completed, total chunks: {chunk_count}")
+            logger.info(f"[ClaudeAgent] 消息发送完成，共 {chunk_count} 个数据块")
 
         except Exception as e:
-            logger.error(f"[QwenAgent] Error executing Qwen Code: {e}")
+            logger.error(f"[ClaudeAgent] 执行 Claude Code 时发生错误: {e}")
             raise
 
     async def stream_chat(
@@ -100,14 +102,14 @@ class QwenAgent:
         Yields:
             每个输出片段的JSON字符串（SSE格式）
         """
-        # 使用当前消息和session_id执行qwen命令
-        # 历史消息管理由qwen通过session_id和JSONL文件处理
+        # 使用当前消息和session_id执行claude命令
+        # 历史消息管理由claude通过session_id和JSONL文件处理
 
         full_content = ""
         try:
             if use_stream_json:
                 # 使用流式 JSON 模式：需要解析 JSON 输出
-                async for chunk in self._execute_qwen(current_message, session_id, is_file=is_file, use_stream_json=True):
+                async for chunk in self._execute(current_message, session_id, is_file=is_file, use_stream_json=True):
                     try:
                         # 尝试解析 JSON
                         event_data = json.loads(chunk.strip())
@@ -197,7 +199,7 @@ class QwenAgent:
 
             else:
                 # 传统模式：直接返回文本
-                async for chunk in self._execute_qwen(current_message, session_id, is_file=is_file, use_stream_json=False):
+                async for chunk in self._execute(current_message, session_id, is_file=is_file, use_stream_json=False):
                     full_content += chunk
                     # 返回SSE格式的数据
                     data = {
@@ -245,22 +247,22 @@ class QwenAgent:
             AI的完整回复
         """
         full_content = ""
-        async for chunk in self._execute_qwen(current_message, session_id, is_file=is_file, use_stream_json=use_stream_json):
+        async for chunk in self._execute(current_message, session_id, is_file=is_file, use_stream_json=use_stream_json):
             full_content += chunk
 
         return full_content
 
     async def close_session(self, session_id: str):
         """
-        关闭指定会话（仅标记状态，不删除Qwen的JSONL文件）
+        关闭指定会话（仅标记状态，不删除Claude的JSONL文件）
 
         Args:
             session_id: 会话ID
         """
-        # 注意：不再删除Qwen的JSONL文件，因为由审计服务管理会话状态
-        logger.info(f"Session closed (status marked): {session_id}")
+        # 注意：不再删除Claude的JSONL文件，因为由审计服务管理会话状态
+        logger.info(f"Claude 会话已关闭（状态已标记）: {session_id}")
 
     async def close_all_sessions(self):
-        """关闭所有会话（仅标记状态，不删除Qwen的JSONL文件）"""
-        # 注意：不再删除Qwen的JSONL文件，因为由审计服务管理会话状态
-        logger.info("All sessions closed (status marked)")
+        """关闭所有会话（仅标记状态，不删除Claude的JSONL文件）"""
+        # 注意：不再删除Claude的JSONL文件，因为由审计服务管理会话状态
+        logger.info("所有 Claude 会话已关闭（状态已标记）")

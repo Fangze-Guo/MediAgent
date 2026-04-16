@@ -8,7 +8,7 @@ import os
 import tempfile
 from typing import AsyncGenerator, List, Optional
 
-from src.server_agent.agent.qwen_agent import QwenAgent
+from src.server_agent.agent.code_agent import get_code_agent, get_agent_type
 from src.server_agent.common import ResultUtils
 from src.server_agent.exceptions import (
     ValidationError, NotFoundError, handle_service_exception
@@ -31,9 +31,10 @@ class CodeAgentService:
         self.mapper = CodeAgentMapper()
         self.session_audit_service = SessionAuditService()
 
-        # 创建 Qwen Code Agent(移除 history_provider 参数)
-        # 历史消息管理完全由 Qwen 的 --resume 机制处理
-        self.qwen_agent = QwenAgent()
+        # 根据配置获取 Code Agent (Qwen 或 Claude)
+        # 历史消息管理由 Agent 的 --resume 机制处理
+        self.code_agent = get_code_agent()
+        logger.info(f"[CodeAgentService] Using agent type: {get_agent_type()}")
 
     @handle_service_exception
     async def stream_chat(
@@ -133,7 +134,7 @@ class CodeAgentService:
             message_to_send = context_file_path if context_file_path else current_message
 
             # 直接处理流式输出
-            async for chunk_json in self.qwen_agent.stream_chat(
+            async for chunk_json in self.code_agent.stream_chat(
                 message_to_send,
                 qwen_session_id,
                 is_file=context_file_path is not None,
@@ -291,7 +292,7 @@ class CodeAgentService:
             # 第一次对话:session_id 为 None，创建新会话，使用 context_file_path 或 current_message
             # 后续对话:使用 --resume {session_id}，使用 current_message
             message_to_send = context_file_path if context_file_path else current_message
-            response_content = await self.qwen_agent.chat(message_to_send, qwen_session_id, is_file=context_file_path is not None)  # type: ignore
+            response_content = await self.code_agent.chat(message_to_send, qwen_session_id, is_file=context_file_path is not None)  # type: ignore
 
             # 保存AI回复
             if conversation_id:

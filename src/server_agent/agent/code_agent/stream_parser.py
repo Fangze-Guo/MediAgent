@@ -1,5 +1,6 @@
 """
-Qwen Code 流式 JSON 解析器 - 解析流式 JSON 输出的事件
+Code Agent 流式 JSON 解析器 - 解析流式 JSON 输出的事件
+通用版本，同时支持 Qwen 和 Claude 的流式输出解析
 """
 import json
 import logging
@@ -10,8 +11,8 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class QwenStreamEvent:
-    """Qwen 流式事件基类"""
+class StreamEvent:
+    """流式事件基类"""
     type: str
     uuid: str
     session_id: str
@@ -20,7 +21,7 @@ class QwenStreamEvent:
 
 
 @dataclass
-class SystemEvent(QwenStreamEvent):
+class SystemEvent(StreamEvent):
     """系统初始化事件"""
     subtype: str = ""
     cwd: str = ""
@@ -29,15 +30,8 @@ class SystemEvent(QwenStreamEvent):
     model: str = ""
     permission_mode: str = ""
     slash_commands: list = field(default_factory=list)
-    qwen_code_version: str = ""
+    version: str = ""
     agents: list = field(default_factory=list)
-
-
-@dataclass
-class StreamEvent(QwenStreamEvent):
-    """流式事件"""
-    event_type: str = ""
-    event_data: Optional[Dict[str, Any]] = None
 
 
 @dataclass
@@ -68,7 +62,7 @@ class MessageStopEvent(StreamEvent):
 
 
 @dataclass
-class AssistantEvent(QwenStreamEvent):
+class AssistantEvent(StreamEvent):
     """助手消息事件"""
     message: Optional[Dict[str, Any]] = None
     stop_reason: Optional[str] = None
@@ -76,7 +70,7 @@ class AssistantEvent(QwenStreamEvent):
 
 
 @dataclass
-class ResultEvent(QwenStreamEvent):
+class ResultEvent(StreamEvent):
     """结果事件"""
     subtype: str = ""
     is_error: bool = False
@@ -88,14 +82,15 @@ class ResultEvent(QwenStreamEvent):
     permission_denials: list = field(default_factory=list)
 
 
-class QwenStreamParser:
-    """Qwen 流式 JSON 解析器"""
+class StreamParser:
+    """流式 JSON 解析器"""
 
-    def __init__(self):
+    def __init__(self, agent_type: str = "unknown"):
+        self.agent_type = agent_type
         self._buffer = ""
         self._events = []
 
-    def parse_line(self, line: str) -> Optional[QwenStreamEvent]:
+    def parse_line(self, line: str) -> Optional[StreamEvent]:
         """
         解析单行 JSON 数据
 
@@ -128,7 +123,7 @@ class QwenStreamParser:
                     model=data.get("model", ""),
                     permission_mode=data.get("permission_mode", ""),
                     slash_commands=data.get("slash_commands", []),
-                    qwen_code_version=data.get("qwen_code_version", ""),
+                    version=data.get("version", "") or data.get("qwen_code_version", "") or data.get("claude_code_version", ""),
                     agents=data.get("agents", [])
                 )
 
@@ -144,8 +139,6 @@ class QwenStreamParser:
                         session_id=session_id,
                         parent_tool_use_id=parent_tool_use_id,
                         raw_data=data,
-                        event_type=inner_event_type,
-                        event_data=event,
                         message_id=message.get("id", ""),
                         role=message.get("role", ""),
                         model=message.get("model", "")
@@ -159,8 +152,6 @@ class QwenStreamParser:
                         session_id=session_id,
                         parent_tool_use_id=parent_tool_use_id,
                         raw_data=data,
-                        event_type=inner_event_type,
-                        event_data=event,
                         index=event.get("index", 0),
                         delta_type=delta.get("type", ""),
                         text=delta.get("text", "")
@@ -173,8 +164,6 @@ class QwenStreamParser:
                         session_id=session_id,
                         parent_tool_use_id=parent_tool_use_id,
                         raw_data=data,
-                        event_type=inner_event_type,
-                        event_data=event,
                         index=event.get("index", 0)
                     )
 
@@ -184,9 +173,7 @@ class QwenStreamParser:
                         uuid=uuid,
                         session_id=session_id,
                         parent_tool_use_id=parent_tool_use_id,
-                        raw_data=data,
-                        event_type=inner_event_type,
-                        event_data=event
+                        raw_data=data
                     )
 
             elif event_type == "assistant":
@@ -220,8 +207,8 @@ class QwenStreamParser:
                 )
 
             # 未知事件类型
-            logger.warning(f"Unknown event type: {event_type}")
-            return QwenStreamEvent(
+            logger.warning(f"[{self.agent_type}] 未知事件类型: {event_type}")
+            return StreamEvent(
                 type=event_type,
                 uuid=uuid,
                 session_id=session_id,
@@ -230,22 +217,23 @@ class QwenStreamParser:
             )
 
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON line: {e}, line: {line[:100]}")
+            logger.error(f"[{self.agent_type}] 解析 JSON 行失败: {e}, 行: {line[:100]}")
             return None
         except Exception as e:
-            logger.error(f"Error parsing event: {e}")
+            logger.error(f"[{self.agent_type}] 解析事件时发生错误: {e}")
             return None
 
 
-async def parse_qwen_stream(
+async def parse_stream(
     stream: AsyncGenerator[str, None],
-    on_event: Callable[[QwenStreamEvent], None],
+    on_event: Callable[[StreamEvent], None],
     on_text: Callable[[str], None],
     on_complete: Callable[[str], None],
-    on_error: Callable[[str], None]
+    on_error: Callable[[str], None],
+    agent_type: str = "unknown"
 ) -> str:
     """
-    解析 Qwen 流式输出
+    解析流式输出
 
     Args:
         stream: 流式生成器
@@ -253,11 +241,12 @@ async def parse_qwen_stream(
         on_text: 文本回调函数
         on_complete: 完成回调函数
         on_error: 错误回调函数
+        agent_type: Agent 类型标识
 
     Returns:
         完整的文本内容
     """
-    parser = QwenStreamParser()
+    parser = StreamParser(agent_type)
     full_text = ""
     current_message_id = None
 
@@ -275,7 +264,7 @@ async def parse_qwen_stream(
             try:
                 on_event(event)
             except Exception as e:
-                logger.error(f"Error in event callback: {e}")
+                logger.error(f"[{agent_type}] 事件回调中发生错误: {e}")
 
             # 处理不同类型的事件
             if isinstance(event, ContentBlockDeltaEvent):
@@ -285,25 +274,25 @@ async def parse_qwen_stream(
                     try:
                         on_text(text)
                     except Exception as e:
-                        logger.error(f"Error in text callback: {e}")
+                        logger.error(f"[{agent_type}] 文本回调中发生错误: {e}")
 
             elif isinstance(event, MessageStartEvent):
                 current_message_id = event.message_id
-                logger.info(f"Message started: {current_message_id}")
+                logger.info(f"[{agent_type}] 消息开始: {current_message_id}")
 
             elif isinstance(event, MessageStopEvent):
-                logger.info(f"Message stopped: {current_message_id}")
+                logger.info(f"[{agent_type}] 消息结束: {current_message_id}")
 
             elif isinstance(event, ResultEvent):
-                logger.info(f"Result received: duration={event.duration_ms}ms, is_error={event.is_error}")
+                logger.info(f"[{agent_type}] 收到结果: 耗时={event.duration_ms}ms, 错误={event.is_error}")
                 if event.is_error:
-                    on_error(f"Qwen Code error: {event.result}")
+                    on_error(f"{agent_type} 错误: {event.result}")
 
             elif isinstance(event, SystemEvent):
-                logger.info(f"System initialized: model={event.model}, version={event.qwen_code_version}")
+                logger.info(f"[{agent_type}] 系统初始化完成: 模型={event.model}, 版本={event.version}")
 
     except Exception as e:
-        error_msg = f"Stream parsing error: {str(e)}"
+        error_msg = f"流解析错误: {str(e)}"
         logger.error(error_msg)
         on_error(error_msg)
 
@@ -311,6 +300,6 @@ async def parse_qwen_stream(
     try:
         on_complete(full_text)
     except Exception as e:
-        logger.error(f"Error in complete callback: {e}")
+        logger.error(f"[{agent_type}] 完成回调中发生错误: {e}")
 
     return full_text
