@@ -26,8 +26,138 @@ export interface StreamResponseData {
   content: string
   full_content: string
   done: boolean
+  event_type?: string
   error?: string
 }
+
+/**
+ * Qwen 流式事件基类
+ */
+export interface QwenStreamEvent {
+  type: string
+  uuid: string
+  session_id: string
+  parent_tool_use_id?: string
+}
+
+/**
+ * 系统初始化事件
+ */
+export interface SystemEvent extends QwenStreamEvent {
+  type: 'system'
+  subtype: 'init'
+  cwd: string
+  tools: string[]
+  mcp_servers: any[]
+  model: string
+  permission_mode: string
+  slash_commands: string[]
+  qwen_code_version: string
+  agents: string[]
+}
+
+/**
+ * 流式事件
+ */
+export interface StreamEventData {
+  type: string
+  [key: string]: any
+}
+
+export interface StreamEvent extends QwenStreamEvent {
+  type: 'stream_event'
+  event: StreamEventData
+}
+
+/**
+ * 消息开始事件
+ */
+export interface MessageStartEvent extends StreamEventData {
+  type: 'message_start'
+  message: {
+    id: string
+    role: 'assistant'
+    model: string
+    content: any[]
+  }
+}
+
+/**
+ * 内容块增量事件
+ */
+export interface ContentBlockDeltaEvent extends StreamEventData {
+  type: 'content_block_delta'
+  index: number
+  delta: {
+    type: 'text_delta'
+    text: string
+  }
+}
+
+/**
+ * 内容块停止事件
+ */
+export interface ContentBlockStopEvent extends StreamEventData {
+  type: 'content_block_stop'
+  index: number
+}
+
+/**
+ * 消息停止事件
+ */
+export interface MessageStopEvent extends StreamEventData {
+  type: 'message_stop'
+}
+
+/**
+ * 助手消息事件
+ */
+export interface AssistantEvent extends QwenStreamEvent {
+  type: 'assistant'
+  message: {
+    id: string
+    type: 'message'
+    role: 'assistant'
+    model: string
+    content: any[]
+    stop_reason: string | null
+    usage: {
+      input_tokens: number
+      output_tokens: number
+      cache_read_input_tokens: number
+      total_tokens: number
+    }
+  }
+}
+
+/**
+ * 结果事件
+ */
+export interface ResultEvent extends QwenStreamEvent {
+  type: 'result'
+  subtype: 'success'
+  is_error: boolean
+  duration_ms: number
+  duration_api_ms: number
+  num_turns: number
+  result: string
+  usage: {
+    input_tokens: number
+    output_tokens: number
+    cache_read_input_tokens: number
+    total_tokens: number
+  }
+  permission_denials: any[]
+}
+
+/**
+ * 联合类型：所有可能的 Qwen 流式事件
+ */
+export type QwenEventType =
+  | SystemEvent
+  | StreamEvent
+  | AssistantEvent
+  | ResultEvent
 
 /**
  * 创建会话请求接口
@@ -142,12 +272,14 @@ export async function syncChat(request: ChatRequest): Promise<BaseResponse<strin
  * @param onChunk 接收到 chunk 时的回调
  * @param onComplete 完成时的回调
  * @param onError 错误时的回调
+ * @param onEvent 可选的事件回调，用于处理特定的流式事件
  */
 export async function parseStreamResponse(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   onChunk: (data: StreamResponseData) => void,
   onComplete: (fullContent: string) => void,
-  onError: (error: string) => void
+  onError: (error: string) => void,
+  onEvent?: (event: QwenEventType) => void
 ): Promise<void> {
   const decoder = new TextDecoder()
   let buffer = ''
@@ -171,7 +303,26 @@ export async function parseStreamResponse(
               if (response.data.done) {
                 onComplete(response.data.full_content)
               } else {
-                onChunk(response.data)
+                // 根据事件类型处理
+                const event_type = response.data.event_type
+                if (event_type) {
+                  // 处理特定事件类型
+                  if (event_type === 'text_delta') {
+                    onChunk(response.data)
+                  } else if (event_type === 'message_complete') {
+                    // 消息完成
+                    onChunk(response.data)
+                  } else {
+                    // 其他事件类型
+                    if (onEvent) {
+                      onEvent(response.data as any)
+                    }
+                    onChunk(response.data)
+                  }
+                } else {
+                  // 兼容旧版本，没有 event_type 字段的情况
+                  onChunk(response.data)
+                }
               }
             } else {
               onError(response.message || '未知错误')
@@ -195,7 +346,21 @@ export async function parseStreamResponse(
               if (response.data.done) {
                 onComplete(response.data.full_content)
               } else {
-                onChunk(response.data)
+                const event_type = response.data.event_type
+                if (event_type) {
+                  if (event_type === 'text_delta') {
+                    onChunk(response.data)
+                  } else if (event_type === 'message_complete') {
+                    onChunk(response.data)
+                  } else {
+                    if (onEvent) {
+                      onEvent(response.data as any)
+                    }
+                    onChunk(response.data)
+                  }
+                } else {
+                  onChunk(response.data)
+                }
               }
             }
           } catch (e) {

@@ -6,22 +6,18 @@ import json
 import logging
 import os
 import tempfile
-from pathlib import Path
-from typing import AsyncGenerator, List, Optional, Union
+from typing import AsyncGenerator, List, Optional
 
 from src.server_agent.agent.qwen_agent import QwenAgent
 from src.server_agent.common import ResultUtils
 from src.server_agent.exceptions import (
-    ValidationError, NotFoundError, DatabaseError,
-    ConflictError, handle_service_exception
+    ValidationError, NotFoundError, handle_service_exception
 )
 from src.server_agent.mapper.CodeAgentMapper import CodeAgentMapper
 from src.server_agent.service.SessionAuditService import SessionAuditService
 from src.server_agent.model.entity.CodeAgentConversation import (
     ConversationDetail,
-    ConversationInfo,
-    CodeAgentConversation,
-    CodeAgentMessage
+    ConversationInfo
 )
 
 logger = logging.getLogger(__name__)
@@ -48,7 +44,7 @@ class CodeAgentService:
         user_id: Optional[int] = None
     ) -> AsyncGenerator[str, None]:
         """
-        流式对话方法
+        流式对话方法 - 使用流式 JSON 解析器
 
         Args:
             conversation_id: 会话ID(如果为None，则不保存历史消息)
@@ -61,8 +57,7 @@ class CodeAgentService:
             SSE 格式的 JSON 字符串，每个 chunk 都使用 BaseResponse 格式
         """
         # 获取或创建会话审计记录
-        session_audit = None
-        qwen_session_id = None
+        qwen_session_id: Optional[str] = None
         is_first_message = False
 
         if conversation_id:
@@ -80,9 +75,6 @@ class CodeAgentService:
                     detail="无权访问此会话",
                     context={"conversation_id": conversation_id, "user_id": user_id}
                 )
-
-            # 获取会话审计记录
-            session_audit = await self.session_audit_service.get_conversation_audit(conversation_id)
 
             # 检查是否是第一次对话
             is_first_message = await self.session_audit_service.is_first_message(conversation_id)
@@ -130,14 +122,22 @@ class CodeAgentService:
                 await self.mapper.add_message(conversation_id, "user", current_message)
             except Exception as e:
                 logger.error(f"Failed to save user message: {e}")
+
         try:
             full_content = ""
 
-            # 调用 Qwen Code Agent
+            # 调用 Qwen Code Agent - 使用流式 JSON 模式
             # 第一次对话:session_id 为 None，创建新会话，使用 context_file_path 或 current_message
             # 后续对话:使用 --resume {session_id}，使用 current_message
             message_to_send = context_file_path if context_file_path else current_message
-            async for chunk_json in self.qwen_agent.stream_chat(message_to_send, qwen_session_id, is_file=context_file_path is not None):  # type: ignore
+
+            # 直接处理流式输出
+            async for chunk_json in self.qwen_agent.stream_chat(
+                message_to_send,
+                qwen_session_id,
+                is_file=context_file_path is not None,
+                use_stream_json=True
+            ):
                 chunk_data = json.loads(chunk_json)
 
                 if "error" in chunk_data:

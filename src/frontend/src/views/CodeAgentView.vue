@@ -70,6 +70,14 @@
 
           <!-- 对话内容区域 -->
           <div class="messages-container" ref="messagesContainer">
+            <!-- 事件显示区域 -->
+            <div v-if="eventDisplay" class="event-display" :class="`event-${eventDisplay.type}`">
+              <LoadingOutlined v-if="eventDisplay.type === 'loading'" class="event-icon" />
+              <CheckCircleOutlined v-else-if="eventDisplay.type === 'success'" class="event-icon" />
+              <InfoCircleOutlined v-else class="event-icon" />
+              <span class="event-message">{{ eventDisplay.message }}</span>
+            </div>
+
             <div
               v-for="(message, index) in messages"
               :key="index"
@@ -152,13 +160,18 @@ import { message } from 'ant-design-vue'
 import {
   PlusOutlined,
   SendOutlined,
-  DeleteOutlined
+  DeleteOutlined,
+  LoadingOutlined,
+  CheckCircleOutlined,
+  InfoCircleOutlined
 } from '@ant-design/icons-vue'
 import type {
   ChatMessage,
   ConversationInfo,
   MessageResponse,
-  CreateConversationRequest
+  CreateConversationRequest,
+  StreamResponseData,
+  QwenEventType
 } from '@/apis/codeAgent'
 import {
   streamChat,
@@ -200,6 +213,10 @@ const messages = ref<MessageResponse[]>([])
 
 // 消息容器引用
 const messagesContainer = ref<HTMLElement | null>(null)
+
+// 当前流式事件状态
+const currentEventType = ref<string>('')
+const eventDisplay = ref<{ message: string; type: 'info' | 'success' | 'loading' } | null>(null)
 
 // 新建会话模态框显示状态
 const newConversationModalVisible = ref(false)
@@ -339,6 +356,10 @@ const handleSendMessage = async () => {
   inputMessage.value = ''
   sendingMessage.value = true
 
+  // 重置事件显示
+  eventDisplay.value = null
+  currentEventType.value = ''
+
   // 添加用户消息到对话中
   const userMsg: MessageResponse = {
     message_id: '',
@@ -387,6 +408,56 @@ const handleSendMessage = async () => {
     const reader = stream.getReader()
     let fullContent = ''
 
+    // 定义事件处理器
+    const handleEvent = (event: QwenEventType) => {
+      currentEventType.value = event.type
+
+      switch (event.type) {
+        case 'system':
+          // 系统初始化事件
+          eventDisplay.value = {
+            message: `系统已初始化 - 模型: ${event.model}, 版本: ${event.qwen_code_version}`,
+            type: 'info'
+          }
+          break
+        case 'stream_event':
+          // 流式事件
+          const streamEvent = event as any
+          if (streamEvent.event) {
+            const innerEvent = streamEvent.event
+            if (innerEvent.type === 'message_start') {
+              eventDisplay.value = {
+                message: '开始生成回复...',
+                type: 'loading'
+              }
+            } else if (innerEvent.type === 'message_stop') {
+              eventDisplay.value = {
+                message: '回复生成完成',
+                type: 'success'
+              }
+            }
+          }
+          break
+        case 'assistant':
+          // 助手消息完成
+          eventDisplay.value = {
+            message: '助手消息已接收',
+            type: 'success'
+          }
+          break
+        case 'result':
+          // 最终结果
+          const resultEvent = event as any
+          if (resultEvent.subtype === 'success') {
+            eventDisplay.value = {
+              message: `处理完成 - 耗时: ${resultEvent.duration_ms}ms, 使用: ${resultEvent.usage.total_tokens} tokens`,
+              type: 'success'
+            }
+          }
+          break
+      }
+    }
+
     await parseStreamResponse(
       reader,
       // onChunk: 接收到每个 chunk
@@ -411,6 +482,11 @@ const handleSendMessage = async () => {
         if (selectedConversation.value && selectedConversation.value.conversation_id === currentConversationId) {
           selectedConversation.value.last_message = finalContent
         }
+        // 清除事件显示
+        setTimeout(() => {
+          eventDisplay.value = null
+          currentEventType.value = ''
+        }, 3000)
         scrollToBottom()
       },
       // onError: 错误处理
@@ -421,12 +497,19 @@ const handleSendMessage = async () => {
           messages.value[aiMsgIndex].content = `错误: ${error}`
           messages.value[aiMsgIndex].loading = false
         }
-      }
+        eventDisplay.value = {
+          message: `错误: ${error}`,
+          type: 'info'
+        }
+      },
+      // onEvent: 事件处理
+      handleEvent
     )
   } catch (error) {
     console.error('发送消息失败', error)
     message.error('发送消息失败，请重试')
     // 移除失败的AI消息
+    const aiMsgIndex = messages.value.length - 1
     if (messages.value[aiMsgIndex]) {
       messages.value[aiMsgIndex].loading = false
     }
@@ -701,6 +784,56 @@ onMounted(() => {
   min-height: 0;
   scrollbar-gutter: stable;
   overflow-anchor: none;
+}
+
+.event-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  animation: fadeIn 0.3s ease-in;
+  max-width: 80%;
+}
+
+.event-info {
+  background: #e6f7ff;
+  border: 1px solid #91d5ff;
+  color: #0050b3;
+}
+
+.event-success {
+  background: #f6ffed;
+  border: 1px solid #b7eb8f;
+  color: #389e0d;
+}
+
+.event-loading {
+  background: #fffbe6;
+  border: 1px solid #ffe58f;
+  color: #d48806;
+}
+
+.event-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.event-message {
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .message-wrapper {

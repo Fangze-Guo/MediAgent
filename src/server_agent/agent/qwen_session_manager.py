@@ -86,7 +86,8 @@ class QwenSessionManager:
         self,
         session_id: str = "",
         prompt: str = "",
-        is_file: bool = False
+        is_file: bool = False,
+        use_stream_json: bool = True
     ) -> AsyncGenerator[str, None]:
         """
         发送消息到指定会话
@@ -95,6 +96,7 @@ class QwenSessionManager:
             session_id: 会话ID（UUID格式），为None则创建新会话
             prompt: 用户消息或文件路径（如果is_file=True）
             is_file: 是否为文件路径（使用管道输入）
+            use_stream_json: 是否使用流式 JSON 输出格式
 
         Yields:
             流式响应的文本片段
@@ -103,63 +105,68 @@ class QwenSessionManager:
         input_source = f"文件 {prompt}" if is_file else prompt
         logger.info(f"用户输入：{input_source}")
         logger.info(f"会话ID: {session_id if session_id else '新会话'}")
+        logger.info(f"流式JSON模式: {use_stream_json}")
 
         full_response = ""
 
         if session_id:
             # 继续会话：使用 --resume
             logger.info(f"恢复会话: {session_id}")
-            async for chunk in self._resume_session(session_id, prompt, is_file=is_file):
+            async for chunk in self._resume_session(session_id, prompt, is_file=is_file, use_stream_json=use_stream_json):
                 full_response += chunk
                 yield chunk
         else:
             # 新建会话：直接发送消息
             logger.info("创建新会话")
-            async for chunk in self._create_new_session(prompt, is_file=is_file):
+            async for chunk in self._create_new_session(prompt, is_file=is_file, use_stream_json=use_stream_json):
                 full_response += chunk
                 yield chunk
 
         # 捕获 Qwen Code 输出
         logger.info(f"助手：{full_response}")
 
-    async def _create_new_session(self, prompt: str, is_file: bool = False) -> AsyncGenerator[str, None]:
+    async def _create_new_session(self, prompt: str, is_file: bool = False, use_stream_json: bool = True) -> AsyncGenerator[str, None]:
         """
         创建新会话并发送消息
 
         Args:
             prompt: 用户消息或文件路径（如果is_file=True）
             is_file: 是否为文件路径（使用管道输入）
+            use_stream_json: 是否使用流式 JSON 输出格式
 
         Yields:
             流式响应的文本片段
         """
         try:
+            # 构建流式 JSON 输出参数
+            stream_json_params = "--output-format stream-json --include-partial-messages" if use_stream_json else ""
+
             if is_file:
-                # 使用管道输入：cat file | qwen --yolo
+                # 使用管道输入：cat file | qwen --yolo --output-format stream-json --include-partial-messages
                 if self.use_wsl:
-                    # WSL 模式：wsl bash -c "cat file | qwen --yolo"
+                    # WSL 模式：wsl bash -c "cat file | qwen --yolo --output-format stream-json --include-partial-messages"
                     # 需要将 Windows 路径转换为 WSL 路径
                     wsl_path = self._windows_to_wsl_path(prompt)
-                    command = f'wsl bash -c "cat {wsl_path} | qwen --yolo"'
+                    command = f'wsl bash -c "cat {wsl_path} | qwen --yolo {stream_json_params}"'
                 else:
                     # Windows/Linux 直接使用管道
                     if os.name == 'nt':  # Windows cmd
-                        command = f'type "{prompt}" | "{self.qwen_path}" --yolo'
+                        command = f'type "{prompt}" | "{self.qwen_path}" --yolo {stream_json_params}'
                     else:  # Linux/Mac
-                        command = f'cat "{prompt}" | "{self.qwen_path}" --yolo'
+                        command = f'cat "{prompt}" | "{self.qwen_path}" --yolo {stream_json_params}'
             else:
                 # 转义 prompt 中的特殊字符
                 escaped_prompt = self._escape_prompt(prompt)
 
-                # 构建命令：qwen --yolo -p "prompt"
+                # 构建命令：qwen --yolo --output-format stream-json --include-partial-messages -p "prompt"
                 if self.use_wsl:
                     escaped_prompt_linux = escaped_prompt.replace("'", "'\\''")
-                    command = f"wsl bash -c \"qwen --yolo -p '{escaped_prompt_linux}'\""
+                    command = f"wsl bash -c \"qwen --yolo {stream_json_params} -p '{escaped_prompt_linux}'\""
                 elif os.name == 'nt':  # Windows
-                    command = f'"{self.qwen_path}" --yolo -p "{escaped_prompt}"'
+                    command = f'"{self.qwen_path}" --yolo {stream_json_params} -p "{escaped_prompt}"'
                 else:  # Linux/Mac
                     escaped_prompt_linux = escaped_prompt.replace("'", "'\\''")
-                    command = f'"{self.qwen_path}" --yolo -p \'{escaped_prompt_linux}\''
+                    command = f'"{self.qwen_path}" --yolo {stream_json_params} -p \'{escaped_prompt_linux}\''
 
             # 记录命令摘要
             command_preview = command[:100] + "..." if len(command) > 100 else command
@@ -204,7 +211,7 @@ class QwenSessionManager:
             logger.error(f"Error creating new session: {e}")
             raise
 
-    async def _resume_session(self, session_id: str, prompt: str, is_file: bool = False) -> AsyncGenerator[str, None]:
+    async def _resume_session(self, session_id: str, prompt: str, is_file: bool = False, use_stream_json: bool = True) -> AsyncGenerator[str, None]:
         """
         恢复现有会话并发送消息
 
@@ -212,37 +219,41 @@ class QwenSessionManager:
             session_id: 会话ID
             prompt: 用户消息或文件路径（如果is_file=True）
             is_file: 是否为文件路径（使用管道输入）
+            use_stream_json: 是否使用流式 JSON 输出格式
 
         Yields:
             流式响应的文本片段
         """
         try:
+            # 构建流式 JSON 输出参数
+            stream_json_params = "--output-format stream-json --include-partial-messages" if use_stream_json else ""
+
             if is_file:
-                # 使用管道输入：cat file | qwen --resume {session_id} --yolo
+                # 使用管道输入：cat file | qwen --resume {session_id} --yolo --output-format stream-json --include-partial-messages
                 if self.use_wsl:
-                    # WSL 模式：wsl bash -c "cat file | qwen --resume {session_id} --yolo"
+                    # WSL 模式：wsl bash -c "cat file | qwen --resume {session_id} --yolo --output-format stream-json --include-partial-messages"
                     # 需要将 Windows 路径转换为 WSL 路径
                     wsl_path = self._windows_to_wsl_path(prompt)
-                    command = f'wsl bash -c "cat {wsl_path} | qwen --resume {session_id} --yolo"'
+                    command = f'wsl bash -c "cat {wsl_path} | qwen --resume {session_id} --yolo {stream_json_params}"'
                 else:
                     # Windows/Linux 直接使用管道
                     if os.name == 'nt':  # Windows cmd
-                        command = f'type "{prompt}" | "{self.qwen_path}" --resume {session_id} --yolo'
+                        command = f'type "{prompt}" | "{self.qwen_path}" --resume {session_id} --yolo {stream_json_params}'
                     else:  # Linux/Mac
-                        command = f'cat "{prompt}" | "{self.qwen_path}" --resume {session_id} --yolo'
+                        command = f'cat "{prompt}" | "{self.qwen_path}" --resume {session_id} --yolo {stream_json_params}'
             else:
                 # 转义 prompt 中的特殊字符
                 escaped_prompt = self._escape_prompt(prompt)
 
-                # 构建命令：qwen --resume {session_id} --yolo -p "prompt"
+                # 构建命令：qwen --resume {session_id} --yolo --output-format stream-json --include-partial-messages -p "prompt"
                 if self.use_wsl:
                     escaped_prompt_linux = escaped_prompt.replace("'", "'\\''")
-                    command = f"wsl bash -c \"qwen --resume {session_id} --yolo -p '{escaped_prompt_linux}'\""
+                    command = f"wsl bash -c \"qwen --resume {session_id} --yolo {stream_json_params} -p '{escaped_prompt_linux}'\""
                 elif os.name == 'nt':  # Windows
-                    command = f'"{self.qwen_path}" --resume {session_id} --yolo -p "{escaped_prompt}"'
+                    command = f'"{self.qwen_path}" --resume {session_id} --yolo {stream_json_params} -p "{escaped_prompt}"'
                 else:  # Linux/Mac
                     escaped_prompt_linux = escaped_prompt.replace("'", "'\\''")
-                    command = f'"{self.qwen_path}" --resume {session_id} --yolo -p \'{escaped_prompt_linux}\''
+                    command = f'"{self.qwen_path}" --resume {session_id} --yolo {stream_json_params} -p \'{escaped_prompt_linux}\''
 
             # 记录命令摘要
             command_preview = command[:100] + "..." if len(command) > 100 else command
