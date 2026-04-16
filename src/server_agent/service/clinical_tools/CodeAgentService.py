@@ -175,8 +175,11 @@ class CodeAgentService:
 
                     # 第一次对话后，提取并保存 session_id
                     if qwen_session_id is None:
-                        logger.info(f"First message completed, extracting session_id...")
-                        await self.session_audit_service.update_session_id_after_first_message(conversation_id)
+                        extracted_session_id = chunk_data.get("session_id")
+                        logger.info(f"First message completed, extracting session_id: {extracted_session_id}...")
+                        await self.session_audit_service.update_session_id_after_first_message(
+                            conversation_id, extracted_session_id
+                        )
 
         except Exception as e:
             # 发送错误响应

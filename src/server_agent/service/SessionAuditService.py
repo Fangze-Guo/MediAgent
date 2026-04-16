@@ -234,20 +234,31 @@ class SessionAuditService:
         return None
 
     @handle_service_exception
-    async def update_session_id_after_first_message(self, conversation_id: str) -> bool:
+    async def update_session_id_after_first_message(
+        self,
+        conversation_id: str,
+        extracted_session_id: Optional[str] = None
+    ) -> bool:
         """
         第一次对话后，提取 session_id 并更新审计记录
 
         Args:
             conversation_id: 会话ID
+            extracted_session_id: 如果已经提取到 session_id，可直接传入（避免再次提取）
 
         Returns:
             是否更新成功
         """
-        logger.info(f"Extracting session_id for conversation {conversation_id}...")
+        logger.info(f"Updating session_id for conversation {conversation_id}...")
 
-        # 从 Qwen JSONL 文件中提取 session_id
-        session_id = await self.session_extractor.extract_session_id(timeout=5)
+        # 如果已经提取到 session_id（Claude 模式），直接使用
+        if extracted_session_id:
+            session_id = extracted_session_id
+            logger.info(f"Using pre-extracted session_id: {session_id}")
+        else:
+            # 从 Qwen JSONL 文件中提取 session_id
+            logger.info(f"Extracting session_id via QwenSessionExtractor...")
+            session_id = await self.session_extractor.extract_session_id(timeout=5)
 
         if session_id:
             # 更新审计记录

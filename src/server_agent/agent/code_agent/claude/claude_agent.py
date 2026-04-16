@@ -138,7 +138,8 @@ class ClaudeAgent(BaseCodeAgent):
                                 final_data = {
                                     "content": "",
                                     "full_content": full_content,
-                                    "done": True
+                                    "done": True,
+                                    "session_id": self.session_manager.last_session_id
                                 }
                                 yield json.dumps(final_data, ensure_ascii=False)
                             elif event_type == "assistant":
@@ -154,7 +155,8 @@ class ClaudeAgent(BaseCodeAgent):
                                     final_data = {
                                         "content": "",
                                         "full_content": full_content,
-                                        "done": True
+                                        "done": True,
+                                        "session_id": self.session_manager.last_session_id
                                     }
                                     yield json.dumps(final_data, ensure_ascii=False)
 
@@ -166,7 +168,8 @@ class ClaudeAgent(BaseCodeAgent):
                             final_data = {
                                 "content": "",
                                 "full_content": full_content,
-                                "done": True
+                                "done": True,
+                                "session_id": self.session_manager.last_session_id
                             }
                             yield json.dumps(final_data, ensure_ascii=False)
 
@@ -183,7 +186,8 @@ class ClaudeAgent(BaseCodeAgent):
                                 final_data = {
                                     "content": "",
                                     "full_content": full_content,
-                                    "done": True
+                                    "done": True,
+                                    "session_id": self.session_manager.last_session_id
                                 }
                                 yield json.dumps(final_data, ensure_ascii=False)
 
@@ -213,7 +217,8 @@ class ClaudeAgent(BaseCodeAgent):
                 final_data = {
                     "content": "",
                     "full_content": full_content,
-                    "done": True
+                    "done": True,
+                    "session_id": self.session_manager.last_session_id
                 }
                 yield json.dumps(final_data, ensure_ascii=False)
 

@@ -205,9 +205,7 @@ class QwenSessionManager(BaseSessionManager):
                     escaped_prompt_linux = escaped_prompt.replace("'", "'\\''")
                     command = f'"{self.qwen_path}" --resume {session_id} --yolo {stream_json_params} -p \'{escaped_prompt_linux}\''
 
-            # 记录命令摘要
-            command_preview = command[:100] + "..." if len(command) > 100 else command
-            logger.info(f"正在执行恢复会话命令: {command_preview}")
+            logger.info(f"正在执行恢复会话命令: {command}")
 
             process = await asyncio.create_subprocess_shell(
                 command,

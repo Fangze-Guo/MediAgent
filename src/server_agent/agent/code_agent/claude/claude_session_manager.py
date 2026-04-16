@@ -3,6 +3,7 @@ Claude Code 会话管理器 - 使用 --resume 机制实现有状态对话
 继承自 BaseSessionManager
 """
 import asyncio
+import json
 import logging
 import os
 from typing import AsyncGenerator, Optional, Dict
@@ -28,6 +29,9 @@ class ClaudeSessionManager(BaseSessionManager):
         # 检查是否使用WSL
         self.use_wsl = os.getenv("CLAUDE_USE_WSL", "").lower() == "true"
 
+        # 最近一次新建会话产生的 session_id（从 init JSON 中解析）
+        self.last_session_id: Optional[str] = None
+
         logger.info(f"Claude 会话管理器已初始化 (WSL: {self.use_wsl}, claude_path: {self.claude_path})")
 
     async def send_message(
@@ -47,7 +51,7 @@ class ClaudeSessionManager(BaseSessionManager):
             use_stream_json: 是否使用流式 JSON 输出格式
 
         Yields:
-            流式响应的文本片段
+            流式响应的文本片段。首次新建会话时会先 yield 一个包含 session_id 的 JSON 事件。
         """
         # 捕获用户输入
         input_source = f"文件 {prompt}" if is_file else prompt
@@ -64,8 +68,8 @@ class ClaudeSessionManager(BaseSessionManager):
                 full_response += chunk
                 yield chunk
         else:
-            # 新建会话：直接发送消息
-            logger.info("创建新会话")
+            # 新建会话：先用 -p 获取 session_id，再发送内容
+            logger.info("创建新会话（两阶段：先获取session_id，再发送内容）")
             async for chunk in self._create_new_session(prompt, is_file=is_file, use_stream_json=use_stream_json):
                 full_response += chunk
                 yield chunk
@@ -129,6 +133,15 @@ class ClaudeSessionManager(BaseSessionManager):
                         break
                     line = line_bytes.decode('utf-8', errors='ignore')
                     if line:
+                        # 从首行 init JSON 中解析 session_id
+                        if self.last_session_id is None:
+                            try:
+                                init_data = json.loads(line.strip())
+                                if init_data.get("type") == "system" and "session_id" in init_data:
+                                    self.last_session_id = init_data["session_id"]
+                                    logger.info(f"从 init 事件中提取到 session_id: {self.last_session_id}")
+                            except json.JSONDecodeError:
+                                pass
                         yield line
 
                 # 等待进程结束
