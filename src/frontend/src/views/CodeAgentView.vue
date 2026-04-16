@@ -213,6 +213,12 @@ const selectedConversation = ref<ConversationInfo | null>(null)
 // 会话消息列表
 const messages = ref<MessageResponse[]>([])
 
+// 加载会话详情状态（防止重复调用）
+const loadingConversationDetail = ref(false)
+
+// 用于取消上次请求的 AbortController
+let currentAbortController: AbortController | null = null
+
 // 消息容器引用
 const messagesContainer = ref<HTMLElement | null>(null)
 
@@ -243,6 +249,11 @@ const filteredConversations = computed(() => {
 
 // 加载对话列表
 const loadConversations = async () => {
+  // 防止重复调用
+  if (loadingConversations.value) {
+    console.log('对话列表正在加载中，跳过此次调用')
+    return
+  }
   loadingConversations.value = true
   try {
     const response = await getConversations()
@@ -261,12 +272,27 @@ const loadConversations = async () => {
 
 // 选择对话
 const selectConversation = async (conversation: ConversationInfo) => {
+  // 取消之前的请求
+  if (currentAbortController) {
+    currentAbortController.abort()
+    currentAbortController = null
+  }
+
+  // 如果点击的是当前已选中的会话，不重复加载
+  if (selectedConversationId.value === conversation.conversation_id) {
+    return
+  }
+
+  // 创建新的 AbortController
+  currentAbortController = new AbortController()
+
   selectedConversationId.value = conversation.conversation_id
   selectedConversation.value = conversation
+  loadingConversationDetail.value = true
 
   // 加载会话详情和消息
   try {
-    const response = await getConversationDetail(conversation.conversation_id)
+    const response = await getConversationDetail(conversation.conversation_id, currentAbortController.signal)
     if (response.code === 200 && response.data) {
       // 一次性更新消息，避免两次DOM更新导致的闪烁
       messages.value = response.data.messages || []
@@ -277,9 +303,17 @@ const selectConversation = async (conversation: ConversationInfo) => {
     } else {
       message.error(response.message || '加载会话详情失败')
     }
-  } catch (error) {
+  } catch (error: any) {
+    // 忽略被取消的请求错误
+    if (error.name === 'AbortError' || error.name === 'CanceledError') {
+      console.log('会话详情请求被取消')
+      return
+    }
     console.error('加载会话详情失败:', error)
     message.error('加载会话详情失败')
+  } finally {
+    loadingConversationDetail.value = false
+    currentAbortController = null
   }
 }
 

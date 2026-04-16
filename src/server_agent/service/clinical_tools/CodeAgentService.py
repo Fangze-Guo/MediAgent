@@ -125,6 +125,7 @@ class CodeAgentService:
 
         try:
             full_content = ""
+            message_saved = False  # 防止重复保存AI回复
 
             # 调用 Qwen Code Agent - 使用流式 JSON 模式
             # 第一次对话:session_id 为 None，创建新会话，使用 context_file_path 或 current_message
@@ -163,8 +164,9 @@ class CodeAgentService:
                 }, ensure_ascii=False)
                 yield f"data: {data}\n\n"
 
-                # 如果完成，保存AI回复
-                if is_done and conversation_id:
+                # 如果完成且尚未保存AI回复，则保存
+                if is_done and conversation_id and not message_saved:
+                    message_saved = True
                     try:
                         await self.mapper.add_message(conversation_id, "assistant", full_content)
                     except Exception as e:

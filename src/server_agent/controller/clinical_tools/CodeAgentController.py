@@ -71,7 +71,7 @@ class CodeAgentController(BaseController):
     """代码智能体控制器"""
 
     def __init__(self):
-        super().__init__(prefix="/code-agent")
+        super().__init__(prefix="/code-agent", tags=["Code Agent"])
         self.service = CodeAgentService()
         self._register_routes()
 

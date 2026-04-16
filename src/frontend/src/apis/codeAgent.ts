@@ -283,6 +283,7 @@ export async function parseStreamResponse(
 ): Promise<void> {
   const decoder = new TextDecoder()
   let buffer = ''
+  let completeCalled = false // 防止 onComplete 被多次调用
 
   try {
     while (true) {
@@ -300,7 +301,8 @@ export async function parseStreamResponse(
             const response: BaseResponse<StreamResponseData> = JSON.parse(jsonStr)
 
             if (response.code === 200 && response.data) {
-              if (response.data.done) {
+              if (response.data.done && !completeCalled) {
+                completeCalled = true
                 onComplete(response.data.full_content)
               } else {
                 // 根据事件类型处理
@@ -405,13 +407,16 @@ export async function getConversations(
 /**
  * 获取会话详情
  * @param conversationId 会话ID
+ * @param signal 可选的 AbortSignal，用于取消请求
  * @returns 会话详情
  */
 export async function getConversationDetail(
-  conversationId: string
+  conversationId: string,
+  signal?: AbortSignal
 ): Promise<BaseResponse<ConversationDetail>> {
   const response = await get<BaseResponse<ConversationDetail>>(
-    `/code-agent/conversations/${conversationId}`
+    `/code-agent/conversations/${conversationId}`,
+    { signal }
   )
   return response.data
 }
