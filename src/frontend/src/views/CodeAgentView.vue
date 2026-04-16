@@ -99,6 +99,7 @@
                   </div>
                   <span class="loading-text">{{ t('views_CodeAgentView.loading') }}</span>
                 </div>
+                <MarkdownRenderer v-else-if="message.role === 'assistant'" :content="message.content" class="message-markdown" />
                 <p v-else class="message-text">{{ message.content }}</p>
               </div>
             </div>
@@ -165,6 +166,7 @@ import {
   CheckCircleOutlined,
   InfoCircleOutlined
 } from '@ant-design/icons-vue'
+import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
 import type {
   ChatMessage,
   ConversationInfo,
@@ -898,6 +900,110 @@ onMounted(() => {
 
 .message-right .message-text {
   color: #fff;
+}
+
+/* Markdown 渲染样式 */
+.message-markdown {
+  line-height: 1.6;
+}
+
+.message-markdown :deep(h1),
+.message-markdown :deep(h2),
+.message-markdown :deep(h3),
+.message-markdown :deep(h4),
+.message-markdown :deep(h5),
+.message-markdown :deep(h6) {
+  margin: 12px 0 6px 0;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.message-markdown :deep(h1) { font-size: 1.3em; }
+.message-markdown :deep(h2) { font-size: 1.2em; }
+.message-markdown :deep(h3) { font-size: 1.1em; }
+
+.message-markdown :deep(p) {
+  margin: 6px 0;
+}
+
+.message-markdown :deep(ul),
+.message-markdown :deep(ol) {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+
+.message-markdown :deep(li) {
+  margin: 3px 0;
+}
+
+.message-markdown :deep(pre) {
+  background: #f6f8fa;
+  border: 1px solid #e1e4e8;
+  border-radius: 4px;
+  padding: 10px 12px;
+  margin: 8px 0;
+  overflow-x: auto;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.message-markdown :deep(code) {
+  background: #f6f8fa;
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.9em;
+}
+
+.message-markdown :deep(pre code) {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+.message-markdown :deep(blockquote) {
+  border-left: 3px solid #dfe2e5;
+  padding-left: 12px;
+  margin: 8px 0;
+  color: #6a737d;
+  font-style: italic;
+}
+
+.message-markdown :deep(table) {
+  border-collapse: collapse;
+  margin: 8px 0;
+  width: 100%;
+  font-size: 13px;
+}
+
+.message-markdown :deep(th),
+.message-markdown :deep(td) {
+  border: 1px solid #dfe2e5;
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.message-markdown :deep(th) {
+  background: #f6f8fa;
+  font-weight: 600;
+}
+
+.message-markdown :deep(a) {
+  color: #0366d6;
+  text-decoration: none;
+}
+
+.message-markdown :deep(a:hover) {
+  text-decoration: underline;
+}
+
+.message-markdown :deep(strong) {
+  font-weight: 600;
+}
+
+.message-markdown :deep(em) {
+  font-style: italic;
 }
 
 @keyframes dot-bounce {
