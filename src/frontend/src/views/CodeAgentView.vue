@@ -79,8 +79,8 @@
             </div>
 
             <div
-              v-for="(message, index) in messages"
-              :key="index"
+              v-for="message in messages"
+              :key="message.message_id"
               class="message-wrapper"
               :class="message.role === 'user' ? 'message-right' : 'message-left'"
             >
@@ -91,7 +91,8 @@
                 <span class="message-time">{{ formatTime(message.created_at) }}</span>
               </div>
               <div class="message-bubble" :class="message.role === 'user' ? 'bubble-patient' : 'bubble-ai'">
-                <div v-if="message.loading" class="loading-wrapper">
+                <!-- 加载状态：仅在内容为空且loading=true时显示 -->
+                <div v-if="message.loading && !message.content" class="loading-wrapper">
                   <div class="loading-dots">
                     <span class="dot"></span>
                     <span class="dot"></span>
@@ -99,10 +100,14 @@
                   </div>
                   <span class="loading-text">{{ t('views_CodeAgentView.loading') }}</span>
                 </div>
-                <MarkdownRenderer v-else-if="message.role === 'assistant'" :content="message.content" class="message-markdown" />
+                <!-- AI 消息：使用流式渲染，内容不为空时显示 -->
+                <StreamingMarkdownRenderer v-else-if="message.role === 'assistant' && message.content" :content="message.content" :streaming="message.loading" :streaming-speed="15" class="message-markdown" />
+                <!-- 用户消息和其他文本消息 -->
                 <p v-else class="message-text">{{ message.content }}</p>
               </div>
             </div>
+            <!-- 滚动锚点 -->
+            <div ref="messagesEndRef" style="height: 1px;" />
           </div>
 
           <!-- 输入区域 -->
@@ -155,7 +160,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { message } from 'ant-design-vue'
 import {
@@ -167,6 +172,7 @@ import {
   InfoCircleOutlined
 } from '@ant-design/icons-vue'
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
+import StreamingMarkdownRenderer from '@/components/StreamingMarkdownRenderer.vue'
 import type {
   ChatMessage,
   ConversationInfo,
@@ -221,6 +227,7 @@ let currentAbortController: AbortController | null = null
 
 // 消息容器引用
 const messagesContainer = ref<HTMLElement | null>(null)
+const messagesEndRef = ref<HTMLElement | null>(null)
 
 // 当前流式事件状态
 const currentEventType = ref<string>('')
@@ -283,21 +290,34 @@ const selectConversation = async (conversation: ConversationInfo) => {
     return
   }
 
+  // 立即清理 ResizeObserver，避免它在清空消息时触发滚动
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
+
   // 创建新的 AbortController
   currentAbortController = new AbortController()
 
   selectedConversationId.value = conversation.conversation_id
   selectedConversation.value = conversation
+
+  // 先清空消息列表
+  messages.value = []
+  await nextTick()
+  // 立即重置滚动位置到顶部，避免旧滚动位置的影响
+  if (messagesContainer.value) {
+    messagesContainer.value.scrollTop = 0
+  }
+
   loadingConversationDetail.value = true
 
   // 加载会话详情和消息
   try {
     const response = await getConversationDetail(conversation.conversation_id, currentAbortController.signal)
     if (response.code === 200 && response.data) {
-      // 一次性更新消息，避免两次DOM更新导致的闪烁
       messages.value = response.data.messages || []
-      // 多次 nextTick 确保所有 DOM 渲染完全
-      await nextTick()
+      // 等待消息渲染完成后再滚动到底部
       await nextTick()
       scrollToBottom()
     } else {
@@ -314,6 +334,13 @@ const selectConversation = async (conversation: ConversationInfo) => {
   } finally {
     loadingConversationDetail.value = false
     currentAbortController = null
+  }
+}
+
+// 滚动到顶部
+const scrollToTop = () => {
+  if (messagesContainer.value) {
+    messagesContainer.value.scrollTop = 0
   }
 }
 
@@ -442,7 +469,6 @@ const handleSendMessage = async () => {
     }
 
     const reader = stream.getReader()
-    let fullContent = ''
 
     // 定义事件处理器
     const handleEvent = (event: QwenEventType) => {
@@ -500,11 +526,13 @@ const handleSendMessage = async () => {
       (data) => {
         // 检查是否还在当前的对话中
         if (messages.value[aiMsgIndex] && messages.value[aiMsgIndex].conversation_id === currentConversationId) {
-          fullContent = data.full_content
-          // 更新 AI 消息内容
-          messages.value[aiMsgIndex].content = fullContent
-          messages.value[aiMsgIndex].loading = false
-          scrollToBottom()
+          // 关键：每次更新内容和 loading 状态
+          messages.value[aiMsgIndex].content = data.full_content
+          messages.value[aiMsgIndex].loading = true
+          // 使用 nextTick 确保 DOM 更新完成后再滚动
+          nextTick(() => {
+            scrollToBottom()
+          })
         }
       },
       // onComplete: 完成
@@ -512,7 +540,7 @@ const handleSendMessage = async () => {
         // 检查是否还在当前的对话中
         if (messages.value[aiMsgIndex] && messages.value[aiMsgIndex].conversation_id === currentConversationId) {
           messages.value[aiMsgIndex].content = finalContent
-          messages.value[aiMsgIndex].loading = false
+          messages.value[aiMsgIndex].loading = false  // ✅ 标记流式输出结束
         }
         // 更新会话的最后消息
         if (selectedConversation.value && selectedConversation.value.conversation_id === currentConversationId) {
@@ -523,7 +551,9 @@ const handleSendMessage = async () => {
           eventDisplay.value = null
           currentEventType.value = ''
         }, 3000)
-        scrollToBottom()
+        nextTick(() => {
+          scrollToBottom()
+        })
       },
       // onError: 错误处理
       (error) => {
@@ -555,17 +585,13 @@ const handleSendMessage = async () => {
 }
 
 // 滚动到底部
-const scrollToBottom = () => {
-  nextTick(() => {
-    if (messagesContainer.value) {
-      // 使用 setTimeout 确保在同一帧的最后执行，避免与 DOM 更新冲突
-      requestAnimationFrame(() => {
-        if (messagesContainer.value) {
-          messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-        }
-      })
-    }
-  })
+let resizeObserver: ResizeObserver | null = null
+const scrollToBottom = async () => {
+  await nextTick()
+  if (!messagesEndRef.value || !messagesContainer.value) return
+
+  // 直接滚动到底部，不使用 ResizeObserver 以避免抖动
+  messagesEndRef.value?.scrollIntoView({ behavior: 'instant', block: 'end' })
 }
 
 // 格式化时间
@@ -583,6 +609,14 @@ const formatTime = (time: string | undefined) => {
 // 组件挂载时加载对话列表
 onMounted(() => {
   loadConversations()
+})
+
+// 组件卸载时清理资源
+onUnmounted(() => {
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
 })
 </script>
 
@@ -808,6 +842,7 @@ onMounted(() => {
 /* ==========================================
    4. 右侧：聊天气泡与消息区
 ========================================== */
+/* 消息容器 - 优化滚动和更新性能 */
 .messages-container {
   flex: 1;
   overflow-y: auto;
@@ -820,6 +855,10 @@ onMounted(() => {
   min-height: 0;
   scrollbar-gutter: stable;
   overflow-anchor: none;
+  /* 优化流式输出的性能和流畅性 */
+  contain: layout;
+  will-change: scroll-position;
+  scroll-behavior: smooth;
 }
 
 .event-display {
@@ -910,6 +949,8 @@ onMounted(() => {
   overflow-wrap: break-word;
   word-break: break-word;
   max-width: 100%;
+  transition: all 0.2s ease;
+  min-height: 24px;
 }
 
 .bubble-patient {

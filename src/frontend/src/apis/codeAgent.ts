@@ -17,6 +17,7 @@ export interface ChatMessage {
 export interface ChatRequest {
   conversation_id?: string
   message: string
+  messages?: ChatMessage[]  // 历史消息列表
 }
 
 /**
