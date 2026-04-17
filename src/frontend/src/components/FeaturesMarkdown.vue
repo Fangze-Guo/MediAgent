@@ -152,7 +152,7 @@ import {
   UndoOutlined,
   RedoOutlined
 } from '@ant-design/icons-vue'
-import MarkdownRenderer from './MarkdownRenderer.vue'
+import MarkdownRenderer from './markdown-renderer/MarkdownRenderer.vue'
 import { useAuthStore } from '@/store/auth'
 import { isAdmin } from '@/utils/permission'
 import { useI18n } from 'vue-i18n'

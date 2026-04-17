@@ -24,11 +24,13 @@ export interface ChatRequest {
  * 流式响应数据接口
  */
 export interface StreamResponseData {
-  content: string
-  full_content: string
-  done: boolean
+  content?: string
+  full_content?: string
+  done?: boolean
   event_type?: string
   error?: string
+  type?: 'thinking' | 'thinking_delta' | 'text' | 'done'  // ✅ 新增
+  thinking?: string  // ✅ 新增
 }
 
 /**
@@ -182,6 +184,7 @@ export interface MessageResponse {
   conversation_id: string
   role: 'user' | 'assistant'
   content: string
+  thinking?: string  // ✅ 新增：思考内容
   created_at?: string
   loading?: boolean
 }
@@ -277,7 +280,7 @@ export async function syncChat(request: ChatRequest): Promise<BaseResponse<strin
  */
 export async function parseStreamResponse(
   reader: ReadableStreamDefaultReader<Uint8Array>,
-  onChunk: (data: StreamResponseData) => void,
+  onChunk: (data: { full_content?: string; thinking?: string }, type?: string) => void,
   onComplete: (fullContent: string) => void,
   onError: (error: string) => void,
   onEvent?: (event: QwenEventType) => void
@@ -302,11 +305,39 @@ export async function parseStreamResponse(
             const response: BaseResponse<StreamResponseData> = JSON.parse(jsonStr)
 
             if (response.code === 200 && response.data) {
-              if (response.data.done && !completeCalled) {
+              const dataType = response.data.type
+
+              // ✅ 新增：处理 type 字段的优先级更高
+              if (dataType === 'thinking') {
+                // 思考块
+                onChunk({
+                  full_content: response.data.full_content || '',
+                  thinking: response.data.thinking
+                }, 'thinking')
+              } else if (dataType === 'thinking_delta') {
+                // 思考增量
+                onChunk({
+                  full_content: response.data.full_content || '',
+                  thinking: response.data.thinking
+                }, 'thinking_delta')
+              } else if (dataType === 'text') {
+                // 文本块
+                onChunk({
+                  full_content: response.data.full_content || '',
+                  thinking: undefined
+                }, 'text')
+              } else if (dataType === 'done') {
+                // 完成信号
+                if (!completeCalled) {
+                  completeCalled = true
+                  onComplete(response.data.full_content || '')
+                }
+              } else if (response.data.done && !completeCalled) {
+                // ✅ 兼容：没有 type 但有 done=true
                 completeCalled = true
-                onComplete(response.data.full_content)
+                onComplete(response.data.full_content || '')
               } else {
-                // 根据事件类型处理
+                // ✅ 兼容：旧版本数据
                 const event_type = response.data.event_type
                 if (event_type) {
                   // 处理特定事件类型
@@ -347,7 +378,7 @@ export async function parseStreamResponse(
             const response: BaseResponse<StreamResponseData> = JSON.parse(jsonStr)
             if (response.code === 200 && response.data) {
               if (response.data.done) {
-                onComplete(response.data.full_content)
+                onComplete(response.data.full_content || '')
               } else {
                 const event_type = response.data.event_type
                 if (event_type) {

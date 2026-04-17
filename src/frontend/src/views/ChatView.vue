@@ -214,7 +214,7 @@ import { message } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
 import { useConversationsStore } from '@/store/conversations'
 import FileUpload from '@/components/file/FileUpload.vue'
-import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
+import MarkdownRenderer from '@/components/markdown-renderer/MarkdownRenderer.vue'
 import ModelSelector from '@/components/model/ModelSelector.vue'
 import { type FileInfo } from '@/apis/files'
 import {

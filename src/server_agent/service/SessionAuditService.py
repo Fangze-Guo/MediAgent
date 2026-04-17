@@ -187,7 +187,7 @@ class SessionAuditService:
     async def create_conversation_audit(
         self,
         user_id: int,
-        conversation_id: str,
+        conversation_id: Optional[str] = None,
         extra: Optional[Dict] = None
     ) -> SessionAudit:
         """
@@ -218,7 +218,7 @@ class SessionAuditService:
         return await self.mapper.get_by_conversation_id(conversation_id)
 
     @handle_service_exception
-    async def get_qwen_session_id(self, conversation_id: str) -> Optional[str]:
+    async def get_code_session_id(self, conversation_id: str) -> Optional[str]:
         """
         获取会话对应的 Qwen session_id
 

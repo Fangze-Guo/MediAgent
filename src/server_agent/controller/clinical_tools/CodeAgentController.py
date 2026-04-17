@@ -54,6 +54,7 @@ class MessageResponse(BaseModel):
     conversation_id: str
     role: str
     content: str
+    thinking: Optional[str] = None  # 思考过程内容
     created_at: Optional[str] = None
 
 
@@ -192,6 +193,7 @@ class CodeAgentController(BaseController):
                     conversation_id=msg.conversation_id,
                     role=msg.role,
                     content=msg.content,
+                    thinking=msg.thinking,
                     created_at=msg.created_at.isoformat() if msg.created_at else None
                 )
                 for msg in detail.messages

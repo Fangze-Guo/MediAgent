@@ -58,7 +58,7 @@ class CodeAgentService:
             SSE 格式的 JSON 字符串，每个 chunk 都使用 BaseResponse 格式
         """
         # 获取或创建会话审计记录
-        qwen_session_id: Optional[str] = None
+        code_session_id: Optional[str] = None
         is_first_message = False
 
         if conversation_id:
@@ -83,15 +83,15 @@ class CodeAgentService:
             if is_first_message:
                 # 第一次对话:不使用 --resume，直接创建新会话
                 logger.info(f"First message for conversation {conversation_id}, creating new Qwen session")
-                qwen_session_id = None  # 不使用 --resume
+                code_session_id = None  # 不使用 --resume
             else:
                 # 后续对话:使用 --resume
-                qwen_session_id = await self.session_audit_service.get_qwen_session_id(conversation_id)
-                if not qwen_session_id:
+                code_session_id = await self.session_audit_service.get_code_session_id(conversation_id)
+                if not code_session_id:
                     logger.warning(f"Qwen session_id not found for conversation {conversation_id}, treating as first message")
-                    qwen_session_id = None
+                    code_session_id = None
                 else:
-                    logger.info(f"Resuming Qwen session {qwen_session_id} for conversation {conversation_id}")
+                    logger.info(f"Resuming Qwen session {code_session_id} for conversation {conversation_id}")
         else:
             # 没有 conversation_id 的情况，也认为是新对话，需要注入上下文
             is_first_message = True
@@ -126,6 +126,7 @@ class CodeAgentService:
 
         try:
             full_content = ""
+            accumulated_thinking = ""  # 累积思考内容
             message_saved = False  # 防止重复保存AI回复
 
             # 调用 Qwen Code Agent - 使用流式 JSON 模式
@@ -136,7 +137,7 @@ class CodeAgentService:
             # 直接处理流式输出
             async for chunk_json in self.code_agent.stream_chat(
                 message_to_send,
-                qwen_session_id,
+                code_session_id,
                 is_file=context_file_path is not None,
                 use_stream_json=True
             ):
@@ -153,9 +154,34 @@ class CodeAgentService:
                     yield f"data: {error_data}\n\n"
                     return
 
+                # ✅ 新增：检测 thinking 数据
+                if "thinking" in chunk_data and "thinking_delta" not in chunk_data:
+                    # 这是完整的思考块，添加类型标记
+                    chunk_data["type"] = "thinking"
+                    accumulated_thinking = chunk_data.get("thinking", "")
+                elif "thinking" in chunk_data and chunk_data.get("thinking_delta"):
+                    # 这是思考增量，标记为 thinking_delta
+                    chunk_data["type"] = "thinking_delta"
+                    # 累积思考内容
+                    thinking_delta = chunk_data.get("thinking", "")
+                    accumulated_thinking += thinking_delta
+                    # 将累积的思考内容放入 full_content，供前端同步位置
+                    chunk_data["full_content"] = accumulated_thinking
+                    chunk_data["thinking"] = accumulated_thinking
+                    chunk_data.pop("thinking_delta", None)  # 移除标记字段
+                elif "content" in chunk_data or "full_content" in chunk_data:
+                    # 这是文本数据
+                    if not chunk_data.get("done"):
+                        chunk_data["type"] = "text"
+                    else:
+                        chunk_data["type"] = "done"
+
                 # 正常输出
                 full_content = chunk_data.get("full_content", "")
-                is_done = chunk_data.get("done", False)
+                chunk_type = chunk_data.get("type", "")
+                is_result = chunk_type == "result" or chunk_data.get("subtype") == "success"
+
+                # 注意：thinking 只在 thinking_delta 类型的 chunk 中传递，不混入 full_content
 
                 response = ResultUtils.success(chunk_data)
                 data = json.dumps({
@@ -165,16 +191,22 @@ class CodeAgentService:
                 }, ensure_ascii=False)
                 yield f"data: {data}\n\n"
 
-                # 如果完成且尚未保存AI回复，则保存
-                if is_done and conversation_id and not message_saved:
+                # ✅ 只在 result 事件时保存（确保内容完整）
+                if is_result and conversation_id and not message_saved:
                     message_saved = True
                     try:
-                        await self.mapper.add_message(conversation_id, "assistant", full_content)
+                        # 使用 result 字段作为完整内容
+                        final_content = chunk_data.get("result", full_content)
+                        # 保存消息时包含思考内容
+                        await self.mapper.add_message(
+                            conversation_id, "assistant", final_content, accumulated_thinking
+                        )
+                        logger.info(f"Saved assistant message with thinking ({len(accumulated_thinking)} chars)")
                     except Exception as e:
                         logger.error(f"Failed to save assistant message: {e}")
 
                     # 第一次对话后，提取并保存 session_id
-                    if qwen_session_id is None:
+                    if code_session_id is None:
                         extracted_session_id = chunk_data.get("session_id")
                         logger.info(f"First message completed, extracting session_id: {extracted_session_id}...")
                         await self.session_audit_service.update_session_id_after_first_message(
@@ -221,7 +253,7 @@ class CodeAgentService:
         """
         # 获取或创建会话审计记录
         session_audit = None
-        qwen_session_id = None
+        code_session_id = None
         is_first_message = False
 
         if conversation_id:
@@ -249,15 +281,15 @@ class CodeAgentService:
             if is_first_message:
                 # 第一次对话:不使用 --resume，直接创建新会话
                 logger.info(f"First message for conversation {conversation_id}, creating new Qwen session")
-                qwen_session_id = None  # 不使用 --resume
+                code_session_id = None  # 不使用 --resume
             else:
                 # 后续对话:使用 --resume
-                qwen_session_id = await self.session_audit_service.get_qwen_session_id(conversation_id)
-                if not qwen_session_id:
+                code_session_id = await self.session_audit_service.get_code_session_id(conversation_id)
+                if not code_session_id:
                     logger.warning(f"Qwen session_id not found for conversation {conversation_id}, treating as first message")
-                    qwen_session_id = None
+                    code_session_id = None
                 else:
-                    logger.info(f"Resuming Qwen session {qwen_session_id} for conversation {conversation_id}")
+                    logger.info(f"Resuming Qwen session {code_session_id} for conversation {conversation_id}")
         else:
             # 没有 conversation_id 的情况，也认为是新对话，需要注入上下文
             is_first_message = True
@@ -295,7 +327,7 @@ class CodeAgentService:
             # 第一次对话:session_id 为 None，创建新会话，使用 context_file_path 或 current_message
             # 后续对话:使用 --resume {session_id}，使用 current_message
             message_to_send = context_file_path if context_file_path else current_message
-            response_content = await self.code_agent.chat(message_to_send, qwen_session_id, is_file=context_file_path is not None)  # type: ignore
+            response_content = await self.code_agent.chat(message_to_send, code_session_id, is_file=context_file_path is not None)  # type: ignore
 
             # 保存AI回复
             if conversation_id:
@@ -305,7 +337,7 @@ class CodeAgentService:
                     logger.error(f"Failed to save assistant message: {e}")
 
                 # 第一次对话后，提取并保存 session_id
-                if qwen_session_id is None:
+                if code_session_id is None:
                     logger.info(f"First message completed, extracting session_id...")
                     await self.session_audit_service.update_session_id_after_first_message(conversation_id)
 

@@ -100,8 +100,16 @@
                   </div>
                   <span class="loading-text">{{ t('views_CodeAgentView.loading') }}</span>
                 </div>
-                <!-- AI 消息：使用流式渲染，内容不为空时显示 -->
-                <StreamingMarkdownRenderer v-else-if="message.role === 'assistant' && message.content" :content="message.content" :streaming="message.loading" :streaming-speed="15" class="message-markdown" />
+                <!-- ✅ 新增：思考内容块 - 流式输出 + 可折叠-->
+                <StreamingThinkingRenderer
+                  v-if="message.role === 'assistant' && message.thinking"
+                  :content="message.thinking"
+                  :streaming="message.loading"
+                  :collapsed="true"
+                  class="message-thinking"
+                />
+                <!-- AI 消息：使用流式渲染，内容不为空时显示（改为 v-if 与思考块并行）-->
+                <StreamingMarkdownRenderer v-if="message.role === 'assistant' && message.content" :content="message.content" :streaming="message.loading" :streaming-speed="15" class="message-markdown" />
                 <!-- 用户消息和其他文本消息 -->
                 <p v-else class="message-text">{{ message.content }}</p>
               </div>
@@ -171,8 +179,8 @@ import {
   CheckCircleOutlined,
   InfoCircleOutlined
 } from '@ant-design/icons-vue'
-import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
-import StreamingMarkdownRenderer from '@/components/StreamingMarkdownRenderer.vue'
+import StreamingMarkdownRenderer from '@/components/markdown-renderer/StreamingMarkdownRenderer.vue'
+import StreamingThinkingRenderer from '@/components/markdown-renderer/StreamingThinkingRenderer.vue'
 import type {
   ChatMessage,
   ConversationInfo,
@@ -452,6 +460,7 @@ const handleSendMessage = async () => {
       conversation_id: currentConversationId,
       role: 'assistant',
       content: '',
+      thinking: '',  // ✅ 新增：存放思考内容
       created_at: new Date().toISOString(),
       loading: true
     })
@@ -523,16 +532,30 @@ const handleSendMessage = async () => {
     await parseStreamResponse(
       reader,
       // onChunk: 接收到每个 chunk
-      (data) => {
+      (data: { full_content?: string; thinking?: string; content?: string }, type?: string) => {
         // 检查是否还在当前的对话中
         if (messages.value[aiMsgIndex] && messages.value[aiMsgIndex].conversation_id === currentConversationId) {
-          // 关键：每次更新内容和 loading 状态
-          messages.value[aiMsgIndex].content = data.full_content
+          // ✅ 根据类型区分处理
+          if (type === 'thinking' || type === 'thinking_delta') {
+            // 思考阶段：只更新 thinking，content 保持不变
+            if (data.thinking) {
+              messages.value[aiMsgIndex].thinking = data.thinking
+            }
+          } else if (data.content !== undefined) {
+            // 有 content 字段：更新 content
+            messages.value[aiMsgIndex].content = data.content
+          } else if (data.full_content !== undefined) {
+            // 只有 full_content（没有 content 字段）：可能是旧版本或纯文本
+            messages.value[aiMsgIndex].content = data.full_content
+          }
           messages.value[aiMsgIndex].loading = true
-          // 使用 nextTick 确保 DOM 更新完成后再滚动
-          nextTick(() => {
-            scrollToBottom()
-          })
+
+          // ✅ 只有在内容阶段才滚动，思考阶段不滚动
+          if (type === 'text' || (type !== 'thinking' && type !== 'thinking_delta')) {
+            nextTick(() => {
+              scrollToBottom()
+            })
+          }
         }
       },
       // onComplete: 完成
@@ -964,6 +987,46 @@ onUnmounted(() => {
   background-color: #fff;
   border: 1px solid #e8e8e8;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* ✅ 新增：思考块样式 */
+.thinking-block {
+  background: #f0f4f8;
+  border: 1px solid #d0dce8;
+  border-left: 4px solid #1890ff;
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: #333;
+}
+
+.thinking-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #1890ff;
+}
+
+.thinking-label {
+  white-space: nowrap;
+}
+
+.thinking-length {
+  color: #999;
+  font-size: 12px;
+  font-weight: normal;
+}
+
+.thinking-content {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  line-height: 1.5;
+  color: #666;
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 .message-text {

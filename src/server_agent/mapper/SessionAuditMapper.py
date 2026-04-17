@@ -23,11 +23,11 @@ class SessionAudit:
     """会话审计实体"""
     id: int
     user_id: int
-    conversation_id: str
-    session_id: Optional[str]  # Qwen 的 session_id，可能为 NULL
-    created_at: datetime
-    closed_at: Optional[datetime]
     status: str
+    created_at: datetime
+    session_id: Optional[str]  # Qwen 的 session_id，可能为 NULL
+    closed_at: Optional[datetime]
+    conversation_id: Optional[str] = None
     extra: Optional[dict] = None
 
 
@@ -111,7 +111,7 @@ class SessionAuditMapper:
     async def create_conversation_audit(
         self,
         user_id: int,
-        conversation_id: str,
+        conversation_id: Optional[str] = None,
         extra: Optional[dict] = None
     ) -> SessionAudit:
         """

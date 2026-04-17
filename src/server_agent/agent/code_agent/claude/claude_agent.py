@@ -121,18 +121,33 @@ class ClaudeAgent(BaseCodeAgent):
                             event_type = event.get("type", "")
 
                             if event_type == "content_block_delta":
-                                # 文本增量事件
+                                # 内容增量事件（文本或思考）
                                 delta = event.get("delta", {})
-                                text = delta.get("text", "")
-                                if text:
-                                    full_content += text
-                                    # 返回SSE格式的数据
-                                    data = {
-                                        "content": text,
-                                        "full_content": full_content,
-                                        "done": False
-                                    }
-                                    yield json.dumps(data, ensure_ascii=False)
+                                delta_type = delta.get("type", "")
+                                
+                                # ✅ 处理思考增量
+                                if delta_type == "thinking_delta":
+                                    thinking_text = delta.get("thinking", "")
+                                    if thinking_text:
+                                        data = {
+                                            "thinking": thinking_text,
+                                            "thinking_delta": True,
+                                            "done": False
+                                        }
+                                        yield json.dumps(data, ensure_ascii=False)
+                                
+                                # 处理文本增量
+                                elif delta_type == "text_delta":
+                                    text = delta.get("text", "")
+                                    if text:
+                                        full_content += text
+                                        # 返回SSE格式的数据
+                                        data = {
+                                            "content": text,
+                                            "full_content": full_content,
+                                            "done": False
+                                        }
+                                        yield json.dumps(data, ensure_ascii=False)
                             elif event_type == "message_stop":
                                 # 消息结束
                                 final_data = {
@@ -147,9 +162,22 @@ class ClaudeAgent(BaseCodeAgent):
                                 message = event.get("message", {})
                                 content_blocks = message.get("content", [])
                                 text_content = ""
+                                thinking_content = ""
                                 for block in content_blocks:
                                     if block.get("type") == "text":
                                         text_content += block.get("text", "")
+                                    elif block.get("type") == "thinking":
+                                        thinking_content += block.get("thinking", "")
+                                
+                                # ✅ 先发送思考块
+                                if thinking_content:
+                                    data = {
+                                        "thinking": thinking_content,
+                                        "done": False
+                                    }
+                                    yield json.dumps(data, ensure_ascii=False)
+                                
+                                # 再发送文本内容
                                 if text_content:
                                     full_content = text_content
                                     final_data = {
@@ -178,9 +206,22 @@ class ClaudeAgent(BaseCodeAgent):
                             message = event_data.get("message", {})
                             content_blocks = message.get("content", [])
                             text_content = ""
+                            thinking_content = ""
                             for block in content_blocks:
                                 if block.get("type") == "text":
                                     text_content += block.get("text", "")
+                                elif block.get("type") == "thinking":
+                                    thinking_content += block.get("thinking", "")
+                            
+                            # ✅ 先发送思考块
+                            if thinking_content:
+                                data = {
+                                    "thinking": thinking_content,
+                                    "done": False
+                                }
+                                yield json.dumps(data, ensure_ascii=False)
+                            
+                            # 再发送文本内容
                             if text_content:
                                 full_content = text_content
                                 final_data = {

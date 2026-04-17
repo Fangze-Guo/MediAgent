@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class CodeAgentMapper:
-    """医学咨询数据访问层"""
+    """CodeAgent数据访问层"""
 
     def __init__(self):
         self._config = get_pg_config()
@@ -56,32 +56,32 @@ class CodeAgentMapper:
 
             if tables_exist:
                 logger.info("Medical consultations tables already exist")
-                return
+            else:
+                # 创建会话表 - 使用 UUID 作为 conversation_id
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS medical_conversations (
+                        id SERIAL PRIMARY KEY,
+                        conversation_id UUID UNIQUE NOT NULL,
+                        user_id BIGINT NOT NULL,
+                        title VARCHAR(500),
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
 
-            # 创建会话表 - 使用 UUID 作为 conversation_id
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS medical_conversations (
-                    id SERIAL PRIMARY KEY,
-                    conversation_id UUID UNIQUE NOT NULL,
-                    user_id BIGINT NOT NULL,
-                    title VARCHAR(500),
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-
-            # 创建消息表
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS medical_messages (
-                    id SERIAL PRIMARY KEY,
-                    message_id UUID UNIQUE NOT NULL,
-                    conversation_id UUID NOT NULL,
-                    role VARCHAR(20) NOT NULL CHECK (role IN ('user', 'assistant')),
-                    content TEXT NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (conversation_id) REFERENCES medical_conversations(conversation_id) ON DELETE CASCADE
-                )
-            """)
+                # 创建消息表
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS medical_messages (
+                        id SERIAL PRIMARY KEY,
+                        message_id UUID UNIQUE NOT NULL,
+                        conversation_id UUID NOT NULL,
+                        role VARCHAR(20) NOT NULL CHECK (role IN ('user', 'assistant')),
+                        content TEXT NOT NULL,
+                        thinking TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (conversation_id) REFERENCES medical_conversations(conversation_id) ON DELETE CASCADE
+                    )
+                """)
 
             # 创建索引
             await conn.execute("""
@@ -275,7 +275,7 @@ class CodeAgentMapper:
 
         async with pool.acquire() as conn:
             rows = await conn.fetch("""
-                SELECT id, message_id, conversation_id, role, content, created_at
+                SELECT id, message_id, conversation_id, role, content, thinking, created_at
                 FROM medical_messages
                 WHERE conversation_id = $1
                 ORDER BY created_at ASC
@@ -289,6 +289,7 @@ class CodeAgentMapper:
                 conversation_id=str(row['conversation_id']) if row['conversation_id'] else None,
                 role=row['role'],
                 content=row['content'],
+                thinking=row['thinking'],
                 created_at=row['created_at']
             )
             for row in rows
@@ -298,7 +299,8 @@ class CodeAgentMapper:
         self,
         conversation_id: str,
         role: str,
-        content: str
+        content: str,
+        thinking: Optional[str] = None
     ) -> CodeAgentMessage:
         """
         添加消息到会话
@@ -307,6 +309,7 @@ class CodeAgentMapper:
             conversation_id: 会话ID
             role: 角色（'user' 或 'assistant'）
             content: 消息内容
+            thinking: 思考过程内容（可选）
 
         Returns:
             创建的消息对象
@@ -319,10 +322,10 @@ class CodeAgentMapper:
         async with pool.acquire() as conn:
             # 插入消息
             record = await conn.fetchrow("""
-                INSERT INTO medical_messages (message_id, conversation_id, role, content)
-                VALUES ($1, $2, $3, $4)
-                RETURNING id, message_id, conversation_id, role, content, created_at
-            """, message_id, conversation_id, role, content)
+                INSERT INTO medical_messages (message_id, conversation_id, role, content, thinking)
+                VALUES ($1, $2, $3, $4, $5)
+                RETURNING id, message_id, conversation_id, role, content, thinking, created_at
+            """, message_id, conversation_id, role, content, thinking)
 
             # 更新会话的更新时间
             await conn.execute("""
@@ -337,6 +340,7 @@ class CodeAgentMapper:
             conversation_id=str(record['conversation_id']) if record['conversation_id'] else None,
             role=record['role'],
             content=record['content'],
+            thinking=record['thinking'],
             created_at=record['created_at']
         )
 
