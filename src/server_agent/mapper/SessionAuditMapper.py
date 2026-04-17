@@ -163,6 +163,7 @@ class SessionAuditMapper:
         Returns:
             是否更新成功
         """
+        logger.info(f"[MAPPER] update_session_id called: conversation_id={conversation_id}, session_id={session_id}")
         await self._ensure_tables()
         pool = await self._get_pool()
 
@@ -174,6 +175,7 @@ class SessionAuditMapper:
             """, conversation_id, session_id)
 
             rows_updated = int(result.split()[-1])
+            logger.info(f"[MAPPER] UPDATE result: {result}, rows_updated: {rows_updated}")
             return rows_updated > 0
 
     async def get_by_conversation_id(self, conversation_id: str) -> Optional[SessionAudit]:

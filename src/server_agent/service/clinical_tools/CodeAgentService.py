@@ -14,7 +14,7 @@ from src.server_agent.exceptions import (
     ValidationError, NotFoundError, handle_service_exception
 )
 from src.server_agent.mapper.CodeAgentMapper import CodeAgentMapper
-from src.server_agent.service.SessionAuditService import SessionAuditService
+from src.server_agent.service.clinical_tools.SessionAuditService import SessionAuditService
 from src.server_agent.model.entity.CodeAgentConversation import (
     ConversationDetail,
     ConversationInfo
@@ -181,6 +181,10 @@ class CodeAgentService:
                 chunk_type = chunk_data.get("type", "")
                 is_result = chunk_type == "result" or chunk_data.get("subtype") == "success"
 
+                # DEBUG: 追踪 result 事件
+                if chunk_type == "result" or chunk_data.get("subtype") == "success":
+                    logger.info(f"[RESULT_DEBUG] chunk_type={chunk_type}, subtype={chunk_data.get('subtype')}, session_id in chunk={chunk_data.get('session_id')}, is_result={is_result}")
+
                 # 注意：thinking 只在 thinking_delta 类型的 chunk 中传递，不混入 full_content
 
                 response = ResultUtils.success(chunk_data)
@@ -193,6 +197,7 @@ class CodeAgentService:
 
                 # ✅ 只在 result 事件时保存（确保内容完整）
                 if is_result and conversation_id and not message_saved:
+                    logger.info(f"[SAVE_DEBUG] Entering save block: is_result={is_result}, conversation_id={conversation_id}, message_saved={message_saved}")
                     message_saved = True
                     try:
                         # 使用 result 字段作为完整内容
@@ -208,6 +213,7 @@ class CodeAgentService:
                     # 第一次对话后，提取并保存 session_id
                     if code_session_id is None:
                         extracted_session_id = chunk_data.get("session_id")
+                        logger.info(f"[DEBUG] code_session_id={code_session_id}, extracted_session_id={extracted_session_id}, chunk_type={chunk_type}, chunk_data_keys={chunk_data.keys()}")
                         logger.info(f"First message completed, extracting session_id: {extracted_session_id}...")
                         await self.session_audit_service.update_session_id_after_first_message(
                             conversation_id, extracted_session_id

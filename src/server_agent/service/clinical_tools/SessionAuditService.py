@@ -23,16 +23,23 @@ class QwenSessionExtractor:
     def __init__(self):
         """初始化提取器"""
         # 检查环境变量
-        self.use_wsl = os.getenv("QWEN_USE_WSL", "").lower() == "true"
-        self.qwen_code_path = os.getenv("QWEN_CODE_PATH", "qwen")
+        self.agent_type = os.getenv("CODE_AGENT_TYPE", "qwen")
+        if self.agent_type.lower() == "qwen":
+            self.use_wsl = os.getenv("QWEN_USE_WSL", "").lower() == "true"
+            self.code_path = os.getenv("QWEN_CODE_PATH", "qwen")
+        else:
+            self.use_wsl = os.getenv("CLAUDE_USE_WSL", "").lower() == "true"
+            self.code_path = os.getenv("CLAUDE_CODE_PATH", "claude")
+        
         self.wsl_user = os.getenv("WSL_USER") or os.getenv("USERNAME", "fetters")
+
 
         # 初始化 chats 目录路径
         self._init_chats_dir()
 
-        logger.info(f"QwenSessionExtractor initialized:")
+        logger.info(f"CodeSessionExtractor initialized:")
         logger.info(f"  - WSL mode: {self.use_wsl}")
-        logger.info(f"  - Qwen path: {self.qwen_code_path}")
+        logger.info(f"  - Code path: {self.code_path}")
         logger.info(f"  - WSL user: {self.wsl_user}")
         logger.info(f"  - Chats dir: {self.chats_dir}")
 
@@ -249,6 +256,7 @@ class SessionAuditService:
         Returns:
             是否更新成功
         """
+        logger.info(f"[SESSION_UPDATE] Called with conversation_id={conversation_id}, extracted_session_id={extracted_session_id}")
         logger.info(f"Updating session_id for conversation {conversation_id}...")
 
         # 如果已经提取到 session_id（Claude 模式），直接使用
@@ -262,7 +270,9 @@ class SessionAuditService:
 
         if session_id:
             # 更新审计记录
+            logger.info(f"[SESSION_UPDATE] Calling mapper.update_session_id({conversation_id}, {session_id})")
             success = await self.mapper.update_session_id(conversation_id, session_id)
+            logger.info(f"[SESSION_UPDATE] mapper.update_session_id returned: {success}")
             if success:
                 logger.info(f"Successfully updated session_id: {session_id}")
             else:

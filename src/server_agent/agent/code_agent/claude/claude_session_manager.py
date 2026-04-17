@@ -134,14 +134,20 @@ class ClaudeSessionManager(BaseSessionManager):
                     line = line_bytes.decode('utf-8', errors='ignore')
                     if line:
                         # 从首行 init JSON 中解析 session_id
+                        logger.info(f"收到原始数据行: {line[:200]}...")
                         if self.last_session_id is None:
                             try:
                                 init_data = json.loads(line.strip())
+                                logger.info(f"JSON 解析成功, type={init_data.get('type')}, has_session_id={'session_id' in init_data}")
                                 if init_data.get("type") == "system" and "session_id" in init_data:
                                     self.last_session_id = init_data["session_id"]
                                     logger.info(f"从 init 事件中提取到 session_id: {self.last_session_id}")
-                            except json.JSONDecodeError:
-                                pass
+                                else:
+                                    logger.warning(f"未匹配条件 type={init_data.get('type')}, session_id present={'session_id' in init_data}")
+                            except json.JSONDecodeError as e:
+                                logger.error(f"JSON 解析失败: {e}, 原始数据: {line[:100]}")
+                            except Exception as e:
+                                logger.error(f"提取 session_id 时发生错误: {e}")
                         yield line
 
                 # 等待进程结束

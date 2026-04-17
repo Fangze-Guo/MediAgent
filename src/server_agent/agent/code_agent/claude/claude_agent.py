@@ -154,6 +154,7 @@ class ClaudeAgent(BaseCodeAgent):
                                     "content": "",
                                     "full_content": full_content,
                                     "done": True,
+                                    "subtype": "success",
                                     "session_id": self.session_manager.last_session_id
                                 }
                                 yield json.dumps(final_data, ensure_ascii=False)
@@ -184,6 +185,7 @@ class ClaudeAgent(BaseCodeAgent):
                                         "content": "",
                                         "full_content": full_content,
                                         "done": True,
+                                        "subtype": "success",
                                         "session_id": self.session_manager.last_session_id
                                     }
                                     yield json.dumps(final_data, ensure_ascii=False)
@@ -197,6 +199,7 @@ class ClaudeAgent(BaseCodeAgent):
                                 "content": "",
                                 "full_content": full_content,
                                 "done": True,
+                                "subtype": "success",
                                 "session_id": self.session_manager.last_session_id
                             }
                             yield json.dumps(final_data, ensure_ascii=False)
@@ -228,6 +231,7 @@ class ClaudeAgent(BaseCodeAgent):
                                     "content": "",
                                     "full_content": full_content,
                                     "done": True,
+                                    "subtype": "success",
                                     "session_id": self.session_manager.last_session_id
                                 }
                                 yield json.dumps(final_data, ensure_ascii=False)
@@ -259,6 +263,7 @@ class ClaudeAgent(BaseCodeAgent):
                     "content": "",
                     "full_content": full_content,
                     "done": True,
+                    "subtype": "success",
                     "session_id": self.session_manager.last_session_id
                 }
                 yield json.dumps(final_data, ensure_ascii=False)
