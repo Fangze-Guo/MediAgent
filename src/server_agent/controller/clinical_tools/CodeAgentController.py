@@ -39,7 +39,7 @@ class UpdateConversationRequest(BaseModel):
 
 class ConversationInfoResponse(BaseModel):
     """会话信息响应"""
-    conversation_id: str
+    conversation_id: Optional[str] = None  # UUID 格式的会话ID
     user_id: int
     title: Optional[str] = None
     created_at: Optional[str] = None
@@ -50,8 +50,8 @@ class ConversationInfoResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     """消息响应"""
-    message_id: str
-    conversation_id: str
+    message_id: Optional[str] = None
+    conversation_id: Optional[str] = None
     role: str
     content: str
     thinking: Optional[str] = None  # 思考过程内容
@@ -60,7 +60,7 @@ class MessageResponse(BaseModel):
 
 class ConversationDetailResponse(BaseModel):
     """会话详情响应"""
-    conversation_id: str
+    conversation_id: Optional[str] = None
     user_id: int
     title: Optional[str] = None
     created_at: Optional[str] = None
