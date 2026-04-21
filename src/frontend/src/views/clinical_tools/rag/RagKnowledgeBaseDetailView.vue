@@ -101,9 +101,9 @@ import {
   ClockCircleOutlined,
   ReloadOutlined
 } from '@ant-design/icons-vue'
-import type { KnowledgeBase } from '../types/knowledge-base'
-import DocumentList from '../components/knowledge-base/DocumentList.vue'
-import DocumentUploadSteps from '../components/knowledge-base/DocumentUploadSteps.vue'
+import type { KnowledgeBase } from '../../../types/knowledge-base'
+import DocumentList from "@/components/knowledge-base/DocumentList.vue";
+import DocumentUploadSteps from "@/components/knowledge-base/DocumentUploadSteps.vue";
 
 const route = useRoute()
 const router = useRouter()

@@ -105,7 +105,7 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/code-agent',
         name: 'CodeAgent',
-        component: () => import('@/views/CodeAgentView.vue'),
+        component: () => import('@/views/clinical_tools/code_agent/CodeAgentView.vue'),
         meta: {
             title: 'MediAgent - Code Agent',
             requiresAuth: true
@@ -114,25 +114,16 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/rag-knowledge-base',
         name: 'RagKnowledgeBase',
-        component: () => import('@/views/RagKnowledgeBaseView.vue'),
+        component: () => import('@/views/clinical_tools/rag/RagKnowledgeBaseView.vue'),
         meta: {
             title: 'MediAgent - Rag Knowledge Base',
             requiresAuth: true
         }
     },
     {
-        path: '/knowledge-base',
-        name: 'KnowledgeBase',
-        component: () => import('@/views/RagKnowledgeBaseView.vue'),
-        meta: {
-            title: 'MediAgent - Knowledge Base',
-            requiresAuth: true
-        }
-    },
-    {
         path: '/knowledge-base/:id',
         name: 'KnowledgeBaseDetail',
-        component: () => import('@/views/RagKnowledgeBaseDetailView.vue'),
+        component: () => import('@/views/clinical_tools/rag/RagKnowledgeBaseDetailView.vue'),
         meta: {
             title: 'MediAgent - Knowledge Base Detail',
             requiresAuth: true
@@ -150,7 +141,7 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/ct-diagnosis',
         name: 'CtDiagnosis',
-        component: () => import('@/views/CtDiagnosisView.vue'),
+        component: () => import('@/views/clinical_tools/CtDiagnosisView.vue'),
         meta: {
             title: 'MediAgent - Ct Diagnosis',
             requiresAuth: true

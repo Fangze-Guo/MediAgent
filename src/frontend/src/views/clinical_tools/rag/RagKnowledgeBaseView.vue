@@ -146,7 +146,7 @@ import {
   PlusOutlined,
   FileTextOutlined
 } from '@ant-design/icons-vue'
-import type { KnowledgeBase, Document } from '../types/knowledge-base'
+import type { KnowledgeBase, Document } from '../../../types/knowledge-base'
 
 const { t } = useI18n()
 const router = useRouter()
