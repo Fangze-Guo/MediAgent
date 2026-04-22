@@ -157,6 +157,8 @@ onBeforeUnmount(() => {
 .streaming-wrapper {
   position: relative;
   width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .markdown-content {

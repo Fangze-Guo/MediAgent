@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="code-agent-container">
     <!-- 主要内容区域 -->
     <div class="content-grid">
@@ -78,17 +78,20 @@
             <div
               v-for="message in messages"
               :key="message.message_id"
-              class="message-wrapper"
-              :class="message.role === 'user' ? 'message-right' : 'message-left'"
+              class="message-item"
+              :class="message.role === 'user' ? 'message-user' : 'message-ai'"
             >
-              <div class="message-header">
-                <span class="message-sender">
-                  {{ message.role === 'user' ? t('views_CodeAgentView.patient') : t('views_CodeAgentView.aiAssistant') }}
-                </span>
-                <span class="message-time">{{ formatTime(message.created_at) }}</span>
-              </div>
-              <div class="message-bubble" :class="message.role === 'user' ? 'bubble-patient' : 'bubble-ai'">
-                <!-- 加载状态：仅在内容为空且loading=true时显示 -->
+              <!-- AI消息 -->
+              <template v-if="message.role === 'assistant'">
+                <!-- 思考内容块 -->
+                <StreamingThinkingRenderer
+                  v-if="message.thinking"
+                  :content="message.thinking"
+                  :streaming="message.loading"
+                  :collapsed="true"
+                  class="message-thinking"
+                />
+                <!-- 加载状态（只有思考没有内容时显示） -->
                 <div v-if="message.loading && !message.content" class="loading-wrapper">
                   <div class="loading-dots">
                     <span class="dot"></span>
@@ -97,19 +100,21 @@
                   </div>
                   <span class="loading-text">{{ t('views_CodeAgentView.loading') }}</span>
                 </div>
-                <!-- 思考内容块 -->
-                <StreamingThinkingRenderer
-                  v-if="message.role === 'assistant' && message.thinking"
-                  :content="message.thinking"
-                  :streaming="message.loading"
-                  :collapsed="true"
-                  class="message-thinking"
-                />
-                <!-- AI 消息：使用流式渲染 -->
-                <StreamingMarkdownRenderer v-if="message.role === 'assistant' && message.content" :content="message.content" :streaming="message.loading" :streaming-speed="15" class="message-markdown" />
-                <!-- 用户消息和其他文本消息 -->
-                <p v-else class="message-text">{{ message.content }}</p>
-              </div>
+                <!-- AI 消息内容：有内容时才显示白块 -->
+                <div v-if="message.content" class="message-content">
+                  <StreamingMarkdownRenderer :content="message.content" :streaming="message.loading" :streaming-speed="15" class="message-markdown" />
+                </div>
+                <!-- 时间戳 -->
+                <div class="message-time">{{ formatTime(message.created_at) }}</div>
+              </template>
+
+              <!-- 用户消息：蓝色气泡 -->
+              <template v-else>
+                <div class="message-bubble bubble-user">
+                  <p class="message-text">{{ message.content }}</p>
+                </div>
+                <div class="message-time">{{ formatTime(message.created_at) }}</div>
+              </template>
             </div>
             <!-- 滚动锚点 -->
             <div ref="messagesEndRef" style="height: 1px;" />
@@ -901,22 +906,21 @@ onUnmounted(() => {
 }
 
 /* ==========================================
-   4. 右侧：聊天气泡与消息区
+   4. 右侧：消息区（气泡简洁布局）
 ========================================== */
-/* 消息容器 - 优化滚动和更新性能 */
+/* 消息容器 */
 .messages-container {
   flex: 1;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  background: #f9f9fb;
+  gap: 24px;
+  background: #fafafa;
   padding: 16px;
   margin-top: 16px;
   min-height: 0;
   scrollbar-gutter: stable;
   overflow-anchor: none;
-  /* 优化流式输出的性能和流畅性 */
   contain: layout;
   will-change: scroll-position;
   scroll-behavior: smooth;
@@ -972,37 +976,47 @@ onUnmounted(() => {
   }
 }
 
-.message-wrapper {
+/* 消息项 */
+.message-item {
   display: flex;
   flex-direction: column;
-  max-width: 70%;
+  gap: 2px;
+  max-width: 80%;
   flex-shrink: 0;
-  margin-bottom: 4px;
 }
 
-.message-left { align-self: flex-start; }
-.message-right { align-self: flex-end; }
-
-.message-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
-  font-size: 12px;
+/* AI消息左对齐 */
+.message-ai {
+  align-self: flex-start;
+  width: 100%; /* 直接撑满，避免流式输出时宽度动态扩展 */
 }
-.message-left .message-header { flex-direction: row; }
-.message-right .message-header { flex-direction: row-reverse; }
 
-.message-sender { 
-  font-weight: 600; 
-  color: #1890ff;
-  font-size: 13px;
+/* 用户消息右对齐 */
+.message-user {
+  align-self: flex-end;
 }
-.message-right .message-sender {
-  color: #0050b3;
-}
-.message-time { color: #999; flex-shrink: 0; }
 
+/* AI消息内容白块 */
+.message-content {
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  width: 100%; /* 撑满父级(.message-ai) */
+  box-sizing: border-box; /* 防止 padding 撑宽容器 */
+}
+
+/* 思考块宽度固定 */
+:deep(.thinking-block) {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* 用户消息蓝色气泡 */
 .message-bubble {
   padding: 12px 16px;
   border-radius: 12px;
@@ -1010,24 +1024,42 @@ onUnmounted(() => {
   overflow-wrap: break-word;
   word-break: break-word;
   max-width: 100%;
-  transition: all 0.2s ease;
-  min-height: 24px;
 }
 
-.bubble-patient {
+.bubble-user {
   background: linear-gradient(135deg, #1890ff 0%, #0050b3 100%);
   color: #fff;
   border: none;
   box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
 }
 
-.bubble-ai {
-  background-color: #fff;
-  border: 1px solid #e8e8e8;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+.bubble-user .message-text {
+  margin: 0;
+  color: #fff;
+  line-height: 1.6;
+  white-space: pre-wrap;
 }
 
-/* ✅ 新增：思考块样式 */
+.message-time {
+  color: #b8b8b8;
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* AI消息时间戳左对齐 */
+.message-ai .message-time {
+  margin-left: 6px;
+  margin-top: 2px;
+}
+
+/* 用户消息时间戳右对齐 */
+.message-user .message-time {
+  margin-right: 6px;
+  margin-top: 2px;
+  text-align: right;
+}
+
+/* 思考块样式 */
 .thinking-block {
   background: #f0f4f8;
   border: 1px solid #d0dce8;
@@ -1065,17 +1097,6 @@ onUnmounted(() => {
   color: #666;
   max-height: 200px;
   overflow-y: auto;
-}
-
-.message-text {
-  margin: 0;
-  color: #333;
-  line-height: 1.6;
-  white-space: pre-wrap;
-}
-
-.message-right .message-text {
-  color: #fff;
 }
 
 /* Markdown 渲染样式 */
@@ -1308,7 +1329,7 @@ onUnmounted(() => {
 @media (max-width: 1200px) {
   .code-agent-container { padding: 16px; }
   .content-grid { gap: 16px; }
-  .message-wrapper { max-width: 85%; }
+  .message-item { max-width: 85%; }
 }
 
 @media (max-width: 768px) {
@@ -1321,8 +1342,8 @@ onUnmounted(() => {
     grid-template-rows: auto 1fr;
   }
   .conversation-item { padding: 10px; }
-  .message-wrapper { max-width: 95%; }
-  .message-bubble { padding: 12px 16px; }
+  .message-item { max-width: 95%; }
+  .message-content { padding: 12px 16px; }
 }
 
 @media (max-width: 480px) {
@@ -1331,8 +1352,8 @@ onUnmounted(() => {
   .content-grid { gap: 8px; }
   .search-input { margin-bottom: 12px; }
   .card-title-row .ant-btn { padding: 4px 8px; font-size: 12px; }
-  .message-wrapper { max-width: 100%; }
-  .message-bubble { padding: 8px 12px; }
+  .message-item { max-width: 100%; }
+  .message-content { padding: 8px 12px; }
   .input-row { gap: 6px; }
   .input-actions { gap: 8px; }
 }

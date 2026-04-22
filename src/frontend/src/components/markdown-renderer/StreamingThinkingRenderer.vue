@@ -1,9 +1,7 @@
 <template>
   <div v-if="content" class="thinking-block" :class="{ collapsed: isCollapsed }">
     <div class="thinking-header" @click="toggleCollapse">
-      <span class="think-dot-icon"></span>
-      <span class="think-label">思考过程</span>
-      <span class="think-chars">{{ displayContent.length }} 字</span>
+      <span class="think-label">💭 Thinking...</span>
       <span class="think-chevron" :class="{ expanded: !isCollapsed }">▼</span>
     </div>
     <Transition name="slide">
@@ -133,44 +131,29 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .thinking-block {
-  border: 0.5px solid #e8e8e8;
-  border-radius: 8px;
-  background: #fafbfc;
+  width: 100%;
   margin-bottom: 8px;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .thinking-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 4px 0;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   color: #888;
   user-select: none;
 }
 
 .thinking-header:hover {
-  background: #f0f2f5;
-}
-
-.think-dot-icon {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #7F77DD;
-  flex-shrink: 0;
+  color: #666;
 }
 
 .think-label {
-  flex: 1;
   font-weight: 500;
-}
-
-.think-chars {
-  font-size: 12px;
-  color: #bbb;
 }
 
 .think-chevron {
@@ -184,18 +167,16 @@ onBeforeUnmount(() => {
 }
 
 .thinking-body-wrapper {
-  border-top: 0.5px solid #e8e8e8;
+  margin-top: 4px;
 }
 
 .thinking-body {
-  padding: 10px 14px;
+  padding: 8px 0;
   font-size: 13px;
   color: #999;
   font-family: 'SFMono-Regular', Consolas, monospace;
   white-space: pre-wrap;
-  line-height: 1.7;
-  max-height: 200px;
-  overflow-y: auto;
+  line-height: 1.6;
 }
 
 /* 打字机光标 */
