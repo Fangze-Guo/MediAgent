@@ -193,11 +193,15 @@ export interface UpdateConversationRequest {
 export interface MessageResponse {
   message_id: string
   conversation_id: string
-  role: 'user' | 'assistant'
-  content: string
+  role?: 'user' | 'assistant' | null  // null 表示非消息事件（如 skill_call）
+  content?: string | null
   thinking?: string  // ✅ 新增：思考内容
   created_at?: string
   loading?: boolean
+  // Skill call 字段
+  event_type?: 'skill_call' | null
+  skill_name?: string | null
+  skill_arguments?: string | null
 }
 
 /**

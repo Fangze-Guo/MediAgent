@@ -46,10 +46,14 @@ class ConversationInfoResponse(BaseModel):
 class MessageResponse(BaseModel):
     message_id: Optional[str] = None
     conversation_id: Optional[str] = None
-    role: str
-    content: str
+    role: Optional[str] = None  # None 表示非消息事件（如 skill_call）
+    content: Optional[str] = None
     thinking: Optional[str] = None
     created_at: Optional[str] = None
+    # Skill call 字段
+    event_type: Optional[str] = None  # "skill_call" 或 None (普通消息)
+    skill_name: Optional[str] = None
+    skill_arguments: Optional[str] = None
 
 
 class ConversationDetailResponse(BaseModel):
@@ -106,6 +110,7 @@ class CodeAgentController(BaseController):
     def _parse_jsonl_messages(self, jsonl_messages: List[Dict[str, Any]], conversation_id: str) -> List[MessageResponse]:
         """
         将原始 JSONL 记录转换成前端可渲染消息。
+        - Skill call 组：toolUseResult.commandName 条目 + 后续连续的 isMeta/attachment 条目
         - 跳过控制类记录（queue-operation / last-prompt / attachment）
         - 仅保留 user/assistant 消息
         - 对同一个 message.id 的 assistant thinking/text 片段做合并
@@ -114,12 +119,79 @@ class CodeAgentController(BaseController):
         messages_response: List[MessageResponse] = []
         assistant_index_by_message_id: Dict[str, int] = {}
 
+        # Skill call 分组收集：跳过 isMeta/attachment 条目
+        skill_call_skipped_indices: set = set()
+
         for i, entry in enumerate(sorted_entries):
             entry_type = entry.get("type", "")
-            if entry_type in ("queue-operation", "last-prompt", "attachment"):
+            is_meta = entry.get("isMeta", False)
+            raw_message = entry.get("message", {})
+            entry_role = raw_message.get("role") if isinstance(raw_message, dict) else None
+
+            # 跳过 type=user 且 isMeta=true 的条目（这些是 skill 内部的用户输入，不对外展示）
+            if entry_role == "user" and is_meta:
                 continue
 
-            raw_message = entry.get("message")
+            # 跳过已被 skill call 收集的条目
+            if i in skill_call_skipped_indices:
+                continue
+
+            # 跳过控制类记录（但不在 skill call 组中的）
+            if entry_type in ("queue-operation", "last-prompt"):
+                continue
+
+            # 检查是否是 skill call 触发条目
+            tool_use_result = entry.get("toolUseResult", {})
+            command_name = tool_use_result.get("commandName") if isinstance(tool_use_result, dict) else None
+
+            if command_name:
+                # Skill call 组：收集后续连续的 isMeta/attachment 条目
+                group_indices = {i}
+                arguments = None
+
+                for j in range(i + 1, len(sorted_entries)):
+                    next_entry = sorted_entries[j]
+                    next_type = next_entry.get("type", "")
+                    next_is_meta = next_entry.get("isMeta", False)
+
+                    if next_is_meta or next_type == "attachment":
+                        group_indices.add(j)
+                        # 从 isMeta 条目提取 arguments（message.content 末尾的 ARGUMENTS: 行）
+                        if next_is_meta:
+                            msg_content = next_entry.get("message", {}).get("content", "")
+                            if isinstance(msg_content, str):
+                                # 查找末尾的 ARGUMENTS: 行
+                                for line in reversed(msg_content.strip().split('\n')):
+                                    if line.startswith("ARGUMENTS:"):
+                                        arguments = line[len("ARGUMENTS:"):].strip()
+                                        break
+                                    elif line.strip():
+                                        # 遇到非空的非 ARGUMENTS 行则停止查找
+                                        break
+                    else:
+                        break
+
+                skill_call_skipped_indices.update(group_indices)
+
+                # 创建 skill_call 事件
+                skill_call_event = MessageResponse(
+                    message_id=entry.get("uuid") or f"skill_{i}",
+                    conversation_id=conversation_id,
+                    role=None,
+                    content=None,
+                    thinking=None,
+                    created_at=entry.get("timestamp"),
+                    event_type="skill_call",
+                    skill_name=command_name,
+                    skill_arguments=arguments,
+                )
+                messages_response.append(skill_call_event)
+                continue
+
+            # 跳过 attachment 类型（已被 skill call 收集或独立存在）
+            if entry_type == "attachment":
+                continue
+
             if not isinstance(raw_message, dict):
                 continue
 

@@ -37,18 +37,20 @@
                 <span class="patient-name">
                   {{ conversation.title || '未命名会话' }}
                 </span>
-                <span class="conversation-time">{{ formatTime(conversation.updated_at) }}</span>
+                <div class="header-actions">
+                  <span class="conversation-time">{{ formatTime(conversation.updated_at) }}</span>
+                  <a-button
+                    type="text"
+                    size="small"
+                    danger
+                    class="delete-btn"
+                    @click.stop="handleDeleteConversation(conversation.conversation_id)"
+                  >
+                    <DeleteOutlined />
+                  </a-button>
+                </div>
               </div>
-              <p class="conversation-preview">{{ conversation.last_message || '暂无消息' }}</p>
-              <a-button
-                type="text"
-                size="small"
-                danger
-                class="delete-btn"
-                @click.stop="handleDeleteConversation(conversation.conversation_id)"
-              >
-                <DeleteOutlined />
-              </a-button>
+              <p v-if="conversation.last_message" class="conversation-preview">{{ conversation.last_message }}</p>
             </div>
           </div>
 
@@ -79,10 +81,20 @@
               v-for="message in messages"
               :key="message.message_id"
               class="message-item"
-              :class="message.role === 'user' ? 'message-user' : 'message-ai'"
+              :class="message.event_type === 'skill_call' ? 'message-skill' : (message.role === 'user' ? 'message-user' : 'message-ai')"
             >
+              <!-- Skill Call 事件：橙色气泡 -->
+              <template v-if="message.event_type === 'skill_call'">
+                <div class="message-bubble bubble-skill">
+                  <span class="skill-icon">🔧</span>
+                  <span class="skill-name">{{ message.skill_name }}</span>
+                  <span class="skill-label">skill call</span>
+                </div>
+                <div class="message-time">{{ formatTime(message.created_at) }}</div>
+              </template>
+
               <!-- AI消息 -->
-              <template v-if="message.role === 'assistant'">
+              <template v-else-if="message.role === 'assistant'">
                 <!-- 思考内容块 -->
                 <StreamingThinkingRenderer
                   v-if="message.thinking"
@@ -91,8 +103,8 @@
                   :collapsed="true"
                   class="message-thinking"
                 />
-                <!-- 加载状态（只有思考没有内容时显示） -->
-                <div v-if="message.loading && !message.content" class="loading-wrapper">
+                <!-- 加载状态（无思考且无内容时显示） -->
+                <div v-if="message.loading && !message.content && !message.thinking" class="loading-wrapper">
                   <div class="loading-dots">
                     <span class="dot"></span>
                     <span class="dot"></span>
@@ -203,7 +215,8 @@ import {
   getConversations,
   getConversationDetail,
   createConversation,
-  deleteConversation
+  deleteConversation,
+  updateConversation
 } from '@/apis/codeAgent'
 
 const { t } = useI18n()
@@ -364,6 +377,8 @@ const startNewConversation = async () => {
     if (response.code === 200 && response.data) {
       // 选中新创建的会话
       await selectConversation(response.data)
+      // 新建对话后立即刷新列表
+      await loadConversations()
       message.success('创建会话成功')
     } else {
       message.error(response.message || '创建会话失败')
@@ -414,11 +429,24 @@ const handleSendMessage = async () => {
   eventDisplay.value = null
   currentEventType.value = ''
 
-  // 如果没有选中会话，不能发送
+  // 如果没有选中会话，先创建新会话
   if (isNewConversation) {
-    message.warning('请先创建或选择一个会话')
-    sendingMessage.value = false
-    return
+    try {
+      const resp = await createConversation({})
+      if (resp.code === 200 && resp.data) {
+        await selectConversation(resp.data)
+        await loadConversations()
+      } else {
+        message.error(resp.message || '创建会话失败')
+        sendingMessage.value = false
+        return
+      }
+    } catch (error) {
+      console.error('创建会话失败:', error)
+      message.error('创建会话失败')
+      sendingMessage.value = false
+      return
+    }
   }
 
   // 添加用户消息
@@ -435,28 +463,13 @@ const handleSendMessage = async () => {
   // 准备请求数据
   const historyMessages: ChatMessage[] = messages.value
     .slice(0, -1)
-    .filter(msg => msg.content)
+    .filter(msg => msg.content && msg.role)
     .map(msg => ({
-      role: msg.role,
+      role: msg.role as 'user' | 'assistant',
       content: msg.content || ''
     }))
 
   try {
-    // 添加 AI 消息占位符，标记为加载中
-    const aiMsgIndex = messages.value.length
-
-    messages.value.push({
-      message_id: '',
-      conversation_id: selectedConversation.value!.conversation_id,
-      role: 'assistant',
-      content: '',
-      thinking: '',
-      created_at: new Date().toISOString(),
-      loading: true
-    })
-    scrollToBottom()
-
-    // 调用流式接口（如果是新会话，用前端生成的 UUID 作为 conversation_id）
     const stream = await streamChat({
       conversation_id: selectedConversation.value?.conversation_id,
       messages: historyMessages,
@@ -471,6 +484,38 @@ const handleSendMessage = async () => {
 
     // 用于捕获 session_id
     let capturedSessionId: string | null = null
+
+    // 步骤流状态机：追踪当前步骤类型，每次切换类型时新建步骤
+    let activeStep: 'thinking' | 'text' | null = null
+
+    // 获取当前 loading 的 assistant 步骤索引
+    const getCurrentStepIndex = (): number => {
+      for (let i = messages.value.length - 1; i >= 0; i--) {
+        if (messages.value[i].role === 'assistant' && messages.value[i].loading) {
+          return i
+        }
+      }
+      return -1
+    }
+
+    // 关闭当前步骤并新建下一步
+    const switchStep = (newType: 'thinking' | 'text') => {
+      const idx = getCurrentStepIndex()
+      if (idx >= 0) {
+        messages.value[idx].loading = false
+      }
+      messages.value.push({
+        message_id: '',
+        conversation_id: selectedConversation.value!.conversation_id,
+        role: 'assistant',
+        content: '',
+        thinking: '',
+        created_at: new Date().toISOString(),
+        loading: true
+      })
+      activeStep = newType
+      scrollToBottom()
+    }
 
     // 定义事件处理器
     const handleEvent = (event: QwenEventType) => {
@@ -531,66 +576,64 @@ const handleSendMessage = async () => {
 
     await parseStreamResponse(
       reader,
-      // onChunk: 接收到每个 chunk
+      // onChunk: 步骤流模式，按 thinking/text 切换创建独立步骤
       (data: { full_content?: string; thinking?: string; content?: string }, type?: string) => {
-        // 检查是否还在当前的对话中（包括新建时的 temp ID 和已有会话的 ID）
-        if (messages.value[aiMsgIndex] &&
-            (messages.value[aiMsgIndex].conversation_id === selectedConversation.value?.conversation_id ||
-             messages.value[aiMsgIndex].conversation_id === capturedSessionId)) {
-          // ✅ 根据类型区分处理
-          if (type === 'thinking' || type === 'thinking_delta') {
-            // 思考阶段：只更新 thinking，content 保持不变
-            if (data.thinking) {
-              messages.value[aiMsgIndex].thinking = data.thinking
-            }
-          } else if (data.content !== undefined) {
-            // 有 content 字段：更新 content
-            messages.value[aiMsgIndex].content = data.content
-          } else if (data.full_content !== undefined) {
-            // 只有 full_content（没有 content 字段）：可能是旧版本或纯文本
-            messages.value[aiMsgIndex].content = data.full_content
-          }
-          messages.value[aiMsgIndex].loading = true
+        // 检查是否还在当前的对话中
+        const convId = selectedConversation.value?.conversation_id
+        if (!convId && !capturedSessionId) return
 
-          // ✅ 只有在内容阶段才滚动，思考阶段不滚动
-          if (type === 'text' || (type !== 'thinking' && type !== 'thinking_delta')) {
-            nextTick(() => {
-              scrollToBottom()
-            })
+        const isThinking = type === 'thinking' || type === 'thinking_delta'
+        const newStepType = isThinking ? 'thinking' : 'text'
+
+        // thinking 每次都是完整块，每次都新建步骤；text 增量合并到当前步骤
+        if (isThinking) {
+          switchStep(newStepType)
+        } else if (activeStep !== newStepType || getCurrentStepIndex() < 0) {
+          switchStep(newStepType)
+        }
+
+        // 更新当前步骤
+        const stepIdx = getCurrentStepIndex()
+        if (stepIdx < 0) return
+
+        if (isThinking) {
+          if (data.thinking) {
+            messages.value[stepIdx].thinking = data.thinking
           }
+        } else if (data.content !== undefined) {
+          messages.value[stepIdx].content = data.content
+        } else if (data.full_content !== undefined) {
+          messages.value[stepIdx].content = data.full_content
+        }
+
+        // 内容阶段才滚动
+        if (!isThinking) {
+          nextTick(() => scrollToBottom())
         }
       },
-      // onComplete: 完成
+      // onComplete: 关闭最后一个 loading 步骤
       (finalContent) => {
-        // 检查是否还在当前的对话中
-        if (messages.value[aiMsgIndex] &&
-            (messages.value[aiMsgIndex].conversation_id === selectedConversation.value?.conversation_id ||
-             messages.value[aiMsgIndex].conversation_id === capturedSessionId)) {
-          messages.value[aiMsgIndex].content = finalContent
-          messages.value[aiMsgIndex].loading = false  // ✅ 标记流式输出结束
+        const idx = getCurrentStepIndex()
+        if (idx >= 0) {
+          messages.value[idx].content = finalContent
+          messages.value[idx].loading = false
         }
-        // 更新会话的最后消息
         if (selectedConversation.value) {
           selectedConversation.value.last_message = finalContent
         }
-        // 清除事件显示
         setTimeout(() => {
           eventDisplay.value = null
           currentEventType.value = ''
         }, 3000)
-        nextTick(() => {
-          scrollToBottom()
-        })
+        nextTick(() => scrollToBottom())
       },
-      // onError: 错误处理
+      // onError: 标记最后一个 loading 步骤为错误
       (error) => {
         console.error('流式对话错误:', error)
-        // 检查是否还在当前的对话中
-        if (messages.value[aiMsgIndex] &&
-            (messages.value[aiMsgIndex].conversation_id === selectedConversation.value?.conversation_id ||
-             messages.value[aiMsgIndex].conversation_id === capturedSessionId)) {
-          messages.value[aiMsgIndex].content = `错误: ${error}`
-          messages.value[aiMsgIndex].loading = false
+        const idx = getCurrentStepIndex()
+        if (idx >= 0) {
+          messages.value[idx].content = `错误: ${error}`
+          messages.value[idx].loading = false
         }
         eventDisplay.value = {
           message: `错误: ${error}`,
@@ -600,6 +643,24 @@ const handleSendMessage = async () => {
       // onEvent: 事件处理
       handleEvent
     )
+
+    // 流式响应完成后，如果会话还没有标题，用用户的第一条消息作为标题
+    if (!selectedConversation.value?.title && messages.value.length >= 2) {
+      const firstUserMsg = messages.value.find(m => m.role === 'user')
+      if (firstUserMsg && firstUserMsg.content) {
+        const title = firstUserMsg.content.length > 50
+          ? firstUserMsg.content.slice(0, 50) + '...'
+          : firstUserMsg.content
+        try {
+          await updateConversation(selectedConversation.value!.conversation_id, { title })
+          selectedConversation.value!.title = title
+          // 更新标题后刷新列表
+          await loadConversations()
+        } catch (e) {
+          console.error('更新会话标题失败:', e)
+        }
+      }
+    }
   } catch (error) {
     console.error('发送消息失败', error)
     message.error('发送消息失败，请重试')
@@ -623,13 +684,14 @@ const scrollToBottom = async () => {
   messagesEndRef.value?.scrollIntoView({ behavior: 'instant', block: 'end' })
 }
 
-// 格式化时间
+// 格式化时间（精确到秒）
 const formatTime = (time: string | undefined) => {
   if (!time) return ''
   const date = new Date(time)
   return date.toLocaleString('zh-CN', {
     hour: '2-digit',
     minute: '2-digit',
+    second: '2-digit',
     month: '2-digit',
     day: '2-digit'
   })
@@ -802,6 +864,13 @@ onUnmounted(() => {
   max-width: 80px;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
 .conversation-preview {
   font-size: 14px;
   color: #666;
@@ -812,7 +881,6 @@ onUnmounted(() => {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   line-clamp: 2;
-  padding-right: 30px;
   width: 80%;
   max-width: 80%;
   line-height: 1.4;
@@ -820,12 +888,13 @@ onUnmounted(() => {
 }
 
 .delete-btn {
-  position: absolute;
-  top: 50%;
-  right: 8px;
-  transform: translateY(-50%);
   opacity: 0;
   transition: opacity 0.3s;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .conversation-item:hover .delete-btn {
@@ -1031,6 +1100,35 @@ onUnmounted(() => {
   color: #fff;
   border: none;
   box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
+}
+
+/* Skill Call 橙色气泡 */
+.bubble-skill {
+  background: linear-gradient(135deg, #fff7e6 0%, #ffe7ba 100%);
+  color: #d4380d;
+  border: 1px solid #ffbb6b;
+  box-shadow: 0 2px 8px rgba(255, 122, 69, 0.15);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 8px;
+}
+
+.skill-icon {
+  font-size: 14px;
+}
+
+.skill-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: #d4380d;
+}
+
+.skill-label {
+  font-size: 12px;
+  color: #ff7a45;
+  font-weight: 500;
 }
 
 .bubble-user .message-text {
