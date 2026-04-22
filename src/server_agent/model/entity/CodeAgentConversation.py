@@ -12,7 +12,8 @@ class CodeAgentConversation:
     """Code智能体会话实体"""
     id: int
     user_id: int
-    conversation_id: Optional[str] = None  # UUID 格式的会话ID
+    conversation_id: Optional[str] = None  # UUID 格式的会话ID（前端生成）
+    session_id: Optional[str] = None  # SDK 真实的 session_id
     title: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -42,6 +43,7 @@ class ConversationInfo:
     """会话信息（用于列表展示）"""
     user_id: int
     conversation_id: Optional[str] = None
+    session_id: Optional[str] = None  # SDK 真实的 session_id
     title: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

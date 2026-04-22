@@ -256,3 +256,32 @@ export { api }
  * 导出类型定义
  */
 export type { ApiResponse, ApiError, ApiConfig }
+
+/**
+ * Authenticated fetch - 用于 SSE 等需要原生 fetch 的场景
+ * 与参考项目 claudecodeui 的 authenticatedFetch 保持一致
+ */
+export const authenticatedFetch = (url: string, options: RequestInit = {}): Promise<Response> => {
+  const token = localStorage.getItem('mediagent_token')
+
+  const defaultHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+
+  // Only set Content-Type for non-FormData requests
+  if (!(options.body instanceof FormData)) {
+    defaultHeaders['Content-Type'] = 'application/json'
+  }
+
+  if (token) {
+    defaultHeaders['Authorization'] = `Bearer ${token}`
+  }
+
+  return fetch(url, {
+    ...options,
+    headers: {
+      ...defaultHeaders,
+      ...options.headers,
+    },
+  })
+}

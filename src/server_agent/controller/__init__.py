@@ -93,6 +93,11 @@ async def lifespan(app: FastAPI):
     app.state.settings = settings
     app.state.services = services
     await services.ainit()  # ✅ 重/异步初始化放这里
+    # 初始化 CodeAgentMapper（数据库表结构）
+    from src.server_agent.mapper.CodeAgentMapper import CodeAgentMapper
+    code_agent_mapper = CodeAgentMapper()
+    await code_agent_mapper.init()
+    app.state.code_agent_mapper = code_agent_mapper
     # 配置提供者与运行态注册器
     provider = ConfigProvider()
     app.state.config_provider = provider

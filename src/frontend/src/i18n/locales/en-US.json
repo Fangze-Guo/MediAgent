@@ -931,6 +931,7 @@
       "placeholder": "Feature under development, stay tuned",
       "conversationList": "Conversation List",
       "newSession": "New Session",
+      "startNewSessionHint": "Enter a message to start a new conversation",
       "searchPlaceholder": "Search sessions...",
       "sessionTitle": "Session Title",
       "sessionTitlePlaceholder": "Please enter session title",

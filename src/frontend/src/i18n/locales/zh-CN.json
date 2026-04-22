@@ -874,6 +874,7 @@
       "placeholder": "功能开发中，敬请期待",
       "conversationList": "会话列表",
       "newSession": "新建会话",
+      "startNewSessionHint": "输入消息开始新对话",
       "searchPlaceholder": "搜索会话...",
       "sessionTitle": "会话标题",
       "sessionTitlePlaceholder": "请输入会话标题",

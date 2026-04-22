@@ -40,6 +40,7 @@ class UpdateConversationRequest(BaseModel):
 class ConversationInfoResponse(BaseModel):
     """会话信息响应"""
     conversation_id: Optional[str] = None  # UUID 格式的会话ID
+    session_id: Optional[str] = None  # SDK 真实的 session_id
     user_id: int
     title: Optional[str] = None
     created_at: Optional[str] = None
@@ -61,6 +62,7 @@ class MessageResponse(BaseModel):
 class ConversationDetailResponse(BaseModel):
     """会话详情响应"""
     conversation_id: Optional[str] = None
+    session_id: Optional[str] = None  # SDK 真实的 session_id
     user_id: int
     title: Optional[str] = None
     created_at: Optional[str] = None
@@ -161,6 +163,7 @@ class CodeAgentController(BaseController):
             response_list = [
                 ConversationInfoResponse(
                     conversation_id=conv.conversation_id,
+                    session_id=conv.session_id,
                     user_id=conv.user_id,
                     title=conv.title,
                     created_at=conv.created_at.isoformat() if conv.created_at else None,
@@ -183,24 +186,58 @@ class CodeAgentController(BaseController):
                 conversation_id=conversation_id,
                 user_id=user_vo.uid
             )
-            
+
             if detail is None:
                 raise NotFoundError(detail="会话不存在")
 
-            messages_response = [
-                MessageResponse(
-                    message_id=msg.message_id,
-                    conversation_id=msg.conversation_id,
-                    role=msg.role,
-                    content=msg.content,
-                    thinking=msg.thinking,
-                    created_at=msg.created_at.isoformat() if msg.created_at else None
+            # 从 JSONL 文件加载消息
+            session_id = detail.conversation.session_id
+            if session_id:
+                from src.server_agent.service.clinical_tools.JsonlSessionService import get_session_service
+                session_service = get_session_service()
+                jsonl_messages, _, _ = await session_service.get_session_messages(
+                    session_id=session_id,
+                    project_path=None,
+                    limit=500,
+                    offset=0
                 )
-                for msg in detail.messages
-            ]
+                # 按 timestamp 排序
+                jsonl_messages.sort(key=lambda x: x.get("timestamp", ""))
+                # 转换为 MessageResponse 格式
+                messages_response = []
+                for i, msg in enumerate(jsonl_messages):
+                    msg_type = msg.get("type", "")
+                    # 跳过 queue-operation 和 last-prompt
+                    if msg_type in ("queue-operation", "last-prompt"):
+                        continue
+                    content = ""
+                    thinking = None
+                    role = msg.get("message", {}).get("role", "assistant")
+                    msg_content = msg.get("message", {}).get("content", "")
+                    if isinstance(msg_content, list):
+                        for part in msg_content:
+                            if part.get("type") == "text" and part.get("text"):
+                                content = part["text"]
+                            elif part.get("type") == "thinking" and part.get("thinking"):
+                                thinking = part["thinking"]
+                    elif isinstance(msg_content, str):
+                        content = msg_content
+                    if not content and not thinking:
+                        continue
+                    messages_response.append(MessageResponse(
+                        message_id=msg.get("uuid") or f"msg_{i}",
+                        conversation_id=conversation_id,
+                        role=role,
+                        content=content,
+                        thinking=thinking,
+                        created_at=msg.get("timestamp")
+                    ))
+            else:
+                messages_response = []
 
             response = ConversationDetailResponse(
                 conversation_id=detail.conversation.conversation_id,
+                session_id=detail.conversation.session_id,
                 user_id=detail.conversation.user_id,
                 title=detail.conversation.title,
                 created_at=detail.conversation.created_at.isoformat() if detail.conversation.created_at else None,
@@ -237,6 +274,59 @@ class CodeAgentController(BaseController):
             )
 
             return ResultUtils.success(success)
+
+        @self.router.get("/sessions/{session_id}/messages")
+        async def get_session_messages(
+            session_id: str,
+            limit: int = Query(100, ge=1, le=500, description="返回数量限制"),
+            offset: int = Query(0, ge=0, description="偏移量"),
+            user_vo: UserVO = Depends(self._get_current_user)
+        ) -> BaseResponse[dict]:
+            """
+            获取会话消息（对齐参考项目 claudecodeui）
+
+            URL 格式: /code-agent/sessions/{session_id}/messages
+            数据来源: ~/.claude/projects/{project_name}/{session_id}.jsonl
+            """
+            from src.server_agent.service.clinical_tools.JsonlSessionService import get_session_service
+
+            session_service = get_session_service()
+            messages, total, has_more = await session_service.get_session_messages(
+                session_id=session_id,
+                project_path=None,  # 搜索所有项目目录
+                limit=limit,
+                offset=offset
+            )
+
+            # 转换为 NormalizedMessage 格式
+            normalized_messages = []
+            for i, msg in enumerate(messages):
+                # 提取消息内容
+                content = ""
+                msg_content = msg.get("message", {}).get("content", "")
+                if isinstance(msg_content, list):
+                    for part in msg_content:
+                        if part.get("type") == "text" and part.get("text"):
+                            content = part["text"]
+                            break
+                elif isinstance(msg_content, str):
+                    content = msg_content
+
+                normalized_messages.append({
+                    "id": msg.get("uuid") or f"msg_{i}",
+                    "sessionId": session_id,
+                    "timestamp": msg.get("timestamp", ""),
+                    "provider": "claude",
+                    "kind": msg.get("type", "text"),
+                    "role": msg.get("message", {}).get("role"),
+                    "content": content,
+                })
+
+            return ResultUtils.success({
+                "messages": normalized_messages,
+                "total": total,
+                "hasMore": has_more,
+            })
 
     async def _get_current_user(self, authorization: str = Header(None)) -> UserVO:
         """根据token获取用户信息的依赖函数"""

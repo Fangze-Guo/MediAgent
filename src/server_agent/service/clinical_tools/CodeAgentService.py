@@ -1,38 +1,36 @@
 """
-Code 智能体服务 - 处理处理 Code 智能体相关的业务逻辑
-集成Qwen Code的--resume机制和PostgreSQL持久化，使用新的会话管理方式，第一次对话不使用resume，后续对话使用resume
+Code 智能体服务 - 简化版
+
+使用 Claude SDK 内置的会话管理，不再需要 SessionAuditService
 """
 import json
 import logging
-import os
-import tempfile
 from typing import AsyncGenerator, List, Optional
 
-from src.server_agent.agent.code_agent import get_code_agent, get_agent_type
-from src.server_agent.common import ResultUtils
+from src.server_agent.agent.claude import get_code_agent, get_agent_type, MessageKind
 from src.server_agent.exceptions import (
     ValidationError, NotFoundError, handle_service_exception
 )
 from src.server_agent.mapper.CodeAgentMapper import CodeAgentMapper
-from src.server_agent.service.clinical_tools.SessionAuditService import SessionAuditService
 from src.server_agent.model.entity.CodeAgentConversation import (
     ConversationDetail,
-    ConversationInfo
+    ConversationInfo,
+    CodeAgentConversation
 )
 
 logger = logging.getLogger(__name__)
 
 
 class CodeAgentService:
-    """Code 智能体服务 - 正确的 --resume 流程"""
+    """Code 智能体服务 - SDK 模式"""
 
-    def __init__(self):
-        """初始化服务"""
-        self.mapper = CodeAgentMapper()
-        self.session_audit_service = SessionAuditService()
+    def __init__(self, mapper: Optional[CodeAgentMapper] = None):
+        """初始化服务
 
-        # 根据配置获取 Code Agent (Qwen 或 Claude)
-        # 历史消息管理由 Agent 的 --resume 机制处理
+        Args:
+            mapper: 可选，外部传入的 mapper 实例（用于共享连接池）
+        """
+        self.mapper = mapper if mapper is not None else CodeAgentMapper()
         self.code_agent = get_code_agent()
         logger.info(f"[CodeAgentService] Using agent type: {get_agent_type()}")
 
@@ -45,198 +43,87 @@ class CodeAgentService:
         user_id: Optional[int] = None
     ) -> AsyncGenerator[str, None]:
         """
-        流式对话方法 - 使用流式 JSON 解析器
+        流式对话方法
+
+        流程：
+        1. 前端创建会话 → POST /conversations → 后端生成 UUID 作为 conversation_id 存入 DB
+        2. 前端发送消息 → POST /taking (带 conversation_id)
+        3. 后端根据 conversation_id 查找 DB 中的 session_id
+           - 如果 session_id 存在，传给 SDK 恢复会话
+           - 如果 session_id 不存在，传 None 让 SDK 创建新会话
+        4. SDK 返回 init 消息（含真实的 sdk_session_id）
+        5. 如果 session_id 不存在，后端更新 DB 建立映射
 
         Args:
-            conversation_id: 会话ID(如果为None，则不保存历史消息)
-            messages: 历史消息列表(已弃用参数，保留以兼容接口)
-                      格式为 [{"role": "user|assistant", "content": "..."}]
+            conversation_id: 会话ID
+            messages: 历史消息列表（已弃用）
             current_message: 当前用户消息
-            user_id: 用户ID(用于权限验证)
+            user_id: 用户ID
 
         Yields:
-            SSE 格式的 JSON 字符串，每个 chunk 都使用 BaseResponse 格式
+            SSE 格式的 JSON 字符串
         """
-        # 获取或创建会话审计记录
-        code_session_id: Optional[str] = None
-        is_first_message = False
+        if not conversation_id:
+            raise ValidationError(detail="conversation_id is required")
 
-        if conversation_id:
-            # 验证会话是否存在且属于该用户
-            conversation = await self.mapper.get_conversation_by_id(conversation_id)
-            if not conversation:
-                raise NotFoundError(
-                    resource_type="conversation",
-                    resource_id=conversation_id,
-                    detail="会话不存在"
-                )
+        # 查找会话，获取 sdk_session_id
+        existing = await self.mapper.get_conversation_by_id(conversation_id)
+        if not existing:
+            raise NotFoundError(resource_type="conversation", resource_id=conversation_id)
 
-            if user_id and conversation.user_id != user_id:
-                raise ValidationError(
-                    detail="无权访问此会话",
-                    context={"conversation_id": conversation_id, "user_id": user_id}
-                )
+        sdk_session_id = existing.session_id
 
-            # 检查是否是第一次对话
-            is_first_message = await self.session_audit_service.is_first_message(conversation_id)
-
-            if is_first_message:
-                # 第一次对话:不使用 --resume，直接创建新会话
-                logger.info(f"First message for conversation {conversation_id}, creating new Qwen session")
-                code_session_id = None  # 不使用 --resume
-            else:
-                # 后续对话:使用 --resume
-                code_session_id = await self.session_audit_service.get_code_session_id(conversation_id)
-                if not code_session_id:
-                    logger.warning(f"Qwen session_id not found for conversation {conversation_id}, treating as first message")
-                    code_session_id = None
-                else:
-                    logger.info(f"Resuming Qwen session {code_session_id} for conversation {conversation_id}")
+        # 如果没有 session_id，说明是首次发消息，需要调用 SDK 获取
+        if not sdk_session_id:
+            logger.info(f"[CodeAgentService] First message for conversation {conversation_id}, SDK will create new session")
         else:
-            # 没有 conversation_id 的情况，也认为是新对话，需要注入上下文
-            is_first_message = True
-
-        # 第一次对话时注入用户上下文
-        context_file_path = None
-        if is_first_message and user_id:
-            # 创建临时文件保存上下文
-            user_context = f"""[SYSTEM]
-当前用户ID: {user_id}
-用户数据目录: /mnt/c/MediaLab/MediAgent/src/server_new/data/files/private/{user_id}/dataset
-工作空间路径: /mnt/c/MediaLab/MediAgent/src/server_new/data/files/private/{user_id}/workspace
-
-当用户询问数据集或文件时，请优先在上述目录中查找。
-
-{current_message}
-"""
-            # 创建临时文件
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
-                f.write(user_context)
-                context_file_path = f.name
-            logger.info(f"User context written to temp file: {context_file_path}")
-        else:
-            context_file_path = None
-
-        # 保存用户消息到数据库
-        if conversation_id:
-            try:
-                await self.mapper.add_message(conversation_id, "user", current_message)
-            except Exception as e:
-                logger.error(f"Failed to save user message: {e}")
+            logger.info(f"[CodeAgentService] Resuming session {conversation_id} with SDK session {sdk_session_id}")
 
         try:
             full_content = ""
-            accumulated_thinking = ""  # 累积思考内容
-            message_saved = False  # 防止重复保存AI回复
 
-            # 调用 Qwen Code Agent - 使用流式 JSON 模式
-            # 第一次对话:session_id 为 None，创建新会话，使用 context_file_path 或 current_message
-            # 后续对话:使用 --resume {session_id}，使用 current_message
-            message_to_send = context_file_path if context_file_path else current_message
-
-            # 直接处理流式输出
-            async for chunk_json in self.code_agent.stream_chat(
-                message_to_send,
-                code_session_id,
-                is_file=context_file_path is not None,
-                use_stream_json=True
-            ):
+            # 使用 SDK 进行流式对话
+            async for chunk_json in self.code_agent.stream_chat(current_message, sdk_session_id):
                 chunk_data = json.loads(chunk_json)
+                kind = chunk_data.get("kind", "")
 
-                if "error" in chunk_data:
-                    # 错误情况
-                    response = ResultUtils.error(500, chunk_data["error"])
-                    error_data = json.dumps({
-                        "code": response.code,
-                        "data": response.data,
-                        "message": response.message,
-                    }, ensure_ascii=False)
-                    yield f"data: {error_data}\n\n"
-                    return
-
-                # ✅ 新增：检测 thinking 数据
-                if "thinking" in chunk_data and "thinking_delta" not in chunk_data:
-                    # 这是完整的思考块，添加类型标记
+                # 统一消息类型
+                if kind == MessageKind.STREAM_DELTA:
+                    full_content += chunk_data.get("content", "")
+                    chunk_data["type"] = "text"
+                elif kind == MessageKind.THINKING:
                     chunk_data["type"] = "thinking"
-                    accumulated_thinking = chunk_data.get("thinking", "")
-                elif "thinking" in chunk_data and chunk_data.get("thinking_delta"):
-                    # 这是思考增量，标记为 thinking_delta
-                    chunk_data["type"] = "thinking_delta"
-                    # 累积思考内容
-                    thinking_delta = chunk_data.get("thinking", "")
-                    accumulated_thinking += thinking_delta
-                    # 将累积的思考内容放入 full_content，供前端同步位置
-                    chunk_data["full_content"] = accumulated_thinking
-                    chunk_data["thinking"] = accumulated_thinking
-                    chunk_data.pop("thinking_delta", None)  # 移除标记字段
-                elif "content" in chunk_data or "full_content" in chunk_data:
-                    # 这是文本数据
-                    if not chunk_data.get("done"):
-                        chunk_data["type"] = "text"
-                    else:
-                        chunk_data["type"] = "done"
+                elif kind == MessageKind.SESSION_CREATED:
+                    chunk_data["type"] = "session_created"
 
-                # 正常输出
-                full_content = chunk_data.get("full_content", "")
-                chunk_type = chunk_data.get("type", "")
-                is_result = chunk_type == "result" or chunk_data.get("subtype") == "success"
+                    # 从 init 消息获取 SDK 真实的 session_id
+                    init_session_id = chunk_data.get("sessionId") or chunk_data.get("newSessionId")
+                    if init_session_id:
+                        logger.info(f"[CodeAgentService] SDK init session_id: {init_session_id}")
 
-                # DEBUG: 追踪 result 事件
-                if chunk_type == "result" or chunk_data.get("subtype") == "success":
-                    logger.info(f"[RESULT_DEBUG] chunk_type={chunk_type}, subtype={chunk_data.get('subtype')}, session_id in chunk={chunk_data.get('session_id')}, is_result={is_result}")
+                        # 如果 DB 中还没有 session_id，建立映射
+                        if not existing.session_id:
+                            await self.mapper.update_conversation_session_id(conversation_id, init_session_id)
+                            logger.info(f"[CodeAgentService] Updated DB: conversation_id={conversation_id}, sdk_session_id={init_session_id}")
 
-                # 注意：thinking 只在 thinking_delta 类型的 chunk 中传递，不混入 full_content
+                    # 将 conversation_id 放到事件中传给前端
+                    chunk_data["conversation_id"] = conversation_id
 
-                response = ResultUtils.success(chunk_data)
-                data = json.dumps({
-                    "code": response.code,
-                    "data": response.data,
-                    "message": response.message,
-                }, ensure_ascii=False)
-                yield f"data: {data}\n\n"
+                elif kind == MessageKind.COMPLETE:
+                    chunk_data["type"] = "done"
+                    chunk_data["conversation_id"] = conversation_id
+                elif kind == MessageKind.ERROR:
+                    chunk_data["type"] = "error"
+                elif kind == "tool_use":
+                    chunk_data["type"] = "tool_use"
 
-                # ✅ 只在 result 事件时保存（确保内容完整）
-                if is_result and conversation_id and not message_saved:
-                    logger.info(f"[SAVE_DEBUG] Entering save block: is_result={is_result}, conversation_id={conversation_id}, message_saved={message_saved}")
-                    message_saved = True
-                    try:
-                        # 使用 result 字段作为完整内容
-                        final_content = chunk_data.get("result", full_content)
-                        # 保存消息时包含思考内容
-                        await self.mapper.add_message(
-                            conversation_id, "assistant", final_content, accumulated_thinking
-                        )
-                        logger.info(f"Saved assistant message with thinking ({len(accumulated_thinking)} chars)")
-                    except Exception as e:
-                        logger.error(f"Failed to save assistant message: {e}")
-
-                    # 第一次对话后，提取并保存 session_id
-                    if code_session_id is None:
-                        extracted_session_id = chunk_data.get("session_id")
-                        logger.info(f"[DEBUG] code_session_id={code_session_id}, extracted_session_id={extracted_session_id}, chunk_type={chunk_type}, chunk_data_keys={chunk_data.keys()}")
-                        logger.info(f"First message completed, extracting session_id: {extracted_session_id}...")
-                        await self.session_audit_service.update_session_id_after_first_message(
-                            conversation_id, extracted_session_id
-                        )
+                # 统一输出格式（SSE）
+                yield f"data: {json.dumps(chunk_data, ensure_ascii=False)}\n\n"
 
         except Exception as e:
-            # 发送错误响应
             logger.error(f"Stream chat error: {e}")
-            error_response = ResultUtils.error(500, f"流式输出失败: {str(e)}")
-            error_data = json.dumps({
-                "code": error_response.code,
-                "data": error_response.data,
-                "message": error_response.message,
-            }, ensure_ascii=False)
-            yield f"data: {error_data}\n\n"
-        finally:
-            # 清理临时文件
-            if context_file_path and os.path.exists(context_file_path):
-                try:
-                    os.unlink(context_file_path)
-                    logger.info(f"Temp file deleted: {context_file_path}")
-                except Exception as e:
-                    logger.error(f"Failed to delete temp file {context_file_path}: {e}")
+            error_data = {"kind": "error", "content": str(e), "isError": True}
+            yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
 
     @handle_service_exception
     async def chat(
@@ -247,118 +134,19 @@ class CodeAgentService:
         user_id: Optional[int] = None
     ) -> str:
         """
-        同步对话方法(用于非流式场景)
-        Args:
-            conversation_id: 会话ID(如果为None，则不保存历史消息)
-            messages: 历史消息列表(已弃用参数，保留以兼容接口)
-            current_message: 当前用户消息
-            user_id: 用户ID(用于权限验证)
-
-        Returns:
-            AI 回复内容
+        同步对话方法
         """
-        # 获取或创建会话审计记录
-        session_audit = None
-        code_session_id = None
-        is_first_message = False
-
-        if conversation_id:
-            # 验证会话是否存在且属于该用户
-            conversation = await self.mapper.get_conversation_by_id(conversation_id)
-            if not conversation:
-                raise NotFoundError(
-                    resource_type="conversation",
-                    resource_id=conversation_id,
-                    detail="会话不存在"
-                )
-
-            if user_id and conversation.user_id != user_id:
-                raise ValidationError(
-                    detail="无权访问此会话",
-                    context={"conversation_id": conversation_id, "user_id": user_id}
-                )
-
-            # 获取会话审计记录
-            session_audit = await self.session_audit_service.get_conversation_audit(conversation_id)
-
-            # 检查是否是第一次对话
-            is_first_message = await self.session_audit_service.is_first_message(conversation_id)
-
-            if is_first_message:
-                # 第一次对话:不使用 --resume，直接创建新会话
-                logger.info(f"First message for conversation {conversation_id}, creating new Qwen session")
-                code_session_id = None  # 不使用 --resume
-            else:
-                # 后续对话:使用 --resume
-                code_session_id = await self.session_audit_service.get_code_session_id(conversation_id)
-                if not code_session_id:
-                    logger.warning(f"Qwen session_id not found for conversation {conversation_id}, treating as first message")
-                    code_session_id = None
-                else:
-                    logger.info(f"Resuming Qwen session {code_session_id} for conversation {conversation_id}")
-        else:
-            # 没有 conversation_id 的情况，也认为是新对话，需要注入上下文
-            is_first_message = True
-
-        # 第一次对话时注入用户上下文
-        context_file_path = None
-        if is_first_message and user_id:
-            # 创建临时文件保存上下文
-            user_context = f"""[SYSTEM]
-当前用户ID: {user_id}
-用户数据目录: /mnt/c/MediaLab/MediAgent/src/server_new/data/files/private/{user_id}/dataset
-工作空间路径: /mnt/c/MediaLab/MediAgent/src/server_new/data/files/private/{user_id}/workspace
-
-当用户询问数据集或文件时，请优先在上述目录中查找。
-
-{current_message}
-"""
-            # 创建临时文件
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
-                f.write(user_context)
-                context_file_path = f.name
-            logger.info(f"User context written to temp file: {context_file_path}")
-        else:
-            context_file_path = None
-
-        # 保存用户消息到数据库
-        if conversation_id:
+        full_content = ""
+        async for chunk in self.stream_chat(conversation_id, messages, current_message, user_id):
             try:
-                await self.mapper.add_message(conversation_id, "user", current_message)
-            except Exception as e:
-                logger.error(f"Failed to save user message: {e}")
-
-        # 调用 Qwen Code Agent
-        try:
-            # 第一次对话:session_id 为 None，创建新会话，使用 context_file_path 或 current_message
-            # 后续对话:使用 --resume {session_id}，使用 current_message
-            message_to_send = context_file_path if context_file_path else current_message
-            response_content = await self.code_agent.chat(message_to_send, code_session_id, is_file=context_file_path is not None)  # type: ignore
-
-            # 保存AI回复
-            if conversation_id:
-                try:
-                    await self.mapper.add_message(conversation_id, "assistant", response_content)
-                except Exception as e:
-                    logger.error(f"Failed to save assistant message: {e}")
-
-                # 第一次对话后，提取并保存 session_id
-                if code_session_id is None:
-                    logger.info(f"First message completed, extracting session_id...")
-                    await self.session_audit_service.update_session_id_after_first_message(conversation_id)
-
-            return response_content
-        except Exception as e:
-            logger.error(f"Chat error: {e}")
-            raise
-        finally:
-            # 清理临时文件
-            if context_file_path and os.path.exists(context_file_path):
-                try:
-                    os.unlink(context_file_path)
-                    logger.info(f"Temp file deleted: {context_file_path}")
-                except Exception as e:
-                    logger.error(f"Failed to delete temp file {context_file_path}: {e}")
+                data = json.loads(chunk.strip().replace("data: ", "").replace("\n\n", ""))
+                if data.get("data", {}).get("content"):
+                    full_content = data["data"]["content"]
+                elif data.get("data", {}).get("kind") == MessageKind.COMPLETE:
+                    full_content = data["data"].get("content", "")
+            except json.JSONDecodeError:
+                pass
+        return full_content
 
     @handle_service_exception
     async def create_conversation(
@@ -366,35 +154,11 @@ class CodeAgentService:
         user_id: int,
         title: Optional[str] = None
     ) -> ConversationInfo:
-        """
-        创建新会话
-        Args:
-            user_id: 用户ID
-            title: 会话标题(可选)
-
-        Returns:
-            创建的会话信息
-        """
+        """创建新会话"""
         if not user_id:
-            raise ValidationError(
-                detail="user_id is required",
-                context={"user_id": user_id}
-            )
+            raise ValidationError(detail="user_id is required")
 
-        # 创建会话
-        conversation = await self.mapper.create_conversation(
-            user_id=user_id,
-            title=title
-        )
-
-        # 创建对应的会话审计记录(session_id 为 None，第一次对话后才设置)
-        await self.session_audit_service.create_conversation_audit(
-            user_id=user_id,
-            conversation_id=conversation.conversation_id,
-            extra={
-                "title": title
-            }
-        )
+        conversation = await self.mapper.create_conversation(user_id=user_id, title=title)
 
         return ConversationInfo(
             conversation_id=conversation.conversation_id,
@@ -413,21 +177,9 @@ class CodeAgentService:
         limit: int = 50,
         offset: int = 0
     ) -> List[ConversationInfo]:
-        """
-        获取用户的会话列表
-        Args:
-            user_id: 用户ID
-            limit: 返回数量限制
-            offset: 偏移量
-        Returns:
-            会话信息列表
-        """
+        """获取用户的会话列表"""
         if not user_id:
-            raise ValidationError(
-                detail="user_id is required",
-                context={"user_id": user_id}
-            )
-
+            raise ValidationError(detail="user_id is required")
         return await self.mapper.get_conversations_by_user(user_id, limit, offset)
 
     @handle_service_exception
@@ -437,32 +189,23 @@ class CodeAgentService:
         user_id: Optional[int] = None
     ) -> Optional[ConversationDetail]:
         """
-        获取会话详情(包含消息)
+        获取会话详情
 
-        Args:
-            conversation_id: 会话ID
-            user_id: 用户ID(用于权限验证)
-
-        Returns:
-            会话详情或None
+        注意：消息内容不再从数据库读取，而是通过 /sessions/{session_id}/messages 从 JSONL 获取
         """
-        # 验证会话是否存在
         conversation = await self.mapper.get_conversation_by_id(conversation_id)
         if not conversation:
-            raise NotFoundError(
-                resource_type="conversation",
-                resource_id=conversation_id,
-                detail="会话不存在"
-            )
+            raise NotFoundError(resource_type="conversation", resource_id=conversation_id)
 
-        # 权限验证
         if user_id and conversation.user_id != user_id:
-            raise ValidationError(
-                detail="无权访问此会话",
-                context={"conversation_id": conversation_id, "user_id": user_id}
-            )
+            raise ValidationError(detail="无权访问此会话")
 
-        return await self.mapper.get_conversation_detail(conversation_id)
+        # 消息从 JSONL 读取，这里返回空列表
+        # 前端会通过 /sessions/{session_id}/messages 获取实际消息
+        return ConversationDetail(
+            conversation=conversation,
+            messages=[]  # 不再从数据库读取
+        )
 
     @handle_service_exception
     async def delete_conversation(
@@ -470,43 +213,13 @@ class CodeAgentService:
         conversation_id: str,
         user_id: Optional[int] = None
     ) -> bool:
-        """
-        删除会话
-
-        Args:
-            conversation_id: 会话ID
-            user_id: 用户ID(用于权限验证)
-
-        Returns:
-            是否删除成功
-        """
-        # 验证会话是否存在
+        """删除会话"""
         conversation = await self.mapper.get_conversation_by_id(conversation_id)
         if not conversation:
-            raise NotFoundError(
-                resource_type="conversation",
-                resource_id=conversation_id,
-                detail="会话不存在"
-            )
+            raise NotFoundError(resource_type="conversation", resource_id=conversation_id)
 
-        # 权限验证
         if user_id and conversation.user_id != user_id:
-            raise ValidationError(
-                detail="无权删除此会话",
-                context={"conversation_id": conversation_id, "user_id": user_id}
-            )
-
-        # 关闭对应的会话审计记录
-        try:
-            await self.session_audit_service.close_session(conversation_id)
-        except Exception as e:
-            logger.error(f"Failed to close session audit for conversation {conversation_id}: {e}")
-
-        # 删除会话审计记录
-        try:
-            await self.session_audit_service.delete_session(conversation_id)
-        except Exception as e:
-            logger.error(f"Failed to delete session audit for conversation {conversation_id}: {e}")
+            raise ValidationError(detail="无权删除此会话")
 
         return await self.mapper.delete_conversation(conversation_id)
 
@@ -517,53 +230,19 @@ class CodeAgentService:
         user_id: Optional[int],
         title: Optional[str] = None
     ) -> bool:
-        """
-        更新会话信息
-
-        Args:
-            conversation_id: 会话ID
-            user_id: 用户ID(用于权限验证)
-            title: 新标题(可选)
-
-        Returns:
-            是否更新成功
-        """
-        # 验证会话是否存在
+        """更新会话信息"""
         conversation = await self.mapper.get_conversation_by_id(conversation_id)
         if not conversation:
-            raise NotFoundError(
-                resource_type="conversation",
-                resource_id=conversation_id,
-                detail="会话不存在"
-            )
+            raise NotFoundError(resource_type="conversation", resource_id=conversation_id)
 
-        # 权限验证
         if user_id and conversation.user_id != user_id:
-            raise ValidationError(
-                detail="无权修改此会话",
-                context={"conversation_id": conversation_id, "user_id": user_id}
-            )
+            raise ValidationError(detail="无权修改此会话")
 
-        # 更新会话审计记录的额外信息
-        try:
-            extra = {}
-            if title:
-                extra["title"] = title
-
-            if extra:
-                await self.session_audit_service.update_session_extra(conversation_id, extra)
-        except Exception as e:
-            logger.error(f"Failed to update session audit for conversation {conversation_id}: {e}")
-
-        return await self.mapper.update_conversation_info(
-            conversation_id,
-            title=title
-        )
+        return await self.mapper.update_conversation_info(conversation_id, title=title)
 
     async def close(self):
         """关闭资源"""
         try:
             await self.mapper.close()
-            # 不再关闭所有 Qwen 会话，因为会话状态由审计服务管理
         except Exception as e:
             logger.error(f"Error closing service resources: {e}")

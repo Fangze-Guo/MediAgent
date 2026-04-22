@@ -154,6 +154,16 @@ export interface ResultEvent extends QwenStreamEvent {
 }
 
 /**
+ * 会话创建事件
+ */
+export interface SessionCreatedEvent extends QwenStreamEvent {
+  type: 'session_created'
+  sessionId: string
+  newSessionId?: string
+  isNewSession?: boolean
+}
+
+/**
  * 联合类型：所有可能的 Qwen 流式事件
  */
 export type QwenEventType =
@@ -161,6 +171,7 @@ export type QwenEventType =
   | StreamEvent
   | AssistantEvent
   | ResultEvent
+  | SessionCreatedEvent
 
 /**
  * 创建会话请求接口
@@ -280,14 +291,15 @@ export async function syncChat(request: ChatRequest): Promise<BaseResponse<strin
  */
 export async function parseStreamResponse(
   reader: ReadableStreamDefaultReader<Uint8Array>,
-  onChunk: (data: { full_content?: string; thinking?: string }, type?: string) => void,
+  onChunk: (data: { full_content?: string; thinking?: string; content?: string }, type?: string) => void,
   onComplete: (fullContent: string) => void,
   onError: (error: string) => void,
   onEvent?: (event: QwenEventType) => void
 ): Promise<void> {
   const decoder = new TextDecoder()
   let buffer = ''
-  let completeCalled = false // 防止 onComplete 被多次调用
+  let completeCalled = false
+  let fullContent = ''
 
   try {
     while (true) {
@@ -296,70 +308,39 @@ export async function parseStreamResponse(
 
       buffer += decoder.decode(value, { stream: true })
       const lines = buffer.split('\n')
-      buffer = lines.pop() || '' // 保留最后一个不完整的行
+      buffer = lines.pop() || ''
 
       for (const line of lines) {
         if (line.startsWith('data: ')) {
           try {
-            const jsonStr = line.slice(6) // 去掉 "data: " 前缀
-            const response: BaseResponse<StreamResponseData> = JSON.parse(jsonStr)
+            const jsonStr = line.slice(6)
+            const data = JSON.parse(jsonStr)
 
-            if (response.code === 200 && response.data) {
-              const dataType = response.data.type
+            const kind = data.kind
+            const done = data.done
 
-              // ✅ 新增：处理 type 字段的优先级更高
-              if (dataType === 'thinking') {
-                // 思考块
-                onChunk({
-                  full_content: response.data.full_content || '',
-                  thinking: response.data.thinking
-                }, 'thinking')
-              } else if (dataType === 'thinking_delta') {
-                // 思考增量
-                onChunk({
-                  full_content: response.data.full_content || '',
-                  thinking: response.data.thinking
-                }, 'thinking_delta')
-              } else if (dataType === 'text') {
-                // 文本块
-                onChunk({
-                  full_content: response.data.full_content || '',
-                  thinking: undefined
-                }, 'text')
-              } else if (dataType === 'done') {
-                // 完成信号
-                if (!completeCalled) {
-                  completeCalled = true
-                  onComplete(response.data.full_content || '')
-                }
-              } else if (response.data.done && !completeCalled) {
-                // ✅ 兼容：没有 type 但有 done=true
+            if (kind === 'thinking') {
+              onChunk({ thinking: data.content, full_content: fullContent }, 'thinking')
+            } else if (kind === 'stream_delta' || kind === 'text') {
+              if (data.content) fullContent = data.content
+              onChunk({ content: data.content || fullContent, full_content: fullContent }, 'text')
+            } else if (kind === 'complete' || done) {
+              if (!completeCalled) {
                 completeCalled = true
-                onComplete(response.data.full_content || '')
-              } else {
-                // ✅ 兼容：旧版本数据
-                const event_type = response.data.event_type
-                if (event_type) {
-                  // 处理特定事件类型
-                  if (event_type === 'text_delta') {
-                    onChunk(response.data)
-                  } else if (event_type === 'message_complete') {
-                    // 消息完成
-                    onChunk(response.data)
-                  } else {
-                    // 其他事件类型
-                    if (onEvent) {
-                      onEvent(response.data as any)
-                    }
-                    onChunk(response.data)
-                  }
-                } else {
-                  // 兼容旧版本，没有 event_type 字段的情况
-                  onChunk(response.data)
-                }
+                onComplete(data.content || fullContent)
+              }
+            } else if (kind === 'error') {
+              onError(data.content || 'Unknown error')
+            } else if (kind === 'session_created') {
+              // 会话创建事件，传递给 onEvent 处理
+              if (onEvent) {
+                onEvent(data as any)
               }
             } else {
-              onError(response.message || '未知错误')
+              // 其他事件类型
+              if (onEvent && kind) {
+                onEvent(data as any)
+              }
             }
           } catch (e) {
             console.error('解析 SSE 数据失败:', e, line)
@@ -368,40 +349,14 @@ export async function parseStreamResponse(
       }
     }
 
-    // 处理剩余的 buffer
-    if (buffer.trim()) {
-      const lines = buffer.split('\n')
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          try {
-            const jsonStr = line.slice(6)
-            const response: BaseResponse<StreamResponseData> = JSON.parse(jsonStr)
-            if (response.code === 200 && response.data) {
-              if (response.data.done) {
-                onComplete(response.data.full_content || '')
-              } else {
-                const event_type = response.data.event_type
-                if (event_type) {
-                  if (event_type === 'text_delta') {
-                    onChunk(response.data)
-                  } else if (event_type === 'message_complete') {
-                    onChunk(response.data)
-                  } else {
-                    if (onEvent) {
-                      onEvent(response.data as any)
-                    }
-                    onChunk(response.data)
-                  }
-                } else {
-                  onChunk(response.data)
-                }
-              }
-            }
-          } catch (e) {
-            console.error('解析 SSE 数据失败:', e)
-          }
+    // 处理剩余 buffer
+    if (buffer.trim() && !completeCalled) {
+      try {
+        const data = JSON.parse(buffer.trim().replace('data: ', ''))
+        if (data.done) {
+          onComplete(data.content || fullContent)
         }
-      }
+      } catch {}
     }
   } catch (error) {
     onError(error instanceof Error ? error.message : '流式读取失败')

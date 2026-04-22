@@ -6,12 +6,10 @@
       <div class="conversation-list-section">
         <a-card :loading="loadingConversations" class="list-card">
           <template #title>
-            <div class="card-title-row">
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
               <span>{{ t('views_CodeAgentView.conversationList') }}</span>
-              <a-button type="primary" size="small" @click="showNewConversationModal">
-                <template #icon>
-                  <PlusOutlined />
-                </template>
+              <a-button type="primary" size="small" @click="startNewConversation">
+                <PlusOutlined />
                 {{ t('views_CodeAgentView.newSession') }}
               </a-button>
             </div>
@@ -65,9 +63,8 @@
 
       <!-- 右侧：对话详情 -->
       <div class="conversation-detail-section">
+        <!-- 有选中会话时显示完整卡片 -->
         <a-card v-if="selectedConversation" class="detail-card">
-
-
           <!-- 对话内容区域 -->
           <div class="messages-container" ref="messagesContainer">
             <!-- 事件显示区域 -->
@@ -100,7 +97,7 @@
                   </div>
                   <span class="loading-text">{{ t('views_CodeAgentView.loading') }}</span>
                 </div>
-                <!-- ✅ 新增：思考内容块 - 流式输出 + 可折叠-->
+                <!-- 思考内容块 -->
                 <StreamingThinkingRenderer
                   v-if="message.role === 'assistant' && message.thinking"
                   :content="message.thinking"
@@ -108,7 +105,7 @@
                   :collapsed="true"
                   class="message-thinking"
                 />
-                <!-- AI 消息：使用流式渲染，内容不为空时显示（改为 v-if 与思考块并行）-->
+                <!-- AI 消息：使用流式渲染 -->
                 <StreamingMarkdownRenderer v-if="message.role === 'assistant' && message.content" :content="message.content" :streaming="message.loading" :streaming-speed="15" class="message-markdown" />
                 <!-- 用户消息和其他文本消息 -->
                 <p v-else class="message-text">{{ message.content }}</p>
@@ -139,31 +136,37 @@
           </div>
         </a-card>
 
-        <!-- 空状态 -->
-        <a-empty
-          v-else-if="!loadingConversations"
-          :description="t('views_CodeAgentView.selectConversation')"
-          class="empty-state"
-        />
+        <!-- 新建会话时显示输入区域（无会话详情） -->
+        <a-card v-else class="detail-card">
+          <div class="new-session-container">
+            <div class="new-session-header">
+              <PlusOutlined style="font-size: 48px; color: #1890ff; margin-bottom: 16px;" />
+              <h3>{{ t('views_CodeAgentView.newSession') }}</h3>
+              <p style="color: #888; margin-bottom: 24px;">{{ t('views_CodeAgentView.startNewSessionHint') || '输入消息开始新对话' }}</p>
+            </div>
+            <!-- 输入区域 -->
+            <div class="input-area">
+              <div class="input-row">
+                <a-input
+                  v-model:value="inputMessage"
+                  :placeholder="t('views_CodeAgentView.inputPlaceholder')"
+                  allow-clear
+                  class="message-input"
+                  @press-enter="handleSendMessage"
+                  :disabled="sendingMessage"
+                />
+                <a-button type="primary" @click="handleSendMessage" :loading="sendingMessage">
+                  <template #icon>
+                    <SendOutlined />
+                  </template>
+                  {{ t('views_CodeAgentView.send') }}
+                </a-button>
+              </div>
+            </div>
+          </div>
+        </a-card>
       </div>
     </div>
-
-    <!-- 新建会话模态框 -->
-    <a-modal
-      v-model:open="newConversationModalVisible"
-      :title="t('views_CodeAgentView.newSession')"
-      @ok="handleCreateConversation"
-      :confirm-loading="creatingConversation"
-    >
-      <a-form :model="newConversationForm" layout="vertical">
-        <a-form-item :label="t('views_CodeAgentView.sessionTitle')">
-          <a-input
-            v-model:value="newConversationForm.title"
-            :placeholder="t('views_CodeAgentView.sessionTitlePlaceholder')"
-          />
-        </a-form-item>
-      </a-form>
-    </a-modal>
   </div>
 </template>
 
@@ -181,11 +184,11 @@ import {
 } from '@ant-design/icons-vue'
 import StreamingMarkdownRenderer from '@/components/markdown-renderer/StreamingMarkdownRenderer.vue'
 import StreamingThinkingRenderer from '@/components/markdown-renderer/StreamingThinkingRenderer.vue'
+import { useSessionStore, NormalizedMessage } from '@/store/codeAgentSession'
 import type {
   ChatMessage,
   ConversationInfo,
   MessageResponse,
-  CreateConversationRequest,
   StreamResponseData,
   QwenEventType
 } from '@/apis/codeAgent'
@@ -200,6 +203,9 @@ import {
 
 const { t } = useI18n()
 
+// Session store for message management (对齐 claudecodeui)
+const sessionStore = useSessionStore()
+
 // 搜索关键词
 const searchKeyword = ref('')
 
@@ -211,9 +217,6 @@ const sendingMessage = ref(false)
 
 // 对话列表加载状态
 const loadingConversations = ref(false)
-
-// 创建会话加载状态
-const creatingConversation = ref(false)
 
 // 对话列表数据
 const conversations = ref<ConversationInfo[]>([])
@@ -240,14 +243,6 @@ const messagesEndRef = ref<HTMLElement | null>(null)
 // 当前流式事件状态
 const currentEventType = ref<string>('')
 const eventDisplay = ref<{ message: string; type: 'info' | 'success' | 'loading' } | null>(null)
-
-// 新建会话模态框显示状态
-const newConversationModalVisible = ref(false)
-
-// 新建会话表单
-const newConversationForm = ref<CreateConversationRequest>({
-  title: undefined
-})
 
 // 过滤后的对话列表
 const filteredConversations = computed(() => {
@@ -357,40 +352,20 @@ const handleSearch = () => {
   // 搜索由computed自动处理
 }
 
-// 显示新建会话模态框
-const showNewConversationModal = () => {
-  newConversationModalVisible.value = true
-  // 重置表单
-  newConversationForm.value = {
-    title: undefined
-  }
-}
-
-// 创建新会话
-const handleCreateConversation = async () => {
-  if (!newConversationForm.value.title || !newConversationForm.value.title.trim()) {
-    message.warning('请填写会话标题')
-    return
-  }
-
-  creatingConversation.value = true
+// 开始新对话 - 调用 API 创建会话
+const startNewConversation = async () => {
   try {
-    const response = await createConversation(newConversationForm.value)
+    const response = await createConversation({})
     if (response.code === 200 && response.data) {
-      message.success('创建会话成功')
-      newConversationModalVisible.value = false
-      // 重新加载对话列表
-      await loadConversations()
-      // 自动选中新创建的会话
+      // 选中新创建的会话
       await selectConversation(response.data)
+      message.success('创建会话成功')
     } else {
       message.error(response.message || '创建会话失败')
     }
   } catch (error) {
     console.error('创建会话失败:', error)
     message.error('创建会话失败')
-  } finally {
-    creatingConversation.value = false
   }
 }
 
@@ -419,9 +394,12 @@ const handleDeleteConversation = async (conversationId: string) => {
 
 // 发送消息
 const handleSendMessage = async () => {
-  if (!inputMessage.value.trim() || !selectedConversation.value || sendingMessage.value) {
+  if (!inputMessage.value.trim() || sendingMessage.value) {
     return
   }
+
+  // 检查是否是新建会话（没有选中会话）
+  const isNewConversation = !selectedConversation.value
 
   const userMessage = inputMessage.value.trim()
   inputMessage.value = ''
@@ -431,7 +409,14 @@ const handleSendMessage = async () => {
   eventDisplay.value = null
   currentEventType.value = ''
 
-  // 添加用户消息到对话中
+  // 如果没有选中会话，不能发送
+  if (isNewConversation) {
+    message.warning('请先创建或选择一个会话')
+    sendingMessage.value = false
+    return
+  }
+
+  // 添加用户消息
   const userMsg: MessageResponse = {
     message_id: '',
     conversation_id: selectedConversation.value!.conversation_id,
@@ -442,10 +427,10 @@ const handleSendMessage = async () => {
   messages.value.push(userMsg)
   scrollToBottom()
 
-  // 准备请求数据：将历史消息转换为 API 格式（排除刚添加的用户消息）
+  // 准备请求数据
   const historyMessages: ChatMessage[] = messages.value
-    .slice(0, -1) // 排除刚添加的用户消息
-    .filter(msg => msg.content) // 只保留有内容的消息
+    .slice(0, -1)
+    .filter(msg => msg.content)
     .map(msg => ({
       role: msg.role,
       content: msg.content || ''
@@ -454,21 +439,21 @@ const handleSendMessage = async () => {
   try {
     // 添加 AI 消息占位符，标记为加载中
     const aiMsgIndex = messages.value.length
-    const currentConversationId = selectedConversation.value!.conversation_id
+
     messages.value.push({
       message_id: '',
-      conversation_id: currentConversationId,
+      conversation_id: selectedConversation.value!.conversation_id,
       role: 'assistant',
       content: '',
-      thinking: '',  // ✅ 新增：存放思考内容
+      thinking: '',
       created_at: new Date().toISOString(),
       loading: true
     })
     scrollToBottom()
 
-    // 调用流式接口
+    // 调用流式接口（如果是新会话，用前端生成的 UUID 作为 conversation_id）
     const stream = await streamChat({
-      conversation_id: currentConversationId,
+      conversation_id: selectedConversation.value?.conversation_id,
       messages: historyMessages,
       message: userMessage
     })
@@ -479,11 +464,21 @@ const handleSendMessage = async () => {
 
     const reader = stream.getReader()
 
+    // 用于捕获 session_id
+    let capturedSessionId: string | null = null
+
     // 定义事件处理器
     const handleEvent = (event: QwenEventType) => {
       currentEventType.value = event.type
 
       switch (event.type) {
+        case 'session_created':
+          // 会话创建事件
+          if (!capturedSessionId) {
+            capturedSessionId = (event as any).sessionId || (event as any).newSessionId
+            console.log('[DEBUG] session_created event, sdk session_id:', capturedSessionId)
+          }
+          break
         case 'system':
           // 系统初始化事件
           eventDisplay.value = {
@@ -533,8 +528,10 @@ const handleSendMessage = async () => {
       reader,
       // onChunk: 接收到每个 chunk
       (data: { full_content?: string; thinking?: string; content?: string }, type?: string) => {
-        // 检查是否还在当前的对话中
-        if (messages.value[aiMsgIndex] && messages.value[aiMsgIndex].conversation_id === currentConversationId) {
+        // 检查是否还在当前的对话中（包括新建时的 temp ID 和已有会话的 ID）
+        if (messages.value[aiMsgIndex] &&
+            (messages.value[aiMsgIndex].conversation_id === selectedConversation.value?.conversation_id ||
+             messages.value[aiMsgIndex].conversation_id === capturedSessionId)) {
           // ✅ 根据类型区分处理
           if (type === 'thinking' || type === 'thinking_delta') {
             // 思考阶段：只更新 thinking，content 保持不变
@@ -561,12 +558,14 @@ const handleSendMessage = async () => {
       // onComplete: 完成
       (finalContent) => {
         // 检查是否还在当前的对话中
-        if (messages.value[aiMsgIndex] && messages.value[aiMsgIndex].conversation_id === currentConversationId) {
+        if (messages.value[aiMsgIndex] &&
+            (messages.value[aiMsgIndex].conversation_id === selectedConversation.value?.conversation_id ||
+             messages.value[aiMsgIndex].conversation_id === capturedSessionId)) {
           messages.value[aiMsgIndex].content = finalContent
           messages.value[aiMsgIndex].loading = false  // ✅ 标记流式输出结束
         }
         // 更新会话的最后消息
-        if (selectedConversation.value && selectedConversation.value.conversation_id === currentConversationId) {
+        if (selectedConversation.value) {
           selectedConversation.value.last_message = finalContent
         }
         // 清除事件显示
@@ -582,7 +581,9 @@ const handleSendMessage = async () => {
       (error) => {
         console.error('流式对话错误:', error)
         // 检查是否还在当前的对话中
-        if (messages.value[aiMsgIndex] && messages.value[aiMsgIndex].conversation_id === currentConversationId) {
+        if (messages.value[aiMsgIndex] &&
+            (messages.value[aiMsgIndex].conversation_id === selectedConversation.value?.conversation_id ||
+             messages.value[aiMsgIndex].conversation_id === capturedSessionId)) {
           messages.value[aiMsgIndex].content = `错误: ${error}`
           messages.value[aiMsgIndex].loading = false
         }
@@ -856,6 +857,43 @@ onUnmounted(() => {
   min-height: 0;
   overflow: hidden;
   padding: 0;
+}
+
+.new-session-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 40px;
+  min-height: 0;
+}
+
+.new-session-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.new-session-header h3 {
+  margin: 0 0 8px 0;
+  font-size: 20px;
+  color: #333;
+}
+
+.new-session-container .input-area {
+  width: 100%;
+  max-width: 600px;
+  padding: 16px;
+  border-top: 1px solid #e8e8e8;
+}
+
+.new-session-container .input-row {
+  display: flex;
+  gap: 12px;
+}
+
+.new-session-container .message-input {
+  flex: 1;
 }
 
 .patient-info {
