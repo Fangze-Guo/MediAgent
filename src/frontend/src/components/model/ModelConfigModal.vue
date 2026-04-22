@@ -228,7 +228,7 @@ const handleClose = () => {
 
 const loadModels = async () => {
   try {
-    const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
+    const baseURL = (import.meta as any).env?.VITE_API_BASE || '/api'
     
     // 获取模型列表
     const listResponse = await fetch(`${baseURL}/models/configs`)
@@ -248,7 +248,7 @@ const loadModels = async () => {
 
 const selectModel = async (model: ModelInfo) => {
   try {
-    const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
+    const baseURL = (import.meta as any).env?.VITE_API_BASE || '/api'
     
     const response = await fetch(`${baseURL}/models/current`, {
       method: 'POST',
@@ -321,7 +321,7 @@ const handleSaveModel = async () => {
     await editFormRef.value.validate()
     saving.value = true
     
-    const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
+    const baseURL = (import.meta as any).env?.VITE_API_BASE || '/api'
     
     if (isEdit.value) {
       // 更新模型
@@ -398,7 +398,7 @@ const deleteModel = (modelId: string) => {
     content: `确定要删除模型 "${model?.name}" 吗？`,
     onOk: async () => {
       try {
-        const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
+        const baseURL = (import.meta as any).env?.VITE_API_BASE || '/api'
         
         const response = await fetch(`${baseURL}/models/configs/${modelId}`, {
           method: 'DELETE'

@@ -477,7 +477,7 @@ const isImageFile = (file: any) => {
 }
 
 const getImageUrl = (file: any) => {
-  const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
+  const baseURL = (import.meta as any).env?.VITE_API_BASE || '/api'
   // 正确编码文件路径（file.id 是相对路径，可能包含斜杠和特殊字符）
   const encodedPath = file.id.split('/').map((part: string) => encodeURIComponent(part)).join('/')
   return `${baseURL}/files/serve/${encodedPath}`

@@ -3,7 +3,7 @@
  */
 import axios from 'axios'
 
-const API_BASE = `${(import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'}/models`
+const API_BASE = `${(import.meta as any).env?.VITE_API_BASE || '/api'}/models`
 
 // ==================== 数据类型定义 ====================
 

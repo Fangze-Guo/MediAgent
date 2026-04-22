@@ -45,7 +45,7 @@ interface ApiError {
  * 优先使用环境变量，否则使用默认值
  */
 const getBaseURL = (): string => {
-  return (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
+  return '/api'
 }
 
 /**

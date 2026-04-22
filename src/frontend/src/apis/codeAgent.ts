@@ -246,7 +246,7 @@ export interface BaseResponse<T = any> {
 export async function streamChat(request: ChatRequest): Promise<ReadableStream<Uint8Array> | null> {
   try {
     // 获取 API 基础 URL
-    const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
+    const baseURL = (import.meta as any).env?.VITE_API_BASE || '/api'
     const url = `${baseURL}/code-agent/taking`
 
     // 获取 token（如果需要认证）

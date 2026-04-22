@@ -145,7 +145,7 @@ export async function chatStream(
 ): Promise<void> {
   try {
     // 获取正确的API基础URL
-    const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
+    const baseURL = (import.meta as any).env?.VITE_API_BASE || '/api'
     const response = await fetch(`${baseURL}/chat/stream`, {
       method: 'POST',
       headers: {

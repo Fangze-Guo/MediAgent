@@ -164,7 +164,7 @@ export async function uploadFile(
             })
 
             // 获取API基础URL
-            const baseURL = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:8000'
+            const baseURL = (import.meta as any).env?.VITE_API_BASE || '/api'
 
             // 发送请求
             xhr.open('POST', `${baseURL}/files/upload`)
