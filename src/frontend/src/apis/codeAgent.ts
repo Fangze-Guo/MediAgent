@@ -199,9 +199,20 @@ export interface MessageResponse {
   created_at?: string
   loading?: boolean
   // Skill call 字段
-  event_type?: 'skill_call' | null
+  event_type?: 'skill_call' | 'todo' | null
   skill_name?: string | null
   skill_arguments?: string | null
+  // Todo 事件字段
+  todo_list?: TodoItem[]
+}
+
+/**
+ * Todo 项目接口
+ */
+export interface TodoItem {
+  content: string
+  status: 'pending' | 'in_progress' | 'completed'
+  activeForm?: string
 }
 
 /**

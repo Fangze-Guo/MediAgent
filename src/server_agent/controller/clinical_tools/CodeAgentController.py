@@ -51,9 +51,11 @@ class MessageResponse(BaseModel):
     thinking: Optional[str] = None
     created_at: Optional[str] = None
     # Skill call 字段
-    event_type: Optional[str] = None  # "skill_call" 或 None (普通消息)
+    event_type: Optional[str] = None  # "skill_call" | "todo" | None
     skill_name: Optional[str] = None
     skill_arguments: Optional[str] = None
+    # Todo 事件字段
+    todo_list: Optional[List[dict]] = None
 
 
 class ConversationDetailResponse(BaseModel):
@@ -111,6 +113,7 @@ class CodeAgentController(BaseController):
         """
         将原始 JSONL 记录转换成前端可渲染消息。
         - Skill call 组：toolUseResult.commandName 条目 + 后续连续的 isMeta/attachment 条目
+        - TodoWrite 事件：从 tool_use 类型中提取 name==TodoWrite 的 todo 列表
         - 跳过控制类记录（queue-operation / last-prompt / attachment）
         - 仅保留 user/assistant 消息
         - 对同一个 message.id 的 assistant thinking/text 片段做合并
@@ -140,6 +143,39 @@ class CodeAgentController(BaseController):
             if entry_type in ("queue-operation", "last-prompt"):
                 continue
 
+            # ======== TodoWrite 检测（必须在 role 判断之前） ========
+            raw_message = entry.get("message", {})
+            raw_content = raw_message.get("content", []) if isinstance(raw_message, dict) else None
+
+            todo_handled = False
+            if isinstance(raw_content, list):
+                for part in raw_content:
+                    if not isinstance(part, dict):
+                        continue
+
+                    if part.get("type") == "tool_use":
+                        tool_name = part.get("name")
+                        if tool_name == "TodoWrite":
+                            todos = part.get("input", {}).get("todos", [])
+                            # 每个 TodoWrite 事件单独输出（保持 JSONL 顺序）
+                            messages_response.append(MessageResponse(
+                                message_id=entry.get("uuid") or f"todo_{i}",
+                                conversation_id=conversation_id,
+                                role=None,
+                                content=None,
+                                thinking=None,
+                                created_at=entry.get("timestamp"),
+                                event_type="todo",
+                                skill_name="TodoWrite",
+                                todo_list=todos
+                            ))
+                            todo_handled = True
+                            break
+
+            if todo_handled:
+                continue
+
+            # ======== Skill Call 检测（toolUseResult.commandName） ========
             # 检查是否是 skill call 触发条目
             tool_use_result = entry.get("toolUseResult", {})
             command_name = tool_use_result.get("commandName") if isinstance(tool_use_result, dict) else None
@@ -229,6 +265,7 @@ class CodeAgentController(BaseController):
             if role == "assistant" and assistant_message_id:
                 assistant_index_by_message_id[assistant_message_id] = len(messages_response) - 1
 
+        # 输出 Todo 事件（汇总所有状态）
         return messages_response
 
     def _register_routes(self):

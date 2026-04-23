@@ -81,7 +81,7 @@
               v-for="message in messages"
               :key="message.message_id"
               class="message-item"
-              :class="message.event_type === 'skill_call' ? 'message-skill' : (message.role === 'user' ? 'message-user' : 'message-ai')"
+              :class="message.event_type === 'todo' ? 'message-todo' : (message.event_type === 'skill_call' ? 'message-skill' : (message.role === 'user' ? 'message-user' : 'message-ai'))"
             >
               <!-- Skill Call 事件：橙色气泡 -->
               <template v-if="message.event_type === 'skill_call'">
@@ -89,6 +89,30 @@
                   <span class="skill-icon">🔧</span>
                   <span class="skill-name">{{ message.skill_name }}</span>
                   <span class="skill-label">skill call</span>
+                </div>
+                <div class="message-time">{{ formatTime(message.created_at) }}</div>
+              </template>
+
+              <!-- Todo 事件：紫色气泡，内嵌折叠任务列表 -->
+              <template v-else-if="message.event_type === 'todo'">
+                <div class="todo-bubble">
+                  <div class="todo-header" @click="toggleTodoCollapse(message.message_id)">
+                    <span class="todo-header-icon">{{ todoCollapsedStates[message.message_id] ? '+' : '-' }}</span>
+                    <span class="todo-header-title">Update Todos</span>
+                  </div>
+                  <div v-if="!todoCollapsedStates[message.message_id]" class="todo-list">
+                    <div
+                      v-for="(todo, idx) in message.todo_list"
+                      :key="idx"
+                      class="todo-item"
+                      :class="{ 'todo-done': todo.status === 'completed' }"
+                    >
+                      <span class="todo-checkbox">
+                        {{ todo.status === 'completed' ? '✓' : '' }}
+                      </span>
+                      <span class="todo-text">{{ todo.activeForm || todo.content }}</span>
+                    </div>
+                  </div>
                 </div>
                 <div class="message-time">{{ formatTime(message.created_at) }}</div>
               </template>
@@ -247,6 +271,14 @@ const selectedConversation = ref<ConversationInfo | null>(null)
 
 // 会话消息列表
 const messages = ref<MessageResponse[]>([])
+
+// Todo 折叠状态
+const todoCollapsedStates = ref<Record<string, boolean>>({})
+
+// 切换 Todo 折叠状态
+const toggleTodoCollapse = (messageId: string) => {
+  todoCollapsedStates.value[messageId] = !todoCollapsedStates.value[messageId]
+}
 
 // 加载会话详情状态（防止重复调用）
 const loadingConversationDetail = ref(false)
@@ -1065,6 +1097,12 @@ onUnmounted(() => {
   align-self: flex-end;
 }
 
+/* Todo 消息左对齐 */
+.message-todo {
+  align-self: flex-start;
+  width: 100%;
+}
+
 /* AI消息内容白块 */
 .message-content {
   padding: 12px 16px;
@@ -1129,6 +1167,91 @@ onUnmounted(() => {
   font-size: 12px;
   color: #ff7a45;
   font-weight: 500;
+}
+
+/* Todo 紫色气泡 */
+.todo-bubble {
+  background: linear-gradient(135deg, #faf5ff 0%, #ede9fe 100%);
+  border: 1px solid #c4b5fd;
+  border-radius: 8px;
+  padding: 8px 14px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.15);
+}
+
+.todo-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0 8px 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.todo-header-icon {
+  font-size: 12px;
+  font-weight: 600;
+  color: #7c3aed;
+  width: 16px;
+  text-align: center;
+}
+
+.todo-header-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #7c3aed;
+}
+
+.todo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+  border-top: 1px solid #e9d5ff;
+}
+
+.todo-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #5b21b6;
+  line-height: 1.5;
+}
+
+.todo-done .todo-text {
+  color: #a78bfa;
+  text-decoration: line-through;
+}
+
+.todo-checkbox {
+  width: 16px;
+  height: 16px;
+  border: 1px solid #a78bfa;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #7c3aed;
+  flex-shrink: 0;
+}
+
+.todo-done .todo-checkbox {
+  background: #7c3aed;
+  color: #fff;
+}
+
+.todo-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.bubble-user .message-text {
+  word-break: break-word;
 }
 
 .bubble-user .message-text {
