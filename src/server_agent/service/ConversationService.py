@@ -12,7 +12,7 @@ from typing import Any, Dict, List
 import aiosqlite
 
 from src.server_new.mediagent.modules.conversation_manager import ConversationManager
-from src.server_agent.exceptions import NotFoundError, ServiceError, handle_service_exception
+from src.server_agent.exceptions import NotFoundError, ServiceError, AuthorizationError, handle_service_exception
 
 logger = logging.getLogger(__name__)
 
@@ -143,10 +143,15 @@ class ConversationService:
         return await dialogue_agent.converse(conversation_uid, content)
 
     @handle_service_exception
-    async def get_messages(self, conversation_uid: str, target: str) -> List[Dict[str, Any]]:
+    async def get_messages(self, conversation_uid: str, target: str, user_id: str = None) -> List[Dict[str, Any]]:
         """
         获取目标消息流（target.json）的 messages 内容。
-        
+
+        Args:
+            conversation_uid: 会话UID
+            target: 目标消息流（如 main_chat）
+            user_id: 可选的用户ID，用于验证会话所有权
+
         Returns:
             messages: 消息列表
         """
@@ -156,6 +161,20 @@ class ConversationService:
                 resource_id=conversation_uid,
                 detail="该对话UID不存在"
             )
+
+        # 验证用户是否为会话所有者
+        if user_id:
+            async with aiosqlite.connect(self.database_path) as db:
+                async with db.execute(
+                    "SELECT owner_uid FROM conversations WHERE conversation_uid=?",
+                    (conversation_uid,)
+                ) as cur:
+                    row = await cur.fetchone()
+                    if not row or row[0] != user_id:
+                        raise AuthorizationError(
+                            detail="无权访问该会话",
+                            context={"conversation_uid": conversation_uid, "user_id": user_id}
+                        )
 
         conv_dir = self.conversation_root / conversation_uid
         target_file = conv_dir / f"{target}.json"

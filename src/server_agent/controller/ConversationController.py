@@ -1,8 +1,13 @@
 from typing import List, Dict, Any
 
+from fastapi import Header, Depends
+
 from src.server_agent.common import ResultUtils, BaseResponse
 from src.server_agent.model.entity.ConversationInfo import ConversationInfo
+from src.server_agent.model.vo.UserVO import UserVO
 from src.server_agent.service import ConversationService
+from src.server_agent.service.UserService import UserService
+from src.server_agent.exceptions import AuthenticationError
 from .base import BaseController
 
 
@@ -15,7 +20,29 @@ class ConversationController(BaseController):
             database_path="src/server_new/data/db/app.sqlite3",
             conversation_root="src/server_agent/conversations"
         )
+        self.user_service = UserService()
         self._register_routes()
+
+    async def _get_current_user(self, authorization: str = Header(None)) -> UserVO:
+        """根据token获取用户信息的依赖函数"""
+        if not authorization:
+            raise AuthenticationError(
+                detail="Missing authorization header",
+                context={"header": "Authorization"}
+            )
+
+        if authorization.startswith("Bearer "):
+            token = authorization[7:]
+        else:
+            token = authorization
+
+        userVO: UserVO = await self.user_service.get_user_by_token(token)
+        if not userVO:
+            raise AuthenticationError(
+                detail="Invalid token",
+                context={"token": token[:10] + "..." if len(token) > 10 else token}
+            )
+        return userVO
 
     def _register_routes(self):
         """注册路由"""
@@ -39,11 +66,15 @@ class ConversationController(BaseController):
             return ResultUtils.success(response)
 
         @self.router.get("")
-        async def getMessages(conversation_id: str, target: str) -> BaseResponse[List[Dict[str, Any]]]:
+        async def getMessages(
+            conversation_id: str,
+            target: str,
+            userVO: UserVO = Depends(self._get_current_user)
+        ) -> BaseResponse[List[Dict[str, Any]]]:
             """
             获取对话消息，从 '消息根路径/conversationId/target'
             """
-            messages = await self.conversationService.get_messages(conversation_id, target)
+            messages = await self.conversationService.get_messages(conversation_id, target, userVO.uid)
             return ResultUtils.success(messages)
 
         @self.router.get("/user/{user_id}")
