@@ -137,8 +137,8 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   multiple: true,
-  accept: 'image/*,.csv,.dcm,.DCM',
-  maxSize: 10,
+  accept: 'image/*,.csv,.dcm,.DCM,.nii,.nii.gz',
+  maxSize: 500,
   currentPath: '.'
 })
 
@@ -233,7 +233,7 @@ const addFilesToUploadList = (files: File[]) => {
 
   for (const file of files) {
     if (!isSupportedFileType(file)) {
-      message.error(file.name)
+      message.error(t('components_FileUpload.messages.unsupportedType', { fileName: file.name }))
       continue
     }
 
@@ -280,6 +280,9 @@ const handleFiles = async (files: File[]) => {
       successCount++
     } else {
       failedCount++
+      if (uploadError.value) {
+        errors.push(`${file.name}: ${uploadError.value}`)
+      }
     }
   }
 
@@ -291,13 +294,13 @@ const handleFiles = async (files: File[]) => {
   } else if (successCount > 0 && failedCount > 0) {
     message.warning(t('components_FileUpload.messages.partialSuccess', { successCount, failedCount }))
     if (errors.length > 0) {
-      console.error(t('components_FileUpload.messages.failureDetails'), errors)
+      message.error(errors.join('\n'))
     }
     window.dispatchEvent(new CustomEvent('refresh-file-list'))
   } else if (failedCount > 0) {
     message.error(t('components_FileUpload.messages.allFailed', { failedCount }))
     if (errors.length > 0) {
-      console.error(t('components_FileUpload.messages.failureDetails'), errors)
+      message.error(errors.join('\n'))
     }
   }
 }

@@ -515,7 +515,7 @@
       "uploadedFiles": "Uploaded Files ({count})",
       "uploadSuccess": "Upload Successful",
       "uploadSuccessHint": "Files have been saved to the server, you can close this window",
-      "supportedFormats": "Supports multiple file uploads: image files (JPG, PNG, GIF, WebP), CSV files, and DICOM files (.dcm)",
+      "supportedFormats": "Supports multiple file uploads: image files (JPG, PNG, GIF, WebP), CSV files, DICOM files (.dcm), and NIfTI files (.nii, .nii.gz)",
       "messages": {
         "unsupportedType": "{fileName}: Unsupported file type",
         "sizeExceeded": "File {fileName} exceeds the size limit ({maxSize}MB)",

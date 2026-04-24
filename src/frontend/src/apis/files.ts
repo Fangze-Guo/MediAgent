@@ -329,5 +329,5 @@ export function isSupportedFileType(file: File): boolean {
     return supportedTypes.includes(file.type) ||
         file.name.toLowerCase().endsWith('.csv') ||
         file.name.toLowerCase().endsWith('.dcm') ||
-        !!file.name.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp|dcm)$/i)
+        !!file.name.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp|dcm|nii|nii\.gz)$/i)
 }

@@ -13,20 +13,6 @@
                 @search="handleSearch"
                 allow-clear
             />
-            <a-button @click="handleRefresh"
-                      :loading="fileStore.loading"
-                      style="margin-right: 12px">
-              <template #icon>
-                <ReloadOutlined />
-              </template>
-              {{ t('views_FileManageView.refresh') }}
-            </a-button>
-            <a-button type="primary" @click="handleUploadClick">
-              <template #icon>
-                <UploadOutlined />
-              </template>
-              {{ t('views_FileManageView.uploadFiles') }}
-            </a-button>
           </div>
         </div>
 
@@ -40,9 +26,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { ReloadOutlined, UploadOutlined } from '@ant-design/icons-vue'
 import { useFileStore } from '@/store/files'
 import DatasetFileBrowser from '@/components/file/DatasetFileBrowser.vue'
 import { useI18n } from 'vue-i18n'
@@ -53,46 +37,10 @@ const { t } = useI18n()
 // 使用文件状态管理
 const fileStore = useFileStore()
 
-const fetchFileList = async () => {
-  try {
-    await fileStore.fetchFileList()
-  } catch (error) {
-    message.error(t('views_FileManageView.loadFailed'))
-  }
-}
-
-// 处理上传按钮点击
-const handleUploadClick = () => {
-  // 触发数据集文件上传事件
-  window.dispatchEvent(new CustomEvent('open-dataset-file-upload'))
-}
-
 // 搜索
 const handleSearch = () => {
   // 搜索逻辑在computed中处理
 }
-
-// 刷新文件列表
-const handleRefresh = () => {
-  fetchFileList()
-}
-
-// 监听文件列表刷新事件
-const handleRefreshFileList = () => {
-  fetchFileList()
-}
-
-// 组件挂载时获取文件列表
-onMounted(() => {
-  fetchFileList()
-  // 监听文件列表刷新事件
-  window.addEventListener('refresh-file-list', handleRefreshFileList)
-})
-
-// 组件卸载时移除事件监听
-onUnmounted(() => {
-  window.removeEventListener('refresh-file-list', handleRefreshFileList)
-})
 </script>
 
 <style scoped>

@@ -458,7 +458,7 @@
       "uploadedFiles": "已上传文件 ({count})",
       "uploadSuccess": "上传成功",
       "uploadSuccessHint": "文件已保存到服务器，您可以关闭此窗口",
-      "supportedFormats": "支持多文件上传：图片文件（JPG、PNG、GIF、WebP）、CSV 文件、DICOM 文件（.dcm）",
+      "supportedFormats": "支持多文件上传：图片文件（JPG、PNG、GIF、WebP）、CSV 文件、DICOM 文件（.dcm）、NIfTI 文件（.nii、.nii.gz）",
       "messages": {
         "unsupportedType": "{fileName}：不支持的文件类型",
         "sizeExceeded": "文件 {fileName} 超过大小限制（{maxSize}MB）",
