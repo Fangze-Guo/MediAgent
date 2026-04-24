@@ -44,7 +44,7 @@
                     size="small"
                     danger
                     class="delete-btn"
-                    @click.stop="handleDeleteConversation(conversation.conversation_id)"
+                    @click.stop="showDeleteConfirm($event, conversation.conversation_id)"
                   >
                     <DeleteOutlined />
                   </a-button>
@@ -138,7 +138,12 @@
                 </div>
                 <!-- AI 消息内容：有内容时才显示白块 -->
                 <div v-if="message.content" class="message-content">
-                  <StreamingMarkdownRenderer :content="message.content" :streaming="message.loading" :streaming-speed="15" class="message-markdown" />
+                  <StreamingMarkdownRenderer
+                    :content="message.content"
+                    :streaming="message.loading"
+                    :streaming-speed="15"
+                    class="message-markdown"
+                  />
                 </div>
                 <!-- 时间戳 -->
                 <div class="message-time">{{ formatTime(message.created_at) }}</div>
@@ -152,6 +157,21 @@
                 <div class="message-time">{{ formatTime(message.created_at) }}</div>
               </template>
             </div>
+
+            <!-- Plan 确认卡片 -->
+            <div v-if="pendingPlan" class="plan-card">
+              <div class="plan-content">{{ pendingPlan.content }}</div>
+              <div class="plan-actions">
+                <a-button
+                  type="primary"
+                  @click="confirmPlan"
+                  :disabled="isPlanConfirmed || sendingMessage"
+                >
+                  {{ sendingMessage ? '执行中...' : (isPlanConfirmed ? '已确认' : '✅ 确认执行') }}
+                </a-button>
+                <a-button @click="cancelPlan">❌ 取消</a-button>
+              </div>
+            </div>
             <!-- 滚动锚点 -->
             <div ref="messagesEndRef" style="height: 1px;" />
           </div>
@@ -164,7 +184,7 @@
                 :placeholder="t('views_CodeAgentView.inputPlaceholder')"
                 allow-clear
                 class="message-input"
-                @press-enter="handleSendMessage"
+                 @keydown.enter.prevent="handleSendMessage"
                 :disabled="sendingMessage"
               />
               <a-button type="primary" @click="handleSendMessage" :loading="sendingMessage">
@@ -193,7 +213,7 @@
                   :placeholder="t('views_CodeAgentView.inputPlaceholder')"
                   allow-clear
                   class="message-input"
-                  @press-enter="handleSendMessage"
+                   @keydown.enter.prevent="handleSendMessage"
                   :disabled="sendingMessage"
                 />
                 <a-button type="primary" @click="handleSendMessage" :loading="sendingMessage">
@@ -207,12 +227,42 @@
           </div>
         </a-card>
       </div>
+
+      <!-- 删除确认气泡框 -->
+      <Teleport to="body">
+        <div
+          v-if="deleteConfirmVisible"
+          class="delete-confirm-popover"
+          :style="{
+            position: 'fixed',
+            left: deleteConfirmPosition.x + 'px',
+            top: deleteConfirmPosition.y + 'px',
+            transform: 'translate(-50%, -100%)'
+          }"
+          @click.stop
+        >
+          <div class="delete-confirm-content">
+            <span class="delete-confirm-text">确定删除此会话？</span>
+            <div class="delete-confirm-actions">
+              <a-button size="small" @click="cancelDelete">取消</a-button>
+              <a-button size="small" type="primary" danger @click="confirmDelete">删除</a-button>
+            </div>
+          </div>
+          <div class="delete-confirm-arrow"></div>
+        </div>
+        <!-- 点击空白处关闭 -->
+        <div
+          v-if="deleteConfirmVisible"
+          class="delete-confirm-overlay"
+          @click="cancelDelete"
+        ></div>
+      </Teleport>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { message } from 'ant-design-vue'
 import {
@@ -225,13 +275,13 @@ import {
 } from '@ant-design/icons-vue'
 import StreamingMarkdownRenderer from '@/components/markdown-renderer/StreamingMarkdownRenderer.vue'
 import StreamingThinkingRenderer from '@/components/markdown-renderer/StreamingThinkingRenderer.vue'
-import { useSessionStore, NormalizedMessage } from '@/store/codeAgentSession'
+import { useSessionStore } from '@/store/codeAgentSession'
 import type {
   ChatMessage,
   ConversationInfo,
   MessageResponse,
   StreamResponseData,
-  QwenEventType
+  CodeEventType
 } from '@/apis/codeAgent'
 import {
   streamChat,
@@ -245,11 +295,38 @@ import {
 
 const { t } = useI18n()
 
-// Session store for message management (对齐 claudecodeui)
+// Session store for message management
 const sessionStore = useSessionStore()
 
 // 搜索关键词
 const searchKeyword = ref('')
+
+// 删除确认气泡框
+const deleteConfirmVisible = ref(false)
+const deleteConfirmConvId = ref<string | null>(null)
+const deleteConfirmPosition = ref({ x: 0, y: 0 })
+
+// 显示删除确认气泡框
+const showDeleteConfirm = (event: MouseEvent, conversationId: string) => {
+  event.stopPropagation()
+  deleteConfirmConvId.value = conversationId
+  deleteConfirmPosition.value = { x: event.clientX, y: event.clientY }
+  deleteConfirmVisible.value = true
+}
+
+// 取消删除
+const cancelDelete = () => {
+  deleteConfirmVisible.value = false
+  deleteConfirmConvId.value = null
+}
+
+// 确认删除
+const confirmDelete = async () => {
+  if (deleteConfirmConvId.value) {
+    await handleDeleteConversation(deleteConfirmConvId.value)
+  }
+  cancelDelete()
+}
 
 // 输入消息
 const inputMessage = ref('')
@@ -280,6 +357,30 @@ const toggleTodoCollapse = (messageId: string) => {
   todoCollapsedStates.value[messageId] = !todoCollapsedStates.value[messageId]
 }
 
+// 默认在底部
+const isAtBottom = ref(true)
+
+// Plan 状态管理
+const isPlanConfirmed = ref(false)  // 是否已确认
+const hasPlanShown = ref(false)      // 是否已显示过 Plan（防抖）
+
+const confirmPlan = () => {
+  if (isPlanConfirmed.value) return  // 执行锁
+  isPlanConfirmed.value = true
+
+  if (pendingPlan.value) {
+    inputMessage.value = '确认'
+    pendingPlan.value = null
+    handleSendMessage()
+  }
+}
+
+const cancelPlan = () => {
+  pendingPlan.value = null
+  isPlanConfirmed.value = false
+  hasPlanShown.value = false
+}
+
 // 加载会话详情状态（防止重复调用）
 const loadingConversationDetail = ref(false)
 
@@ -293,6 +394,9 @@ const messagesEndRef = ref<HTMLElement | null>(null)
 // 当前流式事件状态
 const currentEventType = ref<string>('')
 const eventDisplay = ref<{ message: string; type: 'info' | 'success' | 'loading' } | null>(null)
+
+// Plan 确认状态
+const pendingPlan = ref<{ sessionId: string; content: string } | null>(null)
 
 // 过滤后的对话列表
 const filteredConversations = computed(() => {
@@ -373,6 +477,7 @@ const selectConversation = async (conversation: ConversationInfo) => {
       // 等待消息渲染完成后再滚动到底部
       await nextTick()
       scrollToBottom()
+      setupResizeObserver()
     } else {
       message.error(response.message || '加载会话详情失败')
     }
@@ -387,13 +492,6 @@ const selectConversation = async (conversation: ConversationInfo) => {
   } finally {
     loadingConversationDetail.value = false
     currentAbortController = null
-  }
-}
-
-// 滚动到顶部
-const scrollToTop = () => {
-  if (messagesContainer.value) {
-    messagesContainer.value.scrollTop = 0
   }
 }
 
@@ -455,6 +553,7 @@ const handleSendMessage = async () => {
 
   const userMessage = inputMessage.value.trim()
   inputMessage.value = ''
+  await nextTick() 
   sendingMessage.value = true
 
   // 重置事件显示
@@ -490,7 +589,12 @@ const handleSendMessage = async () => {
     created_at: new Date().toISOString()
   }
   messages.value.push(userMsg)
+  isAtBottom.value = true 
   scrollToBottom()
+
+  // 新消息时重置 Plan 状态
+  isPlanConfirmed.value = false
+  hasPlanShown.value = false
 
   // 准备请求数据
   const historyMessages: ChatMessage[] = messages.value
@@ -500,6 +604,18 @@ const handleSendMessage = async () => {
       role: msg.role as 'user' | 'assistant',
       content: msg.content || ''
     }))
+
+  // 在 streamChat 之前，先插入 AI 占位消息
+  messages.value.push({
+    message_id: '',
+    conversation_id: selectedConversation.value!.conversation_id,
+    role: 'assistant',
+    content: '',
+    thinking: '',
+    created_at: new Date().toISOString(),
+    loading: true
+  })
+  scrollToBottom()
 
   try {
     const stream = await streamChat({
@@ -550,7 +666,7 @@ const handleSendMessage = async () => {
     }
 
     // 定义事件处理器
-    const handleEvent = (event: QwenEventType) => {
+    const handleEvent = (event: CodeEventType) => {
       currentEventType.value = event.type
 
       switch (event.type) {
@@ -609,7 +725,7 @@ const handleSendMessage = async () => {
     await parseStreamResponse(
       reader,
       // onChunk: 步骤流模式，按 thinking/text 切换创建独立步骤
-      (data: { full_content?: string; thinking?: string; content?: string }, type?: string) => {
+    async (data: { full_content?: string; thinking?: string; content?: string }, type?: string) => {
         // 检查是否还在当前的对话中
         const convId = selectedConversation.value?.conversation_id
         if (!convId && !capturedSessionId) return
@@ -619,7 +735,10 @@ const handleSendMessage = async () => {
 
         // thinking 每次都是完整块，每次都新建步骤；text 增量合并到当前步骤
         if (isThinking) {
-          switchStep(newStepType)
+            switchStep(newStepType)
+            // 等两帧让 loading 动画能先渲染出来，再填内容
+            await nextTick()
+            await nextTick()
         } else if (activeStep !== newStepType || getCurrentStepIndex() < 0) {
           switchStep(newStepType)
         }
@@ -634,13 +753,28 @@ const handleSendMessage = async () => {
           }
         } else if (data.content !== undefined) {
           messages.value[stepIdx].content = data.content
+          // 检测到"请先确认"提示，设置 pendingPlan（防抖）
+          if (data.content.includes('请先确认任务') && capturedSessionId && !hasPlanShown.value) {
+            hasPlanShown.value = true
+            pendingPlan.value = {
+              sessionId: capturedSessionId,
+              content: data.content
+            }
+            // 关闭当前加载状态
+            messages.value[stepIdx].loading = false
+          }
         } else if (data.full_content !== undefined) {
           messages.value[stepIdx].content = data.full_content
-        }
-
-        // 内容阶段才滚动
-        if (!isThinking) {
-          nextTick(() => scrollToBottom())
+          // 检测到"请先确认"提示，设置 pendingPlan（防抖）
+          if (data.full_content.includes('请先确认任务') && capturedSessionId && !hasPlanShown.value) {
+            hasPlanShown.value = true
+            pendingPlan.value = {
+              sessionId: capturedSessionId,
+              content: data.full_content
+            }
+            // 关闭当前加载状态
+            messages.value[stepIdx].loading = false
+          }
         }
       },
       // onComplete: 关闭最后一个 loading 步骤
@@ -653,6 +787,10 @@ const handleSendMessage = async () => {
         if (selectedConversation.value) {
           selectedConversation.value.last_message = finalContent
         }
+        // 重置 Plan 状态
+        isPlanConfirmed.value = false
+        hasPlanShown.value = false
+        sendingMessage.value = false  // 兜底关闭 loading
         setTimeout(() => {
           eventDisplay.value = null
           currentEventType.value = ''
@@ -667,6 +805,10 @@ const handleSendMessage = async () => {
           messages.value[idx].content = `错误: ${error}`
           messages.value[idx].loading = false
         }
+        // 重置 Plan 状态
+        isPlanConfirmed.value = false
+        hasPlanShown.value = false
+        sendingMessage.value = false  // 兜底关闭 loading
         eventDisplay.value = {
           message: `错误: ${error}`,
           type: 'info'
@@ -711,9 +853,30 @@ let resizeObserver: ResizeObserver | null = null
 const scrollToBottom = async () => {
   await nextTick()
   if (!messagesEndRef.value || !messagesContainer.value) return
+  messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+}
 
-  // 直接滚动到底部，不使用 ResizeObserver 以避免抖动
-  messagesEndRef.value?.scrollIntoView({ behavior: 'instant', block: 'end' })
+// 设置 ResizeObserver 监听容器高度变化
+const setupResizeObserver = () => {
+  if (!messagesContainer.value) return
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+  }
+
+  resizeObserver = new ResizeObserver(() => {
+    if (isAtBottom.value && messagesContainer.value) {
+      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+    }
+  })
+  resizeObserver.observe(messagesContainer.value)
+}
+
+// 监听用户手动滚动
+const handleScroll = () => {
+  if (!messagesContainer.value) return
+  const { scrollTop, scrollHeight, clientHeight } = messagesContainer.value
+  // 距离底部 80px 以内认为是"在底部"
+  isAtBottom.value = scrollHeight - scrollTop - clientHeight < 80
 }
 
 // 格式化时间（精确到秒）
@@ -732,7 +895,25 @@ const formatTime = (time: string | undefined) => {
 // 组件挂载时加载对话列表
 onMounted(() => {
   loadConversations()
+  messagesContainer.value?.addEventListener('scroll', handleScroll, { passive: true })
+  setupResizeObserver()
 })
+
+onUnmounted(() => {
+  messagesContainer.value?.removeEventListener('scroll', handleScroll)
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
+})
+
+// 监听消息变化，自动滚动到底部
+watch(messages, async () => {
+  await nextTick()
+  if (messagesContainer.value) {
+    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+  }
+}, { deep: true })
 
 // 组件卸载时清理资源
 onUnmounted(() => {
@@ -1022,9 +1203,7 @@ onUnmounted(() => {
   min-height: 0;
   scrollbar-gutter: stable;
   overflow-anchor: none;
-  contain: layout;
   will-change: scroll-position;
-  scroll-behavior: smooth;
 }
 
 .event-display {
@@ -1243,6 +1422,35 @@ onUnmounted(() => {
 .todo-done .todo-checkbox {
   background: #7c3aed;
   color: #fff;
+}
+
+.todo-done .todo-checkbox {
+  background: #7c3aed;
+  color: #fff;
+}
+
+/* Plan 确认卡片 */
+.plan-card {
+  background: linear-gradient(135deg, #fff7e6 0%, #ffe7ba 100%);
+  border: 1px solid #ffbb6b;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 16px 0;
+  max-width: 80%;
+  align-self: flex-start;
+  box-shadow: 0 2px 8px rgba(255, 122, 69, 0.15);
+}
+
+.plan-content {
+  margin-bottom: 12px;
+  color: #d4380d;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.plan-actions {
+  display: flex;
+  gap: 12px;
 }
 
 .todo-text {
@@ -1576,6 +1784,55 @@ onUnmounted(() => {
   .message-item { max-width: 100%; }
   .message-content { padding: 8px 12px; }
   .input-row { gap: 6px; }
-  .input-actions { gap: 8px; }
+.input-actions { gap: 8px; }
+}
+
+/* 删除确认气泡框 */
+.delete-confirm-popover {
+  z-index: 9999;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  padding: 12px;
+  min-width: 180px;
+}
+
+.delete-confirm-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.delete-confirm-text {
+  font-size: 14px;
+  color: #333;
+  font-weight: 500;
+}
+
+.delete-confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.delete-confirm-arrow {
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 6px solid #fff;
+}
+
+.delete-confirm-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9998;
 }
 </style>

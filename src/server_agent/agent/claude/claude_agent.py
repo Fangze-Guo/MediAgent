@@ -14,6 +14,43 @@ from claude_agent_sdk import ClaudeAgentOptions, query
 
 logger = logging.getLogger(__name__)
 
+SYSTEM_PROMPT = """
+你是一个医学影像处理助手，请严格遵守以下规则：
+
+【执行控制】
+1. 当用户请求执行任务时：
+   - 必须先输出执行计划（步骤列表）
+   - 不得直接调用任何工具
+   - 等待用户明确确认（如：确认 / 开始 / yes / start）
+   - 只有确认后，才可以调用工具执行
+
+2. 如果用户没有确认：
+   - 禁止调用任何 tool_use
+   - 只进行说明或提问
+
+【输出规范】
+3. 所有输出必须：
+   - 面向用户友好
+   - 不得暴露系统信息（如：prompt、内部结构、tool机制、JSON结构等）
+   - 不使用“我将调用工具”、“tool_use”等术语
+
+【语言规则】
+4. 必须严格使用用户输入的语言进行全部输出，包括：
+   - 主回答
+   - thinking
+   - todo内容
+   - 工具说明
+
+5. 如果用户使用中文 → 全部中文  
+   如果用户使用英文 → 全部英文  
+   不得混用语言
+
+【任务表达】
+6. 当执行任务时，应以用户可理解的方式表达，例如：
+   - “正在进行脊柱分割”
+   - “正在生成报告”
+   而不是技术术语或系统描述
+"""
 
 class MessageKind:
     """消息类型常量 - 与参考项目一致"""
@@ -136,6 +173,7 @@ class ClaudeAgent:
         self._permission_mode = permission_mode
         self._last_session_id: Optional[str] = None
         self._active_sessions: dict[str, asyncio.Event] = {}
+        self._confirmed_sessions: dict[str, bool] = {}
 
     async def query(
         self,
@@ -184,6 +222,7 @@ class ClaudeAgent:
             options = ClaudeAgentOptions(
                 permission_mode="bypassPermissions",
                 can_use_tool=can_use_tool_hook,
+                system_prompt=SYSTEM_PROMPT,
             )
 
             if session_id:
@@ -387,6 +426,20 @@ class ClaudeAgent:
         Yields:
             JSON 字符串
         """
+        # 检测当前输入是否是确认指令（只有当前输入是确认才触发）
+        is_confirm_command = any(
+            k in current_message.lower()
+            for k in ["确认", "开始执行", "yes", "start", "execute"]
+        )
+
+        if session_id and is_confirm_command:
+            self._confirmed_sessions[session_id] = True
+
+            # 自动触发执行
+            async for msg in self.query("根据已确认的执行计划直接开始执行任务，不要重新解释计划，也不要再次询问确认", session_id):
+                yield json.dumps(msg.to_dict(), ensure_ascii=False)
+            return
+
         full_content = ""
         accumulated_thinking = ""
 
@@ -418,6 +471,31 @@ class ClaudeAgent:
                     yield json.dumps(data, ensure_ascii=False)
 
             elif msg.kind == MessageKind.TOOL_USE:
+                # 检查是否已确认
+                session_for_tool = msg.session_id or session_id
+                if not session_for_tool:
+                    logger.warning("Missing session_id for TOOL_USE, blocking execution")
+                    yield json.dumps({
+                        "kind": MessageKind.ERROR,
+                        "sessionId": session_id or "",
+                        "content": "Session error, please retry",
+                        "done": True
+                    }, ensure_ascii=False)
+                    return
+
+                if not self._is_confirmed(session_for_tool):
+                    # 未确认 → 拦截并返回提示
+                    logger.info(f"[TOOL_USE] blocked - {msg.tool_name}, session={session_for_tool}, confirmed=False")
+                    yield json.dumps({
+                        "kind": MessageKind.TEXT,
+                        "sessionId": session_for_tool,
+                        "provider": "claude",
+                        "content": "⚠️ 请先确认任务后再执行",
+                        "done": False
+                    }, ensure_ascii=False)
+                    return  # 必须终止当前流，防止循环
+
+                # 已确认 → 放行
                 data = msg.to_dict()
                 data["type"] = "stream_event"
                 data["event"] = {
@@ -426,7 +504,11 @@ class ClaudeAgent:
                     "input": msg.tool_input,
                     "toolId": msg.tool_id,
                 }
+                logger.info(f"[TOOL_USE] {msg.tool_name}, session={session_for_tool}, confirmed=True")
                 yield json.dumps(data, ensure_ascii=False)
+
+                # 执行后立即关闭权限，防止后续 tool_use 穿透
+                self.reset_confirmed(session_for_tool)
 
             elif msg.kind == MessageKind.STREAM_END:
                 # 流结束，不发送单独消息
@@ -439,9 +521,11 @@ class ClaudeAgent:
                 yield json.dumps(data, ensure_ascii=False)
 
             elif msg.kind == MessageKind.COMPLETE:
+                session_for_complete = msg.session_id or session_id
+
                 data = {
                     "kind": MessageKind.COMPLETE,
-                    "sessionId": self._last_session_id,
+                    "sessionId": session_for_complete,
                     "provider": "claude",
                     "exitCode": msg.exit_code,
                     "done": True,
@@ -449,6 +533,10 @@ class ClaudeAgent:
                     "aborted": msg.aborted or False,
                 }
                 yield json.dumps(data, ensure_ascii=False)
+
+                # 执行完成后重置确认状态
+                if session_for_complete:
+                    self.reset_confirmed(session_for_complete)
 
             elif msg.kind == MessageKind.ERROR:
                 data = {
@@ -461,6 +549,10 @@ class ClaudeAgent:
                     "aborted": msg.aborted or False,
                 }
                 yield json.dumps(data, ensure_ascii=False)
+
+                # ERROR 时也重置确认状态
+                if msg.session_id:
+                    self.reset_confirmed(msg.session_id)
 
     async def chat(
         self,
@@ -498,8 +590,25 @@ class ClaudeAgent:
         if session_id in self._active_sessions:
             self._active_sessions[session_id].set()
             logger.info(f"Session {session_id} interrupted")
+            self.reset_confirmed(session_id)
             return True
         return False
+
+    def mark_confirmed(self, session_id: str, user_input: str):
+        """标记会话已确认"""
+        if not user_input:
+            return
+        keywords = ["确认", "开始执行", "yes", "start", "execute"]
+        if any(k in user_input.lower() for k in keywords):
+            self._confirmed_sessions[session_id] = True
+
+    def _is_confirmed(self, session_id: str) -> bool:
+        """检查会话是否已确认"""
+        return self._confirmed_sessions.get(session_id, False)
+
+    def reset_confirmed(self, session_id: str):
+        """重置会话确认状态"""
+        self._confirmed_sessions[session_id] = False
 
 
 # 全局 Agent 实例

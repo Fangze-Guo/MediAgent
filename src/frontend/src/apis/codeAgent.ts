@@ -164,9 +164,9 @@ export interface SessionCreatedEvent extends QwenStreamEvent {
 }
 
 /**
- * 联合类型：所有可能的 Qwen 流式事件
+ * 联合类型：所有可能的流式事件
  */
-export type QwenEventType =
+export type CodeEventType =
   | SystemEvent
   | StreamEvent
   | AssistantEvent
@@ -309,7 +309,7 @@ export async function parseStreamResponse(
   onChunk: (data: { full_content?: string; thinking?: string; content?: string }, type?: string) => void,
   onComplete: (fullContent: string) => void,
   onError: (error: string) => void,
-  onEvent?: (event: QwenEventType) => void
+  onEvent?: (event: CodeEventType) => void
 ): Promise<void> {
   const decoder = new TextDecoder()
   let buffer = ''
