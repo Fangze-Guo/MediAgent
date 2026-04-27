@@ -275,9 +275,13 @@ class ClaudeAgent:
         if session_id in self._permission_events:
             self._permission_events[session_id].set()
 
-    async def _get_or_create_client(self, session_id: Optional[str] = None) -> tuple[ClaudeSDKClient, str]:
+    async def _get_or_create_client(self, session_id: Optional[str] = None, is_resume: bool = False) -> tuple[ClaudeSDKClient, str]:
         """
         获取或创建 ClaudeSDKClient 实例
+
+        Args:
+            session_id: 会话ID
+            is_resume: 是否为恢复已有会话（True 时使用 resume 参数）
 
         Returns:
             (client, session_id) 元组
@@ -291,10 +295,10 @@ class ClaudeAgent:
             return self._clients[session_id], session_id
 
         # 创建新的 client
-        logger.info(f"[CLIENT] Creating new client with permission_mode={self._permission_mode}")
+        logger.info(f"[CLIENT] Creating new client with permission_mode={self._permission_mode}, is_resume={is_resume}")
         options = ClaudeAgentOptions(
             cwd=str(Path.cwd()),
-            resume=session_id,  # 恢复会话
+            resume=session_id if is_resume else None,  # 仅恢复已有会话时才传 resume
             permission_mode=self._permission_mode,  # type: ignore
             system_prompt=SYSTEM_PROMPT,
             can_use_tool=self._can_use_tool_hook,  # type: ignore
@@ -305,7 +309,7 @@ class ClaudeAgent:
             },
         )
 
-        logger.info(f"[CLIENT] Options configured: permission_mode={self._permission_mode}, can_use_tool=True, resume={session_id}")
+        logger.info(f"[CLIENT] Options configured: permission_mode={self._permission_mode}, can_use_tool=True, resume={session_id if is_resume else None}")
 
         # 使用 async with 打开 client
         client = ClaudeSDKClient(options=options)
@@ -357,9 +361,12 @@ class ClaudeAgent:
         interrupt_event = asyncio.Event()
         self._active_sessions[captured_session_id] = interrupt_event
 
+        # 判断是否为恢复会话：传入了 session_id 说明是恢复已有会话
+        is_resume = session_id is not None
+
         try:
             # 获取或创建 client
-            client, _ = await self._get_or_create_client(captured_session_id)
+            client, _ = await self._get_or_create_client(captured_session_id, is_resume=is_resume)
             self._last_session_id = captured_session_id
 
             logger.info(f"[QUERY] Starting query with {self._permission_mode} mode, session={captured_session_id}")
