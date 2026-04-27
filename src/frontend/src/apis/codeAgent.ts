@@ -164,6 +164,17 @@ export interface SessionCreatedEvent extends QwenStreamEvent {
 }
 
 /**
+ * 权限请求事件
+ */
+export interface PermissionRequestEvent {
+  kind: 'permission_request'
+  sessionId: string
+  toolName: string
+  input: Record<string, any>
+  requestId: string
+}
+
+/**
  * 联合类型：所有可能的流式事件
  */
 export type CodeEventType =
@@ -172,6 +183,7 @@ export type CodeEventType =
   | AssistantEvent
   | ResultEvent
   | SessionCreatedEvent
+  | PermissionRequestEvent
 
 /**
  * 创建会话请求接口
@@ -346,8 +358,8 @@ export async function parseStreamResponse(
               }
             } else if (kind === 'error') {
               onError(data.content || 'Unknown error')
-            } else if (kind === 'session_created') {
-              // 会话创建事件，传递给 onEvent 处理
+            } else if (kind === 'session_created' || kind === 'permission_request') {
+              // 会话创建事件和权限请求事件，传递给 onEvent 处理
               if (onEvent) {
                 onEvent(data as any)
               }
@@ -451,5 +463,35 @@ export async function deleteConversation(
   const response = await del<BaseResponse<boolean>>(
     `/code-agent/conversations/${conversationId}`
   )
+  return response.data
+}
+
+/**
+ * 权限请求接口
+ */
+export interface PermissionRequest {
+  session_id: string
+  tool_name?: string
+  tool_input?: Record<string, any>
+  request_id?: string
+}
+
+/**
+ * 确认权限请求
+ * @param request 权限请求
+ * @returns 是否成功
+ */
+export async function confirmPermission(request: PermissionRequest): Promise<BaseResponse<boolean>> {
+  const response = await post<BaseResponse<boolean>>('/code-agent/confirm_permission', request)
+  return response.data
+}
+
+/**
+ * 取消权限请求
+ * @param request 权限请求
+ * @returns 是否成功
+ */
+export async function cancelPermission(request: PermissionRequest): Promise<BaseResponse<boolean>> {
+  const response = await post<BaseResponse<boolean>>('/code-agent/cancel_permission', request)
   return response.data
 }

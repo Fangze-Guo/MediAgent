@@ -172,6 +172,40 @@
                 <a-button @click="cancelPlan">❌ 取消</a-button>
               </div>
             </div>
+
+            <!-- 权限确认卡片 -->
+            <div v-if="pendingPermission" class="permission-card">
+              <div class="permission-header">
+                <span class="permission-icon">🔐</span>
+                <span class="permission-title">工具调用权限请求</span>
+              </div>
+              <div class="permission-content">
+                <div class="permission-tool">
+                  <span class="label">工具名称：</span>
+                  <span class="value">{{ pendingPermission.toolName }}</span>
+                </div>
+                <div v-if="pendingPermission.input && Object.keys(pendingPermission.input).length > 0" class="permission-input">
+                  <span class="label">参数：</span>
+                  <pre class="input-json">{{ JSON.stringify(pendingPermission.input, null, 2) }}</pre>
+                </div>
+              </div>
+              <div class="permission-actions">
+                <a-button
+                  type="primary"
+                  @click="handleConfirmPermission"
+                  :loading="confirmingPermission"
+                >
+                  ✅ 允许执行
+                </a-button>
+                <a-button
+                  danger
+                  @click="handleCancelPermission"
+                  :disabled="confirmingPermission"
+                >
+                  ❌ 拒绝
+                </a-button>
+              </div>
+            </div>
             <!-- 滚动锚点 -->
             <div ref="messagesEndRef" style="height: 1px;" />
           </div>
@@ -290,7 +324,9 @@ import {
   getConversationDetail,
   createConversation,
   deleteConversation,
-  updateConversation
+  updateConversation,
+  confirmPermission,
+  cancelPermission
 } from '@/apis/codeAgent'
 
 const { t } = useI18n()
@@ -364,6 +400,15 @@ const isAtBottom = ref(true)
 const isPlanConfirmed = ref(false)  // 是否已确认
 const hasPlanShown = ref(false)      // 是否已显示过 Plan（防抖）
 
+// 权限确认状态管理
+const pendingPermission = ref<{
+  sessionId: string
+  toolName: string
+  input: Record<string, any>
+  requestId: string
+} | null>(null)
+const confirmingPermission = ref(false)
+
 const confirmPlan = () => {
   if (isPlanConfirmed.value) return  // 执行锁
   isPlanConfirmed.value = true
@@ -379,6 +424,52 @@ const cancelPlan = () => {
   pendingPlan.value = null
   isPlanConfirmed.value = false
   hasPlanShown.value = false
+}
+
+// 权限确认处理方法
+const handleConfirmPermission = async () => {
+  if (!pendingPermission.value) return
+
+  confirmingPermission.value = true
+  try {
+    const response = await confirmPermission({
+      session_id: pendingPermission.value.sessionId,
+      request_id: pendingPermission.value.requestId
+    })
+
+    if (response.code === 200) {
+      message.success('已允许工具执行')
+      pendingPermission.value = null
+    } else {
+      message.error(response.message || '确认失败')
+    }
+  } catch (error) {
+    console.error('确认权限失败:', error)
+    message.error('确认权限失败')
+  } finally {
+    confirmingPermission.value = false
+  }
+}
+
+const handleCancelPermission = async () => {
+  if (!pendingPermission.value) return
+
+  try {
+    const response = await cancelPermission({
+      session_id: pendingPermission.value.sessionId,
+      request_id: pendingPermission.value.requestId
+    })
+
+    if (response.code === 200) {
+      message.info('已拒绝工具执行')
+      pendingPermission.value = null
+    } else {
+      message.error(response.message || '取消失败')
+    }
+  } catch (error) {
+    console.error('取消权限失败:', error)
+    message.error('取消权限失败')
+  }
 }
 
 // 加载会话详情状态（防止重复调用）
@@ -667,9 +758,9 @@ const handleSendMessage = async () => {
 
     // 定义事件处理器
     const handleEvent = (event: CodeEventType) => {
-      currentEventType.value = event.type
+      const eventKind = (event as any).kind || (event as any).type
 
-      switch (event.type) {
+      switch (eventKind) {
         case 'session_created':
           // 会话创建事件
           if (!capturedSessionId) {
@@ -679,10 +770,24 @@ const handleSendMessage = async () => {
           break
         case 'system':
           // 系统初始化事件
+          const systemEvent = event as any
           eventDisplay.value = {
-            message: `系统已初始化 - 模型: ${event.model}, 版本: ${event.qwen_code_version}`,
+            message: `系统已初始化 - 模型: ${systemEvent.model || 'unknown'}, 版本: ${systemEvent.qwen_code_version || 'unknown'}`,
             type: 'info'
           }
+          break
+        case 'permission_request':
+          // 权限请求事件
+          const permEvent = event as any
+          console.log('[DEBUG] permission_request event:', permEvent)
+          pendingPermission.value = {
+            sessionId: permEvent.sessionId,
+            toolName: permEvent.toolName,
+            input: permEvent.input || {},
+            requestId: permEvent.requestId
+          }
+          // 滚动到底部显示权限卡片
+          nextTick(() => scrollToBottom())
           break
         case 'stream_event':
           // 流式事件
@@ -1451,6 +1556,112 @@ onUnmounted(() => {
 .plan-actions {
   display: flex;
   gap: 12px;
+}
+
+/* 权限确认卡片 */
+.permission-card {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border: 2px solid #38bdf8;
+  border-radius: 12px;
+  padding: 20px;
+  margin: 16px 0;
+  max-width: 80%;
+  align-self: flex-start;
+  box-shadow: 0 4px 16px rgba(56, 189, 248, 0.2);
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.permission-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #bae6fd;
+}
+
+.permission-icon {
+  font-size: 24px;
+}
+
+.permission-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #0c4a6e;
+}
+
+.permission-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.permission-tool {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.permission-tool .label {
+  font-weight: 600;
+  color: #0369a1;
+  font-size: 14px;
+}
+
+.permission-tool .value {
+  color: #0c4a6e;
+  font-size: 14px;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  background: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid #bae6fd;
+}
+
+.permission-input {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.permission-input .label {
+  font-weight: 600;
+  color: #0369a1;
+  font-size: 14px;
+}
+
+.input-json {
+  background: #fff;
+  border: 1px solid #bae6fd;
+  border-radius: 6px;
+  padding: 12px;
+  margin: 0;
+  font-size: 13px;
+  color: #0c4a6e;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  line-height: 1.5;
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.permission-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
 }
 
 .todo-text {

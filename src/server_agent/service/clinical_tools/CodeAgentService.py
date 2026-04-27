@@ -114,8 +114,14 @@ class CodeAgentService:
                     chunk_data["conversation_id"] = conversation_id
                 elif kind == MessageKind.ERROR:
                     chunk_data["type"] = "error"
-                elif kind == "tool_use":
+                elif kind == MessageKind.TOOL_USE:
+                    # 工具调用事件
                     chunk_data["type"] = "tool_use"
+                    logger.info(f"[CodeAgentService] Tool use: {chunk_data.get('toolName')}")
+                elif kind == MessageKind.PERMISSION_REQUEST:
+                    # 权限请求事件，直接转发给前端
+                    chunk_data["type"] = "permission_request"
+                    logger.info(f"[CodeAgentService] Permission request: {chunk_data.get('toolName')}")
 
                 # 统一输出格式（SSE）
                 yield f"data: {json.dumps(chunk_data, ensure_ascii=False)}\n\n"
@@ -147,6 +153,14 @@ class CodeAgentService:
             except json.JSONDecodeError:
                 pass
         return full_content
+
+    async def confirm_permission(self, session_id: str):
+        """确认权限请求"""
+        await self.code_agent.confirm_permission(session_id)
+
+    async def cancel_permission(self, session_id: str):
+        """取消权限请求"""
+        await self.code_agent.cancel_permission(session_id)
 
     @handle_service_exception
     async def create_conversation(

@@ -32,6 +32,10 @@ class UpdateConversationRequest(BaseModel):
     title: Optional[str] = Field(None, max_length=500, description="会话标题")
 
 
+class PermissionRequest(BaseModel):
+    session_id: str = Field(..., description="会话ID")
+
+
 class ConversationInfoResponse(BaseModel):
     conversation_id: Optional[str] = None
     session_id: Optional[str] = None
@@ -305,6 +309,30 @@ class CodeAgentController(BaseController):
                 return ResultUtils.success(response_content)
             except Exception as e:
                 return ResultUtils.error(500, f"对话失败: {str(e)}")
+
+        @self.router.post("/confirm_permission")
+        async def confirm_permission(
+            request: PermissionRequest,
+            user_vo: UserVO = Depends(self._get_current_user)
+        ) -> BaseResponse[str]:
+            """确认权限请求"""
+            try:
+                await self.service.confirm_permission(request.session_id)
+                return ResultUtils.success("权限已确认")
+            except Exception as e:
+                return ResultUtils.error(500, f"确认权限失败: {str(e)}")
+
+        @self.router.post("/cancel_permission")
+        async def cancel_permission(
+            request: PermissionRequest,
+            user_vo: UserVO = Depends(self._get_current_user)
+        ) -> BaseResponse[str]:
+            """取消权限请求"""
+            try:
+                await self.service.cancel_permission(request.session_id)
+                return ResultUtils.success("权限已取消")
+            except Exception as e:
+                return ResultUtils.error(500, f"取消权限失败: {str(e)}")
 
         @self.router.post("/conversations")
         async def create_conversation(

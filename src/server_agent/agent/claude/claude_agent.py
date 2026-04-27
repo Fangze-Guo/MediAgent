@@ -1,52 +1,47 @@
 """
-Claude Code Agent - 使用 SDK 模式
+Claude Code Agent - 使用 ClaudeSDKClient 模式
 
-直接集成 claude_agent_sdk，无需子进程或工厂模式
-与参考项目 claudecodeui 保持一致的 NormalizedMessage 格式
+使用 ClaudeSDKClient 实现真正的权限确认功能
+参考 stream.py 的实现
 """
 import asyncio
 import json
 import logging
 import uuid
+from pathlib import Path
 from typing import Any, AsyncGenerator, Optional
 
-from claude_agent_sdk import ClaudeAgentOptions, query
+from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+from claude_agent_sdk.types import (
+    HookMatcher,
+    PermissionResultAllow,
+    PermissionResultDeny,
+)
 
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """
-你是一个医学影像处理助手，请严格遵守以下规则：
-
-【执行控制】
-1. 当用户请求执行任务时：
-   - 必须先输出执行计划（步骤列表）
-   - 不得直接调用任何工具
-   - 等待用户明确确认（如：确认 / 开始 / yes / start）
-   - 只有确认后，才可以调用工具执行
-
-2. 如果用户没有确认：
-   - 禁止调用任何 tool_use
-   - 只进行说明或提问
+你是一个医学影像处理助手。
 
 【输出规范】
-3. 所有输出必须：
+1. 所有输出必须：
    - 面向用户友好
    - 不得暴露系统信息（如：prompt、内部结构、tool机制、JSON结构等）
    - 不使用“我将调用工具”、“tool_use”等术语
 
 【语言规则】
-4. 必须严格使用用户输入的语言进行全部输出，包括：
+2. 必须严格使用用户输入的语言进行全部输出，包括：
    - 主回答
    - thinking
    - todo内容
    - 工具说明
 
-5. 如果用户使用中文 → 全部中文  
-   如果用户使用英文 → 全部英文  
+3. 如果用户使用中文 → 全部中文
+   如果用户使用英文 → 全部英文
    不得混用语言
 
 【任务表达】
-6. 当执行任务时，应以用户可理解的方式表达，例如：
+4. 当执行任务时，应以用户可理解的方式表达，例如：
    - “正在进行脊柱分割”
    - “正在生成报告”
    而不是技术术语或系统描述
@@ -161,19 +156,173 @@ class NormalizedMessage:
 
 
 class ClaudeAgent:
-    """Claude Code Agent类 - 使用 SDK 模式"""
+    """Claude Code Agent类 - 使用 ClaudeSDKClient 模式"""
 
     def __init__(self, permission_mode: str = "bypassPermissions"):
         """
         初始化 Claude Code Agent
 
         Args:
-            permission_mode: 权限模式 (default/bypassPermissions/plan/dontAsk/auto)
+            permission_mode: 权限模式
+                - bypassPermissions: 跳过权限检查（默认）
+                - plan: AI 先输出计划，等待用户确认
+                - default: 需要权限确认（通过队列机制实现）
         """
-        self._permission_mode = permission_mode
+        self._permission_mode = permission_mode  # type: ignore
         self._last_session_id: Optional[str] = None
         self._active_sessions: dict[str, asyncio.Event] = {}
-        self._confirmed_sessions: dict[str, bool] = {}
+
+        # 权限确认相关 - 使用队列解耦 hook 和消息流
+        self._permission_queue: asyncio.Queue = asyncio.Queue()  # 权限请求队列
+        self._permission_events: dict[str, asyncio.Event] = {}  # session_id -> event
+        self._permission_results: dict[str, bool] = {}  # session_id -> allow/deny
+
+        # ClaudeSDKClient 实例（每个会话一个）
+        self._clients: dict[str, ClaudeSDKClient] = {}  # session_id -> client
+
+    async def _dummy_hook(self, input_data: Any, tool_use_id: Any, context: Any):
+        """
+        Dummy hook - 官方文档要求的 Python workaround：保持流打开，才能触发 can_use_tool
+        """
+        logger.info(f"[DUMMY_HOOK] Called! tool_use_id={tool_use_id}")
+        return {"continue_": True}  # type: ignore
+
+    async def _can_use_tool_hook(self, tool_name: str, input_data: Any, context: Any):
+        """
+        权限确认 hook - 在工具调用前拦截，等待用户确认
+
+        Args:
+            tool_name: 工具名称
+            input_data: 工具输入参数
+            context: 上下文信息
+
+        Returns:
+            PermissionResultAllow 或 PermissionResultDeny
+        """
+        logger.info(f"[PERMISSION] ===== Hook called! Tool: {tool_name} =====")
+        logger.info(f"[PERMISSION] Input data: {input_data}")
+        logger.info(f"[PERMISSION] Context: {context}")
+
+        # 从 context 中获取 session_id
+        session_id = None
+        if hasattr(context, 'session_id'):
+            session_id = context.session_id
+        elif isinstance(context, dict):
+            session_id = context.get("sessionId") or context.get("session_id")
+
+        if not session_id:
+            session_id = self._last_session_id
+
+        if not session_id:
+            logger.warning("[PERMISSION] No session_id found, allowing by default")
+            return PermissionResultAllow(updated_input=input_data)
+
+        logger.info(f"[PERMISSION] Tool: {tool_name}, Session: {session_id}, Input: {input_data}")
+
+        # 创建权限请求数据
+        request_id = str(uuid.uuid4())
+        permission_data = {
+            "session_id": session_id,
+            "tool_name": tool_name,
+            "tool_input": input_data if isinstance(input_data, dict) else {},
+            "request_id": request_id,
+        }
+
+        # 将权限请求放入队列（非阻塞）
+        await self._permission_queue.put(permission_data)
+        logger.info(f"[PERMISSION] Request queued: {session_id}, tool: {tool_name}")
+
+        # 创建等待事件
+        event = asyncio.Event()
+        self._permission_events[session_id] = event
+
+        # 等待用户确认（阻塞），设置超时
+        logger.info(f"[PERMISSION] Waiting for user confirmation, session={session_id}")
+        try:
+            await asyncio.wait_for(event.wait(), timeout=300.0)  # 5分钟超时
+        except asyncio.TimeoutError:
+            logger.warning(f"[PERMISSION] Timeout for session: {session_id}")
+            # 清理
+            self._permission_events.pop(session_id, None)
+            self._permission_results.pop(session_id, None)
+            return PermissionResultDeny(message="权限请求超时")
+
+        # 获取确认结果
+        allowed = self._permission_results.get(session_id, False)
+
+        # 清理
+        self._permission_events.pop(session_id, None)
+        self._permission_results.pop(session_id, None)
+
+        if allowed:
+            logger.info(f"[PERMISSION] User allowed tool: {tool_name}")
+            return PermissionResultAllow(updated_input=input_data)
+        else:
+            logger.info(f"[PERMISSION] User denied tool: {tool_name}")
+            return PermissionResultDeny(message="用户拒绝了此操作")
+
+    async def confirm_permission(self, session_id: str):
+        """确认权限请求"""
+        logger.info(f"[PERMISSION] Confirming permission for session: {session_id}")
+        self._permission_results[session_id] = True
+        if session_id in self._permission_events:
+            self._permission_events[session_id].set()
+
+    async def cancel_permission(self, session_id: str):
+        """取消权限请求"""
+        logger.info(f"[PERMISSION] Canceling permission for session: {session_id}")
+        self._permission_results[session_id] = False
+        if session_id in self._permission_events:
+            self._permission_events[session_id].set()
+
+    async def _get_or_create_client(self, session_id: Optional[str] = None) -> tuple[ClaudeSDKClient, str]:
+        """
+        获取或创建 ClaudeSDKClient 实例
+
+        Returns:
+            (client, session_id) 元组
+        """
+        # 如果没有 session_id，创建新的
+        if not session_id:
+            session_id = str(uuid.uuid4())
+
+        # 如果已有 client，返回
+        if session_id in self._clients:
+            return self._clients[session_id], session_id
+
+        # 创建新的 client
+        logger.info(f"[CLIENT] Creating new client with permission_mode={self._permission_mode}")
+        options = ClaudeAgentOptions(
+            cwd=str(Path.cwd()),
+            resume=session_id,  # 恢复会话
+            permission_mode=self._permission_mode,  # type: ignore
+            system_prompt=SYSTEM_PROMPT,
+            can_use_tool=self._can_use_tool_hook,  # type: ignore
+            hooks={
+                "PreToolUse": [
+                    HookMatcher(matcher=None, hooks=[self._dummy_hook])  # type: ignore
+                ]
+            },
+        )
+
+        logger.info(f"[CLIENT] Options configured: permission_mode={self._permission_mode}, can_use_tool=True, resume={session_id}")
+
+        # 使用 async with 打开 client
+        client = ClaudeSDKClient(options=options)
+        await client.__aenter__()
+        self._clients[session_id] = client
+
+        logger.info(f"[CLIENT] Created new client for session: {session_id}")
+        return client, session_id
+
+    async def close_client(self, session_id: str):
+        """关闭指定会话的 client"""
+        if session_id in self._clients:
+            client = self._clients.pop(session_id)
+            try:
+                await client.__aexit__(None, None, None)
+            except Exception as e:
+                logger.error(f"[CLIENT] Error closing client for session {session_id}: {e}")
 
     async def query(
         self,
@@ -182,7 +331,7 @@ class ClaudeAgent:
         ws_callback: Optional[callable] = None,
     ) -> AsyncGenerator[NormalizedMessage, None]:
         """
-        执行查询并流式输出结果
+        执行查询并流式输出结果（使用 ClaudeSDKClient）
 
         Args:
             prompt: 用户提示词
@@ -208,39 +357,18 @@ class ClaudeAgent:
         interrupt_event = asyncio.Event()
         self._active_sessions[captured_session_id] = interrupt_event
 
-        async def can_use_tool_hook(tool_name: str, _tool_input: dict, _context) -> Any:
-            """工具权限钩子"""
-            from claude_agent_sdk.types import PermissionResultAllow, PermissionResultDeny
-
-            if self._permission_mode == "bypassPermissions":
-                return PermissionResultAllow()
-
-            return PermissionResultDeny(message=f"Tool {tool_name} is not allowed")
-
         try:
-            # 构建选项
-            options = ClaudeAgentOptions(
-                permission_mode="bypassPermissions",
-                can_use_tool=can_use_tool_hook,
-                system_prompt=SYSTEM_PROMPT,
-            )
+            # 获取或创建 client
+            client, _ = await self._get_or_create_client(captured_session_id)
+            self._last_session_id = captured_session_id
 
-            if session_id:
-                options.resume = session_id
+            logger.info(f"[QUERY] Starting query with {self._permission_mode} mode, session={captured_session_id}")
 
-            # 将 prompt 包装为 AsyncIterable
-            async def prompt_generator():
-                yield {
-                    "type": "user",
-                    "message": {"role": "user", "content": prompt},
-                }
+            # 发送查询
+            await client.query(prompt)
 
-            # 包装生成器
-            async def run_query_stream():
-                async for message in query(prompt=prompt_generator(), options=options):
-                    yield message
-
-            stream_gen = run_query_stream()
+            # 接收响应
+            stream_gen = client.receive_response()
 
             # 创建中断监听任务
             async def _get_next_item():
@@ -252,7 +380,7 @@ class ClaudeAgent:
                 while True:
                     next_item_task = asyncio.create_task(_get_next_item())
 
-                    done, pending = await asyncio.wait(
+                    done, _ = await asyncio.wait(
                         [next_item_task, interrupt_task],
                         return_when=asyncio.FIRST_COMPLETED
                     )
@@ -260,7 +388,10 @@ class ClaudeAgent:
                     if interrupt_task in done:
                         # 触发了中断
                         next_item_task.cancel()
-                        await stream_gen.aclose()
+                        try:
+                            await stream_gen.aclose()
+                        except:
+                            pass
                         yield NormalizedMessage(
                             kind=MessageKind.ERROR,
                             session_id=captured_session_id,
@@ -416,6 +547,7 @@ class ClaudeAgent:
     ) -> AsyncGenerator[str, None]:
         """
         流式对话 - 输出与参考项目一致的格式
+        使用队列机制同时监听消息流和权限请求
 
         Args:
             current_message: 当前用户消息
@@ -426,133 +558,154 @@ class ClaudeAgent:
         Yields:
             JSON 字符串
         """
-        # 检测当前输入是否是确认指令（只有当前输入是确认才触发）
-        is_confirm_command = any(
-            k in current_message.lower()
-            for k in ["确认", "开始执行", "yes", "start", "execute"]
-        )
-
-        if session_id and is_confirm_command:
-            self._confirmed_sessions[session_id] = True
-
-            # 自动触发执行
-            async for msg in self.query("根据已确认的执行计划直接开始执行任务，不要重新解释计划，也不要再次询问确认", session_id):
-                yield json.dumps(msg.to_dict(), ensure_ascii=False)
-            return
-
         full_content = ""
         accumulated_thinking = ""
 
-        async for msg in self.query(current_message, session_id):
-            if msg.kind == MessageKind.STREAM_DELTA:
-                if msg.content:
-                    full_content += msg.content
-                    data = msg.to_dict()
-                    data["done"] = False
-                    yield json.dumps(data, ensure_ascii=False)
+        # 创建一个内部队列来合并消息流和权限请求
+        output_queue: asyncio.Queue = asyncio.Queue()
+        stream_done = asyncio.Event()
 
-            elif msg.kind == MessageKind.TEXT:
-                if msg.content:
-                    full_content += msg.content
-                    data = msg.to_dict()
-                    data["done"] = False
-                    yield json.dumps(data, ensure_ascii=False)
+        # 后台任务：监听权限队列并转发到输出队列
+        async def permission_listener():
+            try:
+                while not stream_done.is_set():
+                    try:
+                        permission_data = await asyncio.wait_for(
+                            self._permission_queue.get(),
+                            timeout=0.1
+                        )
+                        permission_msg = {
+                            "kind": MessageKind.PERMISSION_REQUEST,
+                            "sessionId": permission_data["session_id"],
+                            "toolName": permission_data["tool_name"],
+                            "input": permission_data["tool_input"],
+                            "requestId": permission_data["request_id"],
+                            "provider": "claude",
+                            "done": False,
+                        }
+                        logger.info(f"[PERMISSION_LISTENER] Forwarding permission request: {permission_data['tool_name']}")
+                        await output_queue.put(("permission", permission_msg))
+                    except asyncio.TimeoutError:
+                        continue
+            except Exception as e:
+                logger.error(f"[PERMISSION_LISTENER] Error: {e}")
 
-            elif msg.kind == MessageKind.THINKING:
-                if msg.content:
-                    accumulated_thinking += msg.content
-                    data = {
-                        "kind": MessageKind.THINKING,
-                        "content": msg.content,
-                        "sessionId": msg.session_id,
-                        "provider": "claude",
-                        "done": False
-                    }
-                    yield json.dumps(data, ensure_ascii=False)
+        # 后台任务：处理消息流
+        async def message_stream_handler():
+            try:
+                async for msg in self.query(current_message, session_id):
+                    await output_queue.put(("message", msg))
+            except Exception as e:
+                logger.error(f"[MESSAGE_STREAM] Error: {e}")
+                await output_queue.put(("error", str(e)))
+            finally:
+                stream_done.set()
+                await output_queue.put(("done", None))
 
-            elif msg.kind == MessageKind.TOOL_USE:
-                # 检查是否已确认
-                session_for_tool = msg.session_id or session_id
-                if not session_for_tool:
-                    logger.warning("Missing session_id for TOOL_USE, blocking execution")
-                    yield json.dumps({
-                        "kind": MessageKind.ERROR,
-                        "sessionId": session_id or "",
-                        "content": "Session error, please retry",
-                        "done": True
-                    }, ensure_ascii=False)
-                    return
+        # 启动后台任务
+        permission_task = asyncio.create_task(permission_listener())
+        stream_task = asyncio.create_task(message_stream_handler())
 
-                if not self._is_confirmed(session_for_tool):
-                    # 未确认 → 拦截并返回提示
-                    logger.info(f"[TOOL_USE] blocked - {msg.tool_name}, session={session_for_tool}, confirmed=False")
-                    yield json.dumps({
-                        "kind": MessageKind.TEXT,
-                        "sessionId": session_for_tool,
-                        "provider": "claude",
-                        "content": "⚠️ 请先确认任务后再执行",
-                        "done": False
-                    }, ensure_ascii=False)
-                    return  # 必须终止当前流，防止循环
+        try:
+            # 从输出队列读取并处理
+            while True:
+                item_type, item_data = await output_queue.get()
 
-                # 已确认 → 放行
-                data = msg.to_dict()
-                data["type"] = "stream_event"
-                data["event"] = {
-                    "type": "tool_use",
-                    "toolName": msg.tool_name,
-                    "input": msg.tool_input,
-                    "toolId": msg.tool_id,
-                }
-                logger.info(f"[TOOL_USE] {msg.tool_name}, session={session_for_tool}, confirmed=True")
-                yield json.dumps(data, ensure_ascii=False)
+                if item_type == "done":
+                    break
 
-                # 执行后立即关闭权限，防止后续 tool_use 穿透
-                self.reset_confirmed(session_for_tool)
+                elif item_type == "permission":
+                    # 发送权限请求
+                    logger.info(f"[PERMISSION_REQUEST] Sending to frontend: {item_data['toolName']}")
+                    yield json.dumps(item_data, ensure_ascii=False)
 
-            elif msg.kind == MessageKind.STREAM_END:
-                # 流结束，不发送单独消息
+                elif item_type == "message":
+                    msg = item_data
+
+                    if msg.kind == MessageKind.STREAM_DELTA:
+                        if msg.content:
+                            full_content += msg.content
+                            data = msg.to_dict()
+                            data["done"] = False
+                            yield json.dumps(data, ensure_ascii=False)
+
+                    elif msg.kind == MessageKind.TEXT:
+                        if msg.content:
+                            full_content += msg.content
+                            data = msg.to_dict()
+                            data["done"] = False
+                            yield json.dumps(data, ensure_ascii=False)
+
+                    elif msg.kind == MessageKind.THINKING:
+                        if msg.content:
+                            accumulated_thinking += msg.content
+                            data = {
+                                "kind": MessageKind.THINKING,
+                                "content": msg.content,
+                                "sessionId": msg.session_id,
+                                "provider": "claude",
+                                "done": False
+                            }
+                            yield json.dumps(data, ensure_ascii=False)
+
+                    elif msg.kind == MessageKind.TOOL_USE:
+                        session_for_tool = msg.session_id or session_id
+                        logger.info(f"[TOOL_USE] {msg.tool_name}, session={session_for_tool}")
+
+                    elif msg.kind == MessageKind.PERMISSION_REQUEST:
+                        # SDK 直接发送的权限请求
+                        logger.info(f"[PERMISSION_REQUEST] {msg.tool_name}, session={msg.session_id}")
+                        data = msg.to_dict()
+                        data["done"] = False
+                        yield json.dumps(data, ensure_ascii=False)
+
+                    elif msg.kind == MessageKind.STREAM_END:
+                        pass
+
+                    elif msg.kind == MessageKind.SESSION_CREATED:
+                        self._last_session_id = msg.session_id or msg.new_session_id
+                        data = msg.to_dict()
+                        data["done"] = False
+                        yield json.dumps(data, ensure_ascii=False)
+
+                    elif msg.kind == MessageKind.COMPLETE:
+                        session_for_complete = msg.session_id or session_id
+                        data = {
+                            "kind": MessageKind.COMPLETE,
+                            "sessionId": session_for_complete,
+                            "provider": "claude",
+                            "exitCode": msg.exit_code,
+                            "done": True,
+                            "content": full_content,
+                            "aborted": msg.aborted or False,
+                        }
+                        yield json.dumps(data, ensure_ascii=False)
+
+                    elif msg.kind == MessageKind.ERROR:
+                        data = {
+                            "kind": MessageKind.ERROR,
+                            "sessionId": msg.session_id,
+                            "provider": "claude",
+                            "content": msg.content,
+                            "isError": True,
+                            "done": True,
+                            "aborted": msg.aborted or False,
+                        }
+                        yield json.dumps(data, ensure_ascii=False)
+
+        finally:
+            # 清理任务
+            stream_done.set()
+            permission_task.cancel()
+            stream_task.cancel()
+            try:
+                await permission_task
+            except asyncio.CancelledError:
                 pass
-
-            elif msg.kind == MessageKind.SESSION_CREATED:
-                self._last_session_id = msg.session_id or msg.new_session_id
-                data = msg.to_dict()
-                data["done"] = False
-                yield json.dumps(data, ensure_ascii=False)
-
-            elif msg.kind == MessageKind.COMPLETE:
-                session_for_complete = msg.session_id or session_id
-
-                data = {
-                    "kind": MessageKind.COMPLETE,
-                    "sessionId": session_for_complete,
-                    "provider": "claude",
-                    "exitCode": msg.exit_code,
-                    "done": True,
-                    "content": full_content,
-                    "aborted": msg.aborted or False,
-                }
-                yield json.dumps(data, ensure_ascii=False)
-
-                # 执行完成后重置确认状态
-                if session_for_complete:
-                    self.reset_confirmed(session_for_complete)
-
-            elif msg.kind == MessageKind.ERROR:
-                data = {
-                    "kind": MessageKind.ERROR,
-                    "sessionId": msg.session_id,
-                    "provider": "claude",
-                    "content": msg.content,
-                    "isError": True,
-                    "done": True,
-                    "aborted": msg.aborted or False,
-                }
-                yield json.dumps(data, ensure_ascii=False)
-
-                # ERROR 时也重置确认状态
-                if msg.session_id:
-                    self.reset_confirmed(msg.session_id)
+            try:
+                await stream_task
+            except asyncio.CancelledError:
+                pass
 
     async def chat(
         self,
@@ -590,25 +743,8 @@ class ClaudeAgent:
         if session_id in self._active_sessions:
             self._active_sessions[session_id].set()
             logger.info(f"Session {session_id} interrupted")
-            self.reset_confirmed(session_id)
             return True
         return False
-
-    def mark_confirmed(self, session_id: str, user_input: str):
-        """标记会话已确认"""
-        if not user_input:
-            return
-        keywords = ["确认", "开始执行", "yes", "start", "execute"]
-        if any(k in user_input.lower() for k in keywords):
-            self._confirmed_sessions[session_id] = True
-
-    def _is_confirmed(self, session_id: str) -> bool:
-        """检查会话是否已确认"""
-        return self._confirmed_sessions.get(session_id, False)
-
-    def reset_confirmed(self, session_id: str):
-        """重置会话确认状态"""
-        self._confirmed_sessions[session_id] = False
 
 
 # 全局 Agent 实例
@@ -619,7 +755,8 @@ def get_code_agent() -> ClaudeAgent:
     """获取全局 Agent 实例"""
     global _agent_instance
     if _agent_instance is None:
-        _agent_instance = ClaudeAgent()
+        # 使用 default 模式启用权限确认
+        _agent_instance = ClaudeAgent(permission_mode="default")
     return _agent_instance
 
 
