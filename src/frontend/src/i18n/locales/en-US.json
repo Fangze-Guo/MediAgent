@@ -943,7 +943,20 @@
       "patient": "User",
       "uploadImage": "Upload Image",
       "uploadReport": "Upload Report",
-      "loading": "AI is thinking..."
+      "loading": "AI is thinking...",
+      "attachFile": "Attach File",
+      "insertCode": "Insert Code",
+      "voiceInput": "Voice Input",
+      "clearInput": "Clear Input",
+      "inputHint": "Enter to send, Shift+Enter for new line",
+      "welcomeTitle": "Medical AI Agent",
+      "welcomeSubtitle": "Professional medical AI assistant to support your medical research and clinical work",
+      "featureMedical": "Medical Consultation",
+      "featureMedicalDesc": "Professional medical Q&A",
+      "featureData": "Data Import",
+      "featureDataDesc": "Import and analyze medical data",
+      "featureSkill": "Medical Skills",
+      "featureSkillDesc": "Access professional medical tools"
     },
     "views_RagKnowledgeBaseView": {
       "title": "RAG Knowledge Base",

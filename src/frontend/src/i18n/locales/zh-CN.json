@@ -886,7 +886,20 @@
       "patient": "用户",
       "uploadImage": "上传影像",
       "uploadReport": "上传报告",
-      "loading": "AI 正在思考..."
+      "loading": "AI 正在思考...",
+      "attachFile": "附加文件",
+      "insertCode": "插入代码",
+      "voiceInput": "语音输入",
+      "clearInput": "清空输入",
+      "inputHint": "Enter 发送，Shift+Enter 换行",
+      "welcomeTitle": "医学智能体",
+      "welcomeSubtitle": "专业的医学 AI 助手，助力您的医学研究与临床工作",
+      "featureMedical": "医学咨询",
+      "featureMedicalDesc": "专业医学问题解答",
+      "featureData": "数据导入",
+      "featureDataDesc": "导入并分析医学数据",
+      "featureSkill": "医学技能",
+      "featureSkillDesc": "调用专业医学工具"
     },
     "views_RagKnowledgeBaseView": {
       "title": "RAG 知识库",

@@ -212,21 +212,59 @@
 
           <!-- 输入区域 -->
           <div class="input-area">
-            <div class="input-row">
-              <a-input
-                v-model:value="inputMessage"
-                :placeholder="t('views_CodeAgentView.inputPlaceholder')"
-                allow-clear
-                class="message-input"
-                 @keydown.enter.prevent="handleSendMessage"
-                :disabled="sendingMessage"
-              />
-              <a-button type="primary" @click="handleSendMessage" :loading="sendingMessage">
-                <template #icon>
-                  <SendOutlined />
-                </template>
-                {{ t('views_CodeAgentView.send') }}
-              </a-button>
+            <div class="input-container">
+              <!-- 顶部工具栏 -->
+              <div class="input-toolbar">
+                <div class="toolbar-left">
+                  <a-button type="text" size="small" class="toolbar-btn" :title="t('views_CodeAgentView.attachFile') || '附加文件'">
+                    <PaperClipOutlined />
+                  </a-button>
+                  <a-button type="text" size="small" class="toolbar-btn" :title="t('views_CodeAgentView.insertCode') || '插入代码'">
+                    <CodeOutlined />
+                  </a-button>
+                  <a-button type="text" size="small" class="toolbar-btn" :title="t('views_CodeAgentView.voiceInput') || '语音输入'">
+                    <AudioOutlined />
+                  </a-button>
+                </div>
+                <div class="toolbar-right">
+                  <a-button type="text" size="small" class="toolbar-btn" @click="inputMessage = ''" :title="t('views_CodeAgentView.clearInput') || '清空输入'">
+                    <DeleteOutlined />
+                  </a-button>
+                </div>
+              </div>
+
+              <!-- 输入框 -->
+              <div class="input-field">
+                <textarea
+                  v-model="inputMessage"
+                  class="message-textarea"
+                  :placeholder="t('views_CodeAgentView.inputPlaceholder')"
+                  @keydown="handleKeyDown"
+                  @input="adjustTextareaHeight"
+                  rows="1"
+                  ref="textareaRef"
+                  :disabled="sendingMessage"
+                ></textarea>
+              </div>
+
+              <!-- 底部操作栏 -->
+              <div class="input-bottom">
+                <div class="input-hint">
+                  <span class="hint-text">{{ t('views_CodeAgentView.inputHint') || 'Enter 发送，Shift+Enter 换行' }}</span>
+                </div>
+                <a-button
+                  type="primary"
+                  @click="handleSendMessage"
+                  :loading="sendingMessage"
+                  :disabled="!inputMessage.trim() || sendingMessage"
+                  class="send-btn"
+                >
+                  <template #icon>
+                    <SendOutlined />
+                  </template>
+                  {{ t('views_CodeAgentView.send') }}
+                </a-button>
+              </div>
             </div>
           </div>
         </a-card>
@@ -234,28 +272,29 @@
         <!-- 新建会话时显示输入区域（无会话详情） -->
         <a-card v-else class="detail-card">
           <div class="new-session-container">
-            <div class="new-session-header">
-              <PlusOutlined style="font-size: 48px; color: #1890ff; margin-bottom: 16px;" />
-              <h3>{{ t('views_CodeAgentView.newSession') }}</h3>
-              <p style="color: #888; margin-bottom: 24px;">{{ t('views_CodeAgentView.startNewSessionHint') || '输入消息开始新对话' }}</p>
-            </div>
-            <!-- 输入区域 -->
-            <div class="input-area">
-              <div class="input-row">
-                <a-input
-                  v-model:value="inputMessage"
-                  :placeholder="t('views_CodeAgentView.inputPlaceholder')"
-                  allow-clear
-                  class="message-input"
-                   @keydown.enter.prevent="handleSendMessage"
-                  :disabled="sendingMessage"
-                />
-                <a-button type="primary" @click="handleSendMessage" :loading="sendingMessage">
-                  <template #icon>
-                    <SendOutlined />
-                  </template>
-                  {{ t('views_CodeAgentView.send') }}
-                </a-button>
+            <div class="new-session-welcome">
+              <div class="welcome-icon">
+                <CodeOutlined />
+              </div>
+              <h2 class="welcome-title">{{ t('views_CodeAgentView.welcomeTitle') || 'Code 智能体' }}</h2>
+              <p class="welcome-subtitle">{{ t('views_CodeAgentView.welcomeSubtitle') || '强大的代码助手，帮助您高效完成开发任务' }}</p>
+
+              <div class="feature-cards">
+                <div class="feature-card" @click="startNewConversation">
+                  <div class="feature-icon">🩺</div>
+                  <div class="feature-title">{{ t('views_CodeAgentView.featureMedical') || '医学咨询' }}</div>
+                  <div class="feature-desc">{{ t('views_CodeAgentView.featureMedicalDesc') || '专业医学问题解答' }}</div>
+                </div>
+                <div class="feature-card" @click="startNewConversation">
+                  <div class="feature-icon">📊</div>
+                  <div class="feature-title">{{ t('views_CodeAgentView.featureData') || '数据导入' }}</div>
+                  <div class="feature-desc">{{ t('views_CodeAgentView.featureDataDesc') || '导入并分析医学数据' }}</div>
+                </div>
+                <div class="feature-card" @click="startNewConversation">
+                  <div class="feature-icon">🔬</div>
+                  <div class="feature-title">{{ t('views_CodeAgentView.featureSkill') || '医学技能' }}</div>
+                  <div class="feature-desc">{{ t('views_CodeAgentView.featureSkillDesc') || '调用专业医学工具' }}</div>
+                </div>
               </div>
             </div>
           </div>
@@ -305,7 +344,10 @@ import {
   DeleteOutlined,
   LoadingOutlined,
   CheckCircleOutlined,
-  InfoCircleOutlined
+  InfoCircleOutlined,
+  PaperClipOutlined,
+  CodeOutlined,
+  AudioOutlined
 } from '@ant-design/icons-vue'
 import StreamingMarkdownRenderer from '@/components/markdown-renderer/StreamingMarkdownRenderer.vue'
 import StreamingThinkingRenderer from '@/components/markdown-renderer/StreamingThinkingRenderer.vue'
@@ -366,6 +408,9 @@ const confirmDelete = async () => {
 
 // 输入消息
 const inputMessage = ref('')
+
+// textarea ref
+const textareaRef = ref<HTMLTextAreaElement | null>(null)
 
 // 发送消息加载状态
 const sendingMessage = ref(false)
@@ -644,7 +689,13 @@ const handleSendMessage = async () => {
 
   const userMessage = inputMessage.value.trim()
   inputMessage.value = ''
-  await nextTick() 
+
+  // 重置 textarea 高度
+  if (textareaRef.value) {
+    textareaRef.value.style.height = 'auto'
+  }
+
+  await nextTick()
   sendingMessage.value = true
 
   // 重置事件显示
@@ -997,6 +1048,21 @@ const formatTime = (time: string | undefined) => {
   })
 }
 
+// 自动调整 textarea 高度
+const adjustTextareaHeight = () => {
+  if (!textareaRef.value) return
+  textareaRef.value.style.height = 'auto'
+  textareaRef.value.style.height = `${Math.min(textareaRef.value.scrollHeight, 200)}px`
+}
+
+// 处理键盘事件
+const handleKeyDown = (event: KeyboardEvent) => {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault()
+    handleSendMessage()
+  }
+}
+
 // 组件挂载时加载对话列表
 onMounted(() => {
   loadConversations()
@@ -1257,35 +1323,94 @@ onUnmounted(() => {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  padding: 40px;
+  padding: 60px 40px;
   min-height: 0;
+  background: linear-gradient(135deg, #f5f7fa 0%, #ffffff 100%);
 }
 
-.new-session-header {
-  text-align: center;
-  margin-bottom: 32px;
-}
-
-.new-session-header h3 {
-  margin: 0 0 8px 0;
-  font-size: 20px;
-  color: #333;
-}
-
-.new-session-container .input-area {
-  width: 100%;
-  max-width: 600px;
-  padding: 16px;
-  border-top: 1px solid #e8e8e8;
-}
-
-.new-session-container .input-row {
+.new-session-welcome {
   display: flex;
-  gap: 12px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  max-width: 900px;
+  margin: 0 auto;
 }
 
-.new-session-container .message-input {
-  flex: 1;
+.welcome-icon {
+  width: 80px;
+  height: 80px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #1890ff 0%, #0050b3 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  color: #fff;
+  margin-bottom: 24px;
+  box-shadow: 0 8px 24px rgba(24, 144, 255, 0.3);
+}
+
+.welcome-title {
+  font-size: 32px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin: 0 0 12px 0;
+  letter-spacing: -0.5px;
+}
+
+.welcome-subtitle {
+  font-size: 16px;
+  color: #666;
+  margin: 0 0 48px 0;
+  line-height: 1.6;
+}
+
+.feature-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  width: 100%;
+}
+
+.feature-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 32px 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s ease;
+  border: 1px solid #f0f0f0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.feature-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  border-color: #1890ff;
+}
+
+.feature-card:active {
+  transform: translateY(-2px);
+}
+
+.feature-icon {
+  font-size: 40px;
+  margin-bottom: 16px;
+}
+
+.feature-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin-bottom: 8px;
+}
+
+.feature-desc {
+  font-size: 14px;
+  color: #888;
+  line-height: 1.5;
 }
 
 .patient-info {
@@ -1901,10 +2026,112 @@ onUnmounted(() => {
 ========================================== */
 .input-area {
   flex-shrink: 0;
-  border-top: 1px solid #e8e8e8;
-  padding: 16px;
-  background: linear-gradient(to bottom, #fafbfc, #fff);
+  padding: 0;
   margin-top: 16px;
+}
+
+.input-container {
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s ease;
+}
+
+.input-container:focus-within {
+  border-color: #1890ff;
+  box-shadow: 0 2px 12px rgba(24, 144, 255, 0.15);
+}
+
+.input-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fafafa;
+}
+
+.toolbar-left,
+.toolbar-right {
+  display: flex;
+  gap: 4px;
+}
+
+.toolbar-btn {
+  color: #666;
+  transition: all 0.2s;
+}
+
+.toolbar-btn:hover {
+  color: #1890ff;
+  background: rgba(24, 144, 255, 0.08);
+}
+
+.input-field {
+  padding: 12px 16px;
+}
+
+.message-textarea {
+  width: 100%;
+  border: none;
+  outline: none;
+  resize: none;
+  font-size: 14px;
+  line-height: 1.6;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  color: #333;
+  background: transparent;
+  min-height: 24px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.message-textarea::placeholder {
+  color: #bbb;
+}
+
+.message-textarea:disabled {
+  background: #f5f5f5;
+  cursor: not-allowed;
+}
+
+.input-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  border-top: 1px solid #f0f0f0;
+  background: #fafafa;
+}
+
+.input-hint {
+  flex: 1;
+}
+
+.hint-text {
+  font-size: 12px;
+  color: #999;
+}
+
+.send-btn {
+  border-radius: 8px;
+  height: 36px;
+  padding: 0 20px;
+  font-weight: 500;
+  box-shadow: 0 2px 4px rgba(24, 144, 255, 0.2);
+  transition: all 0.3s ease;
+}
+
+.send-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(24, 144, 255, 0.3);
+}
+
+.send-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .input-row {
@@ -1912,7 +2139,7 @@ onUnmounted(() => {
   gap: 12px;
 }
 
-.message-input { 
+.message-input {
   flex: 1;
 }
 
