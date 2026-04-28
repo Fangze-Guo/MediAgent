@@ -658,6 +658,9 @@ class ClaudeAgent:
                     elif msg.kind == MessageKind.TOOL_USE:
                         session_for_tool = msg.session_id or session_id
                         logger.info(f"[TOOL_USE] {msg.tool_name}, session={session_for_tool}")
+                        data = msg.to_dict()
+                        data["done"] = False
+                        yield json.dumps(data, ensure_ascii=False)
 
                     elif msg.kind == MessageKind.PERMISSION_REQUEST:
                         # SDK 直接发送的权限请求

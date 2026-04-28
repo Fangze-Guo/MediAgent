@@ -89,8 +89,8 @@
                   <span class="skill-icon">🔧</span>
                   <span class="skill-name">{{ message.skill_name }}</span>
                   <span class="skill-label">skill call</span>
+                  <span class="skill-time">{{ formatTime(message.created_at) }}</span>
                 </div>
-                <div class="message-time">{{ formatTime(message.created_at) }}</div>
               </template>
 
               <!-- Todo 事件：紫色气泡，内嵌折叠任务列表 -->
@@ -113,8 +113,8 @@
                       <span class="todo-text">{{ todo.activeForm || todo.content }}</span>
                     </div>
                   </div>
+                  <div class="message-time-inline">{{ formatTime(message.created_at) }}</div>
                 </div>
-                <div class="message-time">{{ formatTime(message.created_at) }}</div>
               </template>
 
               <!-- AI消息 -->
@@ -362,12 +362,10 @@ import {
 } from '@ant-design/icons-vue'
 import StreamingMarkdownRenderer from '@/components/markdown-renderer/StreamingMarkdownRenderer.vue'
 import StreamingThinkingRenderer from '@/components/markdown-renderer/StreamingThinkingRenderer.vue'
-import { useSessionStore } from '@/store/codeAgentSession'
 import type {
   ChatMessage,
   ConversationInfo,
   MessageResponse,
-  StreamResponseData,
   CodeEventType
 } from '@/apis/codeAgent'
 import {
@@ -384,9 +382,6 @@ import {
 } from '@/apis/codeAgent'
 
 const { t } = useI18n()
-
-// Session store for message management
-const sessionStore = useSessionStore()
 
 // 搜索关键词
 const searchKeyword = ref('')
@@ -559,6 +554,281 @@ const loadingConversationDetail = ref(false)
 
 // 用于取消上次请求的 AbortController
 let currentAbortController: AbortController | null = null
+
+// 获取当前 loading 的 assistant 步骤索引
+const getCurrentStepIndex = (): number => {
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    if (messages.value[i].role === 'assistant' && messages.value[i].loading) {
+      return i
+    }
+  }
+  return -1
+}
+
+// 关闭当前步骤并新建下一步
+const switchStep = () => {
+  const idx = getCurrentStepIndex()
+  if (idx >= 0) {
+    messages.value[idx].loading = false
+  }
+  messages.value.push({
+    message_id: '',
+    conversation_id: selectedConversation.value!.conversation_id,
+    role: 'assistant',
+    content: '',
+    thinking: '',
+    created_at: new Date().toISOString(),
+    loading: true
+  })
+  scrollToBottom()
+}
+
+// 处理流式响应的 chunk 更新
+const handleStreamChunk = async (
+  data: { full_content?: string; thinking?: string; content?: string },
+  type: string | undefined,
+  activeStep: { value: 'thinking' | 'text' | null },
+  capturedSessionId: string | null
+) => {
+  const convId = selectedConversation.value?.conversation_id
+  if (!convId && !capturedSessionId) return
+
+  const isThinking = type === 'thinking' || type === 'thinking_delta'
+  const newStepType = isThinking ? 'thinking' : 'text'
+
+  // 判断是否需要切换步骤（即前一条消息即将结束）
+  const needSwitch = isThinking || activeStep.value !== newStepType || getCurrentStepIndex() < 0
+
+  if (needSwitch && activeStep.value !== null && pendingToolEvents.value.length > 0) {
+    // 前一条消息完成，插入暂存的 tool 事件
+    const idx = getCurrentStepIndex()
+    if (idx >= 0) {
+      messages.value[idx].loading = false
+    }
+    pendingToolEvents.value.forEach(event => {
+      if (event.type === 'todo') {
+        messages.value.push({
+          message_id: `todo_${Date.now()}`,
+          conversation_id: selectedConversation.value!.conversation_id,
+          role: 'assistant',
+          content: '',
+          event_type: 'todo',
+          todo_list: event.data.todos,
+          created_at: new Date().toISOString(),
+          loading: false
+        })
+      } else {
+        messages.value.push({
+          message_id: `skill_${Date.now()}`,
+          conversation_id: selectedConversation.value!.conversation_id,
+          role: 'assistant',
+          content: '',
+          event_type: 'skill_call',
+          skill_name: event.data.toolName || 'Unknown Tool',
+          created_at: new Date().toISOString(),
+          loading: false
+        })
+      }
+    })
+    pendingToolEvents.value = []
+  }
+
+  if (isThinking) {
+    switchStep()
+    await nextTick()
+    await nextTick()
+  } else if (activeStep.value !== newStepType || getCurrentStepIndex() < 0) {
+    switchStep()
+  }
+
+  const stepIdx = getCurrentStepIndex()
+  if (stepIdx < 0) return
+
+  if (isThinking) {
+    if (data.thinking) {
+      messages.value[stepIdx].thinking = data.thinking
+    }
+  } else if (data.content !== undefined) {
+    messages.value[stepIdx].content = data.content
+    if (data.content.includes('请先确认任务') && capturedSessionId && !hasPlanShown.value) {
+      hasPlanShown.value = true
+      pendingPlan.value = { sessionId: capturedSessionId, content: data.content }
+      messages.value[stepIdx].loading = false
+    }
+  } else if (data.full_content !== undefined) {
+    messages.value[stepIdx].content = data.full_content
+    if (data.full_content.includes('请先确认任务') && capturedSessionId && !hasPlanShown.value) {
+      hasPlanShown.value = true
+      pendingPlan.value = { sessionId: capturedSessionId, content: data.full_content }
+      messages.value[stepIdx].loading = false
+    }
+  }
+
+  activeStep.value = newStepType
+}
+
+// 处理流式响应完成
+const handleStreamComplete = (finalContent: string) => {
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    if (messages.value[i].role === 'assistant') {
+      messages.value[i].content = finalContent
+      messages.value[i].loading = false
+      break
+    }
+  }
+  if (selectedConversation.value) {
+    selectedConversation.value.last_message = finalContent
+  }
+  isPlanConfirmed.value = false
+  hasPlanShown.value = false
+  sendingMessage.value = false
+  currentSessionId.value = null
+  setTimeout(() => {
+    eventDisplay.value = null
+    currentEventType.value = ''
+  }, 3000)
+  nextTick(() => scrollToBottom())
+}
+
+// 处理流式响应错误
+const handleStreamError = (error: string) => {
+  console.error('流式对话错误:', error)
+  const idx = getCurrentStepIndex()
+  if (idx >= 0) {
+    messages.value[idx].content = `错误: ${error}`
+    messages.value[idx].loading = false
+  }
+  isPlanConfirmed.value = false
+  hasPlanShown.value = false
+  sendingMessage.value = false
+  currentSessionId.value = null
+  eventDisplay.value = { message: `错误: ${error}`, type: 'info' }
+}
+
+// 暂存待插入的 skill_call 和 todo 事件
+const pendingToolEvents = ref<Array<{
+  type: 'skill_call' | 'todo'
+  data: any
+}>>([])
+
+// 处理流式事件
+const handleStreamEvent = (event: CodeEventType, capturedSessionId: string | null) => {
+  const eventKind = (event as any).kind || (event as any).type
+  console.log('[DEBUG] 收到事件:', eventKind, event)
+
+  switch (eventKind) {
+    case 'session_created':
+      if (!capturedSessionId) {
+        const sessionId = (event as any).sessionId || (event as any).newSessionId
+        currentSessionId.value = sessionId
+        console.log('[DEBUG] session_created event, sdk session_id:', sessionId)
+        return sessionId
+      }
+      break
+    case 'tool_use':
+      const toolEvent = event as any
+      const toolName = toolEvent.toolName || toolEvent.tool_name
+      console.log('[DEBUG] tool_use event, toolName:', toolName, 'full event:', toolEvent)
+
+      // 暂存事件，等 thinking 结束后插入
+      if (toolName === 'TodoWrite') {
+        const todos = toolEvent.input?.todos || toolEvent.toolInput?.todos || []
+        pendingToolEvents.value.push({
+          type: 'todo',
+          data: { todos }
+        })
+      } else {
+        // 如果 toolName 是 "Skill"，从 input.skill 取具体技能名
+        const displayName = (toolName === 'Skill' && toolEvent.input?.skill)
+          ? toolEvent.input.skill
+          : toolName
+        pendingToolEvents.value.push({
+          type: 'skill_call',
+          data: { toolName: displayName }
+        })
+      }
+      break
+    case 'skill_call':
+      const skillEvent = event as any
+      messages.value.push({
+        message_id: `skill_${Date.now()}`,
+        conversation_id: selectedConversation.value!.conversation_id,
+        role: 'assistant',
+        content: '',
+        event_type: 'skill_call',
+        skill_name: skillEvent.skillName || skillEvent.skill_name || 'Unknown Skill',
+        created_at: new Date().toISOString(),
+        loading: false
+      })
+      nextTick(() => scrollToBottom())
+      break
+    case 'todo':
+      const todoEvent = event as any
+      messages.value.push({
+        message_id: `todo_${Date.now()}`,
+        conversation_id: selectedConversation.value!.conversation_id,
+        role: 'assistant',
+        content: '',
+        event_type: 'todo',
+        todo_list: todoEvent.todos || todoEvent.todo_list || [],
+        created_at: new Date().toISOString(),
+        loading: false
+      })
+      nextTick(() => scrollToBottom())
+      break
+    case 'system':
+      const systemEvent = event as any
+      eventDisplay.value = {
+        message: `系统已初始化 - 模型: ${systemEvent.model || 'unknown'}, 版本: ${systemEvent.qwen_code_version || 'unknown'}`,
+        type: 'info'
+      }
+      break
+    case 'permission_request':
+      const permEvent = event as any
+      console.log('[DEBUG] permission_request event:', permEvent)
+      pendingPermission.value = {
+        sessionId: permEvent.sessionId,
+        toolName: permEvent.toolName,
+        input: permEvent.input || {},
+        requestId: permEvent.requestId
+      }
+      nextTick(() => scrollToBottom())
+      break
+    case 'stream_event':
+      const streamEvent = event as any
+      if (streamEvent.event) {
+        const innerEvent = streamEvent.event
+        if (innerEvent.type === 'message_start') {
+          eventDisplay.value = {
+            message: '开始生成回复...',
+            type: 'loading'
+          }
+        } else if (innerEvent.type === 'message_stop') {
+          eventDisplay.value = {
+            message: '回复生成完成',
+            type: 'success'
+          }
+        }
+      }
+      break
+    case 'assistant':
+      eventDisplay.value = {
+        message: '助手消息已接收',
+        type: 'success'
+      }
+      break
+    case 'result':
+      const resultEvent = event as any
+      if (resultEvent.subtype === 'success') {
+        eventDisplay.value = {
+          message: `处理完成 - 耗时: ${resultEvent.duration_ms}ms, 使用: ${resultEvent.usage.total_tokens} tokens`,
+          type: 'success'
+        }
+      }
+      break
+  }
+  return capturedSessionId
+}
 
 // 消息容器引用
 const messagesContainer = ref<HTMLElement | null>(null)
@@ -811,209 +1081,21 @@ const handleSendMessage = async () => {
 
     // 用于捕获 session_id
     let capturedSessionId: string | null = null
-
-    // 步骤流状态机：追踪当前步骤类型，每次切换类型时新建步骤
-    let activeStep: 'thinking' | 'text' | null = null
-
-    // 获取当前 loading 的 assistant 步骤索引
-    const getCurrentStepIndex = (): number => {
-      for (let i = messages.value.length - 1; i >= 0; i--) {
-        if (messages.value[i].role === 'assistant' && messages.value[i].loading) {
-          return i
-        }
-      }
-      return -1
-    }
-
-    // 关闭当前步骤并新建下一步
-    const switchStep = (newType: 'thinking' | 'text') => {
-      const idx = getCurrentStepIndex()
-      if (idx >= 0) {
-        messages.value[idx].loading = false
-      }
-      messages.value.push({
-        message_id: '',
-        conversation_id: selectedConversation.value!.conversation_id,
-        role: 'assistant',
-        content: '',
-        thinking: '',
-        created_at: new Date().toISOString(),
-        loading: true
-      })
-      activeStep = newType
-      scrollToBottom()
-    }
+    const activeStepRef = { value: null as 'thinking' | 'text' | null }
 
     // 定义事件处理器
     const handleEvent = (event: CodeEventType) => {
-      const eventKind = (event as any).kind || (event as any).type
-
-      switch (eventKind) {
-        case 'session_created':
-          // 会话创建事件
-          if (!capturedSessionId) {
-            capturedSessionId = (event as any).sessionId || (event as any).newSessionId
-            currentSessionId.value = capturedSessionId
-            console.log('[DEBUG] session_created event, sdk session_id:', capturedSessionId)
-          }
-          break
-        case 'system':
-          // 系统初始化事件
-          const systemEvent = event as any
-          eventDisplay.value = {
-            message: `系统已初始化 - 模型: ${systemEvent.model || 'unknown'}, 版本: ${systemEvent.qwen_code_version || 'unknown'}`,
-            type: 'info'
-          }
-          break
-        case 'permission_request':
-          // 权限请求事件
-          const permEvent = event as any
-          console.log('[DEBUG] permission_request event:', permEvent)
-          pendingPermission.value = {
-            sessionId: permEvent.sessionId,
-            toolName: permEvent.toolName,
-            input: permEvent.input || {},
-            requestId: permEvent.requestId
-          }
-          // 滚动到底部显示权限卡片
-          nextTick(() => scrollToBottom())
-          break
-        case 'stream_event':
-          // 流式事件
-          const streamEvent = event as any
-          if (streamEvent.event) {
-            const innerEvent = streamEvent.event
-            if (innerEvent.type === 'message_start') {
-              eventDisplay.value = {
-                message: '开始生成回复...',
-                type: 'loading'
-              }
-            } else if (innerEvent.type === 'message_stop') {
-              eventDisplay.value = {
-                message: '回复生成完成',
-                type: 'success'
-              }
-            }
-          }
-          break
-        case 'assistant':
-          // 助手消息完成
-          eventDisplay.value = {
-            message: '助手消息已接收',
-            type: 'success'
-          }
-          break
-        case 'result':
-          // 最终结果
-          const resultEvent = event as any
-          if (resultEvent.subtype === 'success') {
-            eventDisplay.value = {
-              message: `处理完成 - 耗时: ${resultEvent.duration_ms}ms, 使用: ${resultEvent.usage.total_tokens} tokens`,
-              type: 'success'
-            }
-          }
-          break
+      const newSessionId = handleStreamEvent(event, capturedSessionId)
+      if (newSessionId && !capturedSessionId) {
+        capturedSessionId = newSessionId
       }
     }
 
     await parseStreamResponse(
       reader,
-      // onChunk: 步骤流模式，按 thinking/text 切换创建独立步骤
-    async (data: { full_content?: string; thinking?: string; content?: string }, type?: string) => {
-        // 检查是否还在当前的对话中
-        const convId = selectedConversation.value?.conversation_id
-        if (!convId && !capturedSessionId) return
-
-        const isThinking = type === 'thinking' || type === 'thinking_delta'
-        const newStepType = isThinking ? 'thinking' : 'text'
-
-        // thinking 每次都是完整块，每次都新建步骤；text 增量合并到当前步骤
-        if (isThinking) {
-            switchStep(newStepType)
-            // 等两帧让 loading 动画能先渲染出来，再填内容
-            await nextTick()
-            await nextTick()
-        } else if (activeStep !== newStepType || getCurrentStepIndex() < 0) {
-          switchStep(newStepType)
-        }
-
-        // 更新当前步骤
-        const stepIdx = getCurrentStepIndex()
-        if (stepIdx < 0) return
-
-        if (isThinking) {
-          if (data.thinking) {
-            messages.value[stepIdx].thinking = data.thinking
-          }
-        } else if (data.content !== undefined) {
-          messages.value[stepIdx].content = data.content
-          // 检测到"请先确认"提示，设置 pendingPlan（防抖）
-          if (data.content.includes('请先确认任务') && capturedSessionId && !hasPlanShown.value) {
-            hasPlanShown.value = true
-            pendingPlan.value = {
-              sessionId: capturedSessionId,
-              content: data.content
-            }
-            // 关闭当前加载状态
-            messages.value[stepIdx].loading = false
-          }
-        } else if (data.full_content !== undefined) {
-          messages.value[stepIdx].content = data.full_content
-          // 检测到"请先确认"提示，设置 pendingPlan（防抖）
-          if (data.full_content.includes('请先确认任务') && capturedSessionId && !hasPlanShown.value) {
-            hasPlanShown.value = true
-            pendingPlan.value = {
-              sessionId: capturedSessionId,
-              content: data.full_content
-            }
-            // 关闭当前加载状态
-            messages.value[stepIdx].loading = false
-          }
-        }
-      },
-      // onComplete: 关闭最后一个 loading 步骤
-      (finalContent) => {
-        // 找最后一个 assistant 消息，不管 loading 状态
-        for (let i = messages.value.length - 1; i >= 0; i--) {
-          if (messages.value[i].role === 'assistant') {
-            messages.value[i].content = finalContent
-            messages.value[i].loading = false
-            break
-          }
-        }
-        if (selectedConversation.value) {
-          selectedConversation.value.last_message = finalContent
-        }
-        // 重置 Plan 状态
-        isPlanConfirmed.value = false
-        hasPlanShown.value = false
-        sendingMessage.value = false
-        currentSessionId.value = null
-        setTimeout(() => {
-          eventDisplay.value = null
-          currentEventType.value = ''
-        }, 3000)
-        nextTick(() => scrollToBottom())
-      },
-      // onError: 标记最后一个 loading 步骤为错误
-      (error) => {
-        console.error('流式对话错误:', error)
-        const idx = getCurrentStepIndex()
-        if (idx >= 0) {
-          messages.value[idx].content = `错误: ${error}`
-          messages.value[idx].loading = false
-        }
-        // 重置 Plan 状态
-        isPlanConfirmed.value = false
-        hasPlanShown.value = false
-        sendingMessage.value = false  // 兜底关闭 loading
-        currentSessionId.value = null  // 清除 session_id
-        eventDisplay.value = {
-          message: `错误: ${error}`,
-          type: 'info'
-        }
-      },
-      // onEvent: 事件处理
+      async (data, type) => handleStreamChunk(data, type, activeStepRef, capturedSessionId),
+      handleStreamComplete,
+      handleStreamError,
       handleEvent
     )
 
@@ -1122,13 +1204,15 @@ onUnmounted(() => {
   }
 })
 
-// 监听消息变化，自动滚动到底部
-watch(messages, async () => {
-  await nextTick()
-  if (messagesContainer.value) {
-    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+// 监听消息数量变化，自动滚动到底部
+watch(() => messages.value.length, async () => {
+  if (isAtBottom.value) {
+    await nextTick()
+    if (messagesContainer.value) {
+      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+    }
   }
-}, { deep: true })
+})
 
 // 组件卸载时清理资源
 onUnmounted(() => {
@@ -1606,20 +1690,33 @@ onUnmounted(() => {
   border-radius: 8px;
 }
 
+.skill-time {
+  margin-left: auto;
+  font-size: 11px;
+  color: #d4380d;
+  opacity: 0.6;
+}
+
 .skill-icon {
   font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
 }
 
 .skill-name {
   font-weight: 600;
   font-size: 13px;
   color: #d4380d;
+  line-height: 1;
 }
 
 .skill-label {
   font-size: 12px;
   color: #ff7a45;
   font-weight: 500;
+  margin-left: 10px;
+  line-height: 1;
 }
 
 /* Todo 紫色气泡 */
