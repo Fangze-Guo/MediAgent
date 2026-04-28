@@ -750,6 +750,10 @@ class ClaudeAgent:
         if session_id in self._active_sessions:
             self._active_sessions[session_id].set()
             logger.info(f"Session {session_id} interrupted")
+
+            # 关闭 client 以彻底中断 SDK 通信
+            await self.close_client(session_id)
+
             return True
         return False
 

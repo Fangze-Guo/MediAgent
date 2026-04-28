@@ -495,3 +495,13 @@ export async function cancelPermission(request: PermissionRequest): Promise<Base
   const response = await post<BaseResponse<boolean>>('/code-agent/cancel_permission', request)
   return response.data
 }
+
+/**
+ * 中断会话
+ * @param session_id 会话ID
+ * @returns 是否成功
+ */
+export async function interruptSession(session_id: string): Promise<BaseResponse<boolean>> {
+  const response = await post<BaseResponse<boolean>>(`/code-agent/interrupt/${session_id}`, {})
+  return response.data
+}

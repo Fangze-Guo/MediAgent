@@ -162,6 +162,10 @@ class CodeAgentService:
         """取消权限请求"""
         await self.code_agent.cancel_permission(session_id)
 
+    async def interrupt_session(self, session_id: str) -> bool:
+        """中断会话"""
+        return await self.code_agent.interrupt(session_id)
+
     @handle_service_exception
     async def create_conversation(
         self,

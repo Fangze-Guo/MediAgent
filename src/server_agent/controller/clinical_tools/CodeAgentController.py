@@ -334,6 +334,18 @@ class CodeAgentController(BaseController):
             except Exception as e:
                 return ResultUtils.error(500, f"取消权限失败: {str(e)}")
 
+        @self.router.post("/interrupt/{session_id}")
+        async def interrupt_session(
+            session_id: str,
+            user_vo: UserVO = Depends(self._get_current_user)
+        ) -> BaseResponse[bool]:
+            """中断会话"""
+            try:
+                success = await self.service.interrupt_session(session_id)
+                return ResultUtils.success(success)
+            except Exception as e:
+                return ResultUtils.error(500, f"中断会话失败: {str(e)}")
+
         @self.router.post("/conversations")
         async def create_conversation(
             request: CreateConversationRequest,

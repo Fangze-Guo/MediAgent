@@ -144,17 +144,16 @@
                     :streaming-speed="15"
                     class="message-markdown"
                   />
+                  <div v-if="!message.loading" class="message-time-inline">{{ formatTime(message.created_at) }}</div>
                 </div>
-                <!-- 时间戳 -->
-                <div class="message-time">{{ formatTime(message.created_at) }}</div>
               </template>
 
               <!-- 用户消息：蓝色气泡 -->
               <template v-else>
                 <div class="message-bubble bubble-user">
                   <p class="message-text">{{ message.content }}</p>
+                  <div class="message-time-inline">{{ formatTime(message.created_at) }}</div>
                 </div>
-                <div class="message-time">{{ formatTime(message.created_at) }}</div>
               </template>
             </div>
 
@@ -253,16 +252,27 @@
                   <span class="hint-text">{{ t('views_CodeAgentView.inputHint') || 'Enter 发送，Shift+Enter 换行' }}</span>
                 </div>
                 <a-button
+                  v-if="!sendingMessage"
                   type="primary"
                   @click="handleSendMessage"
-                  :loading="sendingMessage"
-                  :disabled="!inputMessage.trim() || sendingMessage"
+                  :disabled="!inputMessage.trim()"
                   class="send-btn"
                 >
                   <template #icon>
                     <SendOutlined />
                   </template>
                   {{ t('views_CodeAgentView.send') }}
+                </a-button>
+                <a-button
+                  v-else
+                  danger
+                  @click="handleInterrupt"
+                  class="send-btn"
+                >
+                  <template #icon>
+                    <StopOutlined />
+                  </template>
+                  终止
                 </a-button>
               </div>
             </div>
@@ -347,7 +357,8 @@ import {
   InfoCircleOutlined,
   PaperClipOutlined,
   CodeOutlined,
-  AudioOutlined
+  AudioOutlined,
+  StopOutlined
 } from '@ant-design/icons-vue'
 import StreamingMarkdownRenderer from '@/components/markdown-renderer/StreamingMarkdownRenderer.vue'
 import StreamingThinkingRenderer from '@/components/markdown-renderer/StreamingThinkingRenderer.vue'
@@ -368,7 +379,8 @@ import {
   deleteConversation,
   updateConversation,
   confirmPermission,
-  cancelPermission
+  cancelPermission,
+  interruptSession
 } from '@/apis/codeAgent'
 
 const { t } = useI18n()
@@ -429,6 +441,9 @@ const selectedConversation = ref<ConversationInfo | null>(null)
 
 // 会话消息列表
 const messages = ref<MessageResponse[]>([])
+
+// 当前活动的 session_id（用于中断）
+const currentSessionId = ref<string | null>(null)
 
 // Todo 折叠状态
 const todoCollapsedStates = ref<Record<string, boolean>>({})
@@ -514,6 +529,28 @@ const handleCancelPermission = async () => {
   } catch (error) {
     console.error('取消权限失败:', error)
     message.error('取消权限失败')
+  }
+}
+
+// 中断对话
+const handleInterrupt = async () => {
+  if (!currentSessionId.value) {
+    message.warning('没有正在进行的对话')
+    return
+  }
+
+  try {
+    const response = await interruptSession(currentSessionId.value)
+    if (response.code === 200) {
+      message.success('已中断对话')
+      sendingMessage.value = false
+      currentSessionId.value = null
+    } else {
+      message.error(response.message || '中断失败')
+    }
+  } catch (error) {
+    console.error('中断对话失败:', error)
+    message.error('中断对话失败')
   }
 }
 
@@ -816,6 +853,7 @@ const handleSendMessage = async () => {
           // 会话创建事件
           if (!capturedSessionId) {
             capturedSessionId = (event as any).sessionId || (event as any).newSessionId
+            currentSessionId.value = capturedSessionId
             console.log('[DEBUG] session_created event, sdk session_id:', capturedSessionId)
           }
           break
@@ -935,10 +973,13 @@ const handleSendMessage = async () => {
       },
       // onComplete: 关闭最后一个 loading 步骤
       (finalContent) => {
-        const idx = getCurrentStepIndex()
-        if (idx >= 0) {
-          messages.value[idx].content = finalContent
-          messages.value[idx].loading = false
+        // 找最后一个 assistant 消息，不管 loading 状态
+        for (let i = messages.value.length - 1; i >= 0; i--) {
+          if (messages.value[i].role === 'assistant') {
+            messages.value[i].content = finalContent
+            messages.value[i].loading = false
+            break
+          }
         }
         if (selectedConversation.value) {
           selectedConversation.value.last_message = finalContent
@@ -946,7 +987,8 @@ const handleSendMessage = async () => {
         // 重置 Plan 状态
         isPlanConfirmed.value = false
         hasPlanShown.value = false
-        sendingMessage.value = false  // 兜底关闭 loading
+        sendingMessage.value = false
+        currentSessionId.value = null
         setTimeout(() => {
           eventDisplay.value = null
           currentEventType.value = ''
@@ -965,6 +1007,7 @@ const handleSendMessage = async () => {
         isPlanConfirmed.value = false
         hasPlanShown.value = false
         sendingMessage.value = false  // 兜底关闭 loading
+        currentSessionId.value = null  // 清除 session_id
         eventDisplay.value = {
           message: `错误: ${error}`,
           type: 'info'
@@ -1001,6 +1044,7 @@ const handleSendMessage = async () => {
     }
   } finally {
     sendingMessage.value = false
+    currentSessionId.value = null
   }
 }
 
@@ -1543,10 +1587,10 @@ onUnmounted(() => {
 }
 
 .bubble-user {
-  background: linear-gradient(135deg, #1890ff 0%, #0050b3 100%);
-  color: #fff;
-  border: none;
-  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
+  background: #e3f2fd;
+  color: #1a1a1a;
+  border: 1px solid #90caf9;
+  box-shadow: 0 2px 8px rgba(66, 165, 245, 0.2);
 }
 
 /* Skill Call 橙色气泡 */
@@ -1800,7 +1844,7 @@ onUnmounted(() => {
 
 .bubble-user .message-text {
   margin: 0;
-  color: #fff;
+  color: inherit;
   line-height: 1.6;
   white-space: pre-wrap;
 }
@@ -1811,10 +1855,22 @@ onUnmounted(() => {
   line-height: 1;
 }
 
+.message-time-inline {
+  color: #999;
+  font-size: 11px;
+  margin-top: 8px;
+  opacity: 0.7;
+  text-align: right;
+}
+
 /* AI消息时间戳左对齐 */
 .message-ai .message-time {
   margin-left: 6px;
   margin-top: 2px;
+}
+
+.message-ai .message-time-inline {
+  text-align: left;
 }
 
 /* 用户消息时间戳右对齐 */
@@ -1822,6 +1878,10 @@ onUnmounted(() => {
   margin-right: 6px;
   margin-top: 2px;
   text-align: right;
+}
+
+.message-user .message-time-inline {
+  color: rgba(0, 0, 0, 0.5);
 }
 
 /* 思考块样式 */
