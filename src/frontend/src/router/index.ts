@@ -5,6 +5,7 @@
 import { useAuthStore } from '@/store/auth'
 import type { RouteRecordRaw } from 'vue-router'
 import { createRouter, createWebHistory } from 'vue-router'
+import { authGuard, roleGuard, titleGuard } from './guards'
 
 /**
  * 路由配置数组
@@ -168,46 +169,31 @@ const router = createRouter({
 
 /**
  * 全局路由守卫
- * 在每次路由跳转前执行，用于认证检查和设置页面标题
+ * 在每次路由跳转前执行，用于认证检查、权限验证和设置页面标题
  * @param to 目标路由
- * @param _from 来源路由（未使用）
+ * @param from 来源路由
  * @param next 路由跳转函数
  */
-router.beforeEach(async (to, _from, next) => {
-    // 设置页面标题
-    if (to.meta.title) {
-        document.title = to.meta.title as string
-    }
+router.beforeEach(async (to, from, next) => {
+    // 1. 设置页面标题
+    titleGuard(to)
 
-    // 检查是否需要认证
+    // 2. 检查是否需要认证
     const requiresAuth = to.meta.requiresAuth !== false // 默认为需要认证
     const authStore = useAuthStore()
 
     if (requiresAuth) {
         // 需要认证的路由
-        if (!authStore.isLoggedIn) {
-            // 未登录，跳转到登录页
-            next('/login')
-            return
+        // 2.1 执行认证守卫
+        const authPassed = await authGuard(to, from, next)
+        if (!authPassed) {
+            return // 认证失败，已在守卫中处理跳转
         }
-        // 如果有token但没有用户信息，尝试获取用户信息
-        if (authStore.token && !authStore.user) {
-            try {
-                await authStore.fetchUserInfo()
-            } catch (error) {
-                console.error('Failed to fetch user info:', error)
-                // 如果获取用户信息失败，清除token并跳转到登录页
-                authStore.logout()
-                next('/login')
-                return
-            }
-        }
-        
-        // 检查管理员权限
-        if (to.meta.adminOnly && authStore.user?.role !== 'admin') {
-            // 非管理员访问管理员页面，跳转到首页
-            next('/')
-            return
+
+        // 2.2 执行角色权限守卫
+        const rolePassed = roleGuard(to, from, next)
+        if (!rolePassed) {
+            return // 权限不足，已在守卫中处理跳转
         }
     } else if (to.name === 'Login' && authStore.isLoggedIn) {
         // 已登录用户访问登录页，跳转到首页
@@ -215,6 +201,7 @@ router.beforeEach(async (to, _from, next) => {
         return
     }
 
+    // 3. 所有检查通过，允许导航
     next()
 })
 
