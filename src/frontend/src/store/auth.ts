@@ -2,6 +2,9 @@ import { defineStore } from 'pinia'
 import { login, register, getUserInfo, updateUserProfile } from '@/apis/auth'
 import type { UpdateUserProfileRequest } from '@/types/auth'
 import i18n from '@/i18n'
+import { SafeStorage, StorageKeys, isValidUserInfo } from '@/utils/storage'
+import { logger } from '@/utils/logger'
+import { ErrorHandler } from '@/utils/errorHandler'
 
 // 类型定义
 export interface LoginRequest {
@@ -23,13 +26,13 @@ export interface UserInfo {
 
 export const useAuthStore = defineStore('auth', {
   state: () => {
-    // 从localStorage恢复用户信息
-    const savedUser = localStorage.getItem('mediagent_user')
-    const user = savedUser ? JSON.parse(savedUser) : null
-    
+    // 从 localStorage 恢复用户信息（使用类型安全的方式）
+    const user = SafeStorage.getJSON<UserInfo>(StorageKeys.USER, isValidUserInfo)
+    const token = SafeStorage.getString(StorageKeys.TOKEN)
+
     return {
       user: user as UserInfo | null,
-      token: localStorage.getItem('mediagent_token') || null,
+      token: token || null,
       isAuthenticated: false
     }
   },
@@ -50,9 +53,9 @@ export const useAuthStore = defineStore('auth', {
           this.token = token
           this.isAuthenticated = true
           if (token) {
-            localStorage.setItem('mediagent_token', token)
+            SafeStorage.setString(StorageKeys.TOKEN, token)
           }
-          
+
           // 登录成功后获取用户信息
           await this.fetchUserInfo()
           return { success: true, message: response.message }
@@ -60,10 +63,11 @@ export const useAuthStore = defineStore('auth', {
           return { success: false, message: response.message || i18n.global.t('views_LoginView.messages.loginFailed') }
         }
       } catch (error: any) {
-        console.error('Login error:', error)
-        return { 
-          success: false, 
-          message: error.response?.data?.message || i18n.global.t('views_LoginView.messages.loginFailedNetwork') 
+        logger.error('Login error:', error)
+        const appError = ErrorHandler.handle(error, 'userLogin')
+        return {
+          success: false,
+          message: ErrorHandler.getUserMessage(appError)
         }
       }
     },
@@ -72,7 +76,7 @@ export const useAuthStore = defineStore('auth', {
     async userRegister(userData: RegisterRequest) {
       try {
         const response = await register(userData)
-        
+
         // 检查是否成功
         if (response.code === 200) {
           // 优先使用 data.message，否则使用默认消息
@@ -82,12 +86,11 @@ export const useAuthStore = defineStore('auth', {
           return { success: false, message: response.message || i18n.global.t('views_LoginView.messages.registerFailed') }
         }
       } catch (error: any) {
-        console.error('Register error:', error)
-        // 尝试从后端错误响应中获取详细错误信息
-        const errorMessage = error.response?.data?.message || error.message || i18n.global.t('views_LoginView.messages.registerFailedNetwork')
-        return { 
-          success: false, 
-          message: errorMessage
+        logger.error('Register error:', error)
+        const appError = ErrorHandler.handle(error, 'userRegister')
+        return {
+          success: false,
+          message: ErrorHandler.getUserMessage(appError)
         }
       }
     },
@@ -95,11 +98,11 @@ export const useAuthStore = defineStore('auth', {
     // 获取用户信息
     async fetchUserInfo() {
       if (!this.token) return null
-      
+
       try {
         const response = await getUserInfo()
         const userData = response.data
-        
+
         if (userData && userData.uid) {
           this.user = {
             uid: userData.uid,
@@ -107,12 +110,12 @@ export const useAuthStore = defineStore('auth', {
             role: userData.role || 'user',
             avatar: userData.avatar
           }
-          
-          localStorage.setItem('mediagent_user', JSON.stringify(this.user))
+
+          SafeStorage.setJSON(StorageKeys.USER, this.user)
           return this.user
         }
       } catch (error: any) {
-        console.error('Fetch user info error:', error)
+        logger.error('Fetch user info error:', error)
         // 如果获取用户信息失败，可能是token过期，清除认证状态
         this.logout()
       }
@@ -124,9 +127,8 @@ export const useAuthStore = defineStore('auth', {
       this.user = null
       this.token = null
       this.isAuthenticated = false
-      localStorage.removeItem('mediagent_token')
-      // 清除所有相关的本地存储
-      localStorage.removeItem('mediagent_user')
+      SafeStorage.remove(StorageKeys.TOKEN)
+      SafeStorage.remove(StorageKeys.USER)
     },
 
     // 检查认证状态
@@ -176,15 +178,16 @@ export const useAuthStore = defineStore('auth', {
             role: updatedUser.role || 'user',
             avatar: updatedUser.avatar
           }
-          
-          // 保存到localStorage
-          localStorage.setItem('mediagent_user', JSON.stringify(this.user))
-          
+
+          // 保存到 localStorage
+          SafeStorage.setJSON(StorageKeys.USER, this.user)
+
           return this.user
         }
       } catch (error: any) {
-        console.error('Update user profile error:', error)
-        throw error
+        logger.error('Update user profile error:', error)
+        const appError = ErrorHandler.handle(error, 'updateUserProfile')
+        throw appError
       }
     }
   }

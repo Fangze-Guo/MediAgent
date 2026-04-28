@@ -3,6 +3,9 @@
  * 提供统一的请求配置、拦截器和错误处理
  */
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError, InternalAxiosRequestConfig } from 'axios'
+import { logger } from './logger'
+import { ErrorHandler } from './errorHandler'
+import { SafeStorage, StorageKeys } from './storage'
 
 /**
  * API基础配置接口
@@ -69,21 +72,27 @@ const createAxiosInstance = (): AxiosInstance => {
   instance.interceptors.request.use(
     (config: InternalAxiosRequestConfig) => {
       // 添加认证token
-      const token = localStorage.getItem('mediagent_token')
+      const token = SafeStorage.getString(StorageKeys.TOKEN)
       if (token) {
         config.headers.set('Authorization', `Bearer ${token}`)
       }
-      
+
       // 如果是 FormData，删除默认的 Content-Type，让浏览器自动设置（包含 boundary）
       if (config.data instanceof FormData) {
         config.headers.delete('Content-Type')
       }
-      
-      console.log('发送请求:', config.method?.toUpperCase(), config.url)
+
+      // 记录请求日志
+      logger.logRequest(
+        config.method?.toUpperCase() || 'GET',
+        config.url || '',
+        config.data
+      )
+
       return config
     },
     (error: AxiosError) => {
-      console.error('请求拦截器错误:', error)
+      logger.error('请求拦截器错误:', error)
       return Promise.reject(error)
     }
   )
@@ -91,54 +100,39 @@ const createAxiosInstance = (): AxiosInstance => {
   // 响应拦截器
   instance.interceptors.response.use(
     (response: AxiosResponse) => {
-      console.log('收到响应:', response.status, response.config.url)
+      // 记录响应日志
+      logger.logResponse(
+        response.config.method?.toUpperCase() || 'GET',
+        response.config.url || '',
+        response.status,
+        response.data
+      )
       return response
     },
     (error: AxiosError) => {
-      console.error('响应拦截器错误:', error)
-      
-      // 统一错误处理
-      const apiError: ApiError = {
-        message: error.message || '请求失败',
-        status: error.response?.status,
-        originalError: error
-      }
+      // 记录错误日志
+      logger.logError(
+        error.config?.method?.toUpperCase() || 'GET',
+        error.config?.url || '',
+        error
+      )
 
-      // 根据状态码处理不同错误
-      if (error.response) {
-        // 服务器响应了错误状态码
-        const status = error.response.status
-        switch (status) {
-          case 400:
-            apiError.message = '请求参数错误'
-            break
-          case 401:
-            apiError.message = '未授权，请重新登录'
-            // 清除过期的token
-            localStorage.removeItem('mediagent_token')
-            // 如果当前不在登录页，跳转到登录页
-            if (window.location.pathname !== '/login') {
-              window.location.href = '/login'
-            }
-            break
-          case 403:
-            apiError.message = '拒绝访问'
-            break
-          case 404:
-            apiError.message = '请求的资源不存在'
-            break
-          case 500:
-            apiError.message = '服务器内部错误'
-            break
-          default:
-            apiError.message = `请求失败 (${status})`
+      // 使用统一错误处理
+      const appError = ErrorHandler.fromHttpError(error)
+
+      // 401 错误特殊处理
+      if (appError.code === 401) {
+        // 清除过期的token
+        SafeStorage.remove(StorageKeys.TOKEN)
+        SafeStorage.remove(StorageKeys.USER)
+
+        // 如果当前不在登录页，跳转到登录页
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login'
         }
-      } else if (error.request) {
-        // 请求已发出但没有收到响应
-        apiError.message = '网络连接失败，请检查网络'
       }
 
-      return Promise.reject(apiError)
+      return Promise.reject(appError)
     }
   )
 
@@ -262,11 +256,9 @@ export type { ApiResponse, ApiError, ApiConfig }
  * 与参考项目 claudecodeui 的 authenticatedFetch 保持一致
  */
 export const authenticatedFetch = (url: string, options: RequestInit = {}): Promise<Response> => {
-  const token = localStorage.getItem('mediagent_token')
+  const token = SafeStorage.getString(StorageKeys.TOKEN)
 
-  const defaultHeaders: Record<string, string> = {
-    'Content-Type': 'application/json',
-  }
+  const defaultHeaders: Record<string, string> = {}
 
   // Only set Content-Type for non-FormData requests
   if (!(options.body instanceof FormData)) {
