@@ -595,6 +595,8 @@
       "medicalConsultation": "Code Agent",
       "ragKnowledgeBase": "RAG Knowledge Base",
       "ctDiagnosis": "CT Diagnosis",
+      "bodycomp": "Body Composition",
+      "spine": "Spine",
       "modelConfig": "Model Configuration",
       "logoutConfirm": {
         "title": "Confirm Logout",

@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@ant-design/icons-vue": "^7.0.1",
+    "@iconify/vue": "^5.0.0",
     "ant-design-vue": "^4.2.6",
     "axios": "^1.11.0",
     "date-fns": "^4.1.0",

@@ -11,6 +11,7 @@ import Antd from 'ant-design-vue'
 import 'ant-design-vue/dist/reset.css'
 import i18n from '@/i18n'
 import { useAuthStore } from '@/store/auth'
+import { Icon } from '@iconify/vue'
 
 /**
  * 创建Vue应用实例
@@ -28,11 +29,13 @@ const pinia = createPinia()
  * 2. Vue Router - 路由管理
  * 3. i18n - 国际化
  * 4. Ant Design Vue - UI组件库
+ * 5. Iconify Icon - 图标组件
  */
 app.use(pinia)
 app.use(router)
 app.use(i18n)
 app.use(Antd)
+app.component('Icon', Icon)
 
 /**
  * 挂载应用到DOM

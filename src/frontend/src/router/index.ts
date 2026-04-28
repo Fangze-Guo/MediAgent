@@ -104,11 +104,20 @@ const routes: RouteRecordRaw[] = [
         }
     },
     {
-        path: '/code-agent',
-        name: 'CodeAgent',
+        path: '/bodycomp-agent',
+        name: 'BodycompAgent',
         component: () => import('@/views/clinical_tools/code_agent/CodeAgentView.vue'),
         meta: {
-            title: 'MediAgent - Code Agent',
+            title: 'MediAgent - Bodycomp Agent',
+            requiresAuth: true
+        }
+    },
+    {
+        path: '/spine-agent',
+        name: 'SpineAgent',
+        component: () => import('@/views/clinical_tools/code_agent/CodeAgentView.vue'),
+        meta: {
+            title: 'MediAgent - Spine Agent',
             requiresAuth: true
         }
     },

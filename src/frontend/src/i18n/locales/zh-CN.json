@@ -538,6 +538,8 @@
       "medicalConsultation": "Code 智能体",
       "ragKnowledgeBase": "RAG 知识库",
       "ctDiagnosis": "CT 诊断",
+      "bodycomp": "体成分",
+      "spine": "脊柱",
       "modelConfig": "模型配置",
       "logoutConfirm": {
         "title": "确认退出",

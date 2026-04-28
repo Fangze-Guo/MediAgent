@@ -141,18 +141,16 @@ import {
   CommentOutlined,
   DatabaseOutlined,
   EditOutlined,
-  FileAddOutlined,
   FileTextOutlined,
   FolderOutlined,
   LogoutOutlined,
   MedicineBoxOutlined,
-  MessageOutlined,
-  ReconciliationOutlined,
   RobotOutlined,
   SettingOutlined,
   ToolOutlined,
   UnorderedListOutlined
 } from '@ant-design/icons-vue'
+import { Icon } from '@iconify/vue'
 import { MenuProps, message, Modal } from 'ant-design-vue'
 import { computed, h, nextTick, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -253,19 +251,38 @@ const items = computed(() =>[
     label: t('components_Sidebar.clinicalTools'),
     children: [
       {
-        key: 'code-agent',
-        icon: () => h(MessageOutlined),
-        label: t('components_Sidebar.medicalConsultation'),
-      },
-      {
         key: 'rag-knowledge-base',
-        icon: () => h(FileAddOutlined),
+        icon: () => h(Icon, { icon: 'healthicons:i-documents-accepted', style: { fontSize: '20px' } }),
         label: t('components_Sidebar.ragKnowledgeBase'),
       },
       {
         key: 'ct-diagnosis',
-        icon: () => h(ReconciliationOutlined),
+        icon: () => h(Icon, { icon: 'healthicons:radiology', style: { fontSize: '20px' } }),
         label: t('components_Sidebar.ctDiagnosis'),
+      },
+      {
+        key: 'bodycomp',
+        icon: () => h(Icon, { icon: 'healthicons:body', style: { fontSize: '20px' } }),
+        label: t('components_Sidebar.bodycomp'),
+        children: [
+          {
+            key: 'bodycomp-agent',
+            icon: () => h(RobotOutlined, { style: { fontSize: '14px' } }),
+            label: 'Agent',
+          },
+        ],
+      },
+      {
+        key: 'spine',
+        icon: () => h(Icon, { icon: 'healthicons:spine', style: { fontSize: '20px' } }),
+        label: t('components_Sidebar.spine'),
+        children: [
+          {
+            key: 'spine-agent',
+            icon: () => h(RobotOutlined, { style: { fontSize: '14px' } }),
+            label: 'Agent',
+          },
+        ],
       },
     ],
   },
@@ -318,16 +335,20 @@ const selectedKeys = computed(() => {
     return ['home']
   }
 
-  if (path === '/code-agent') {
-    return ['code-agent']
-  }
-
   if (path === '/rag-knowledge-base') {
     return ['rag-knowledge-base']
   }
 
   if (path === '/ct-diagnosis') {
     return ['ct-diagnosis']
+  }
+
+  if (path === '/bodycomp-agent') {
+    return ['bodycomp-agent']
+  }
+
+  if (path === '/spine-agent') {
+    return ['spine-agent']
   }
 
   return []
@@ -357,15 +378,18 @@ const handleMenuClick: MenuProps['onClick'] = ({key}) => {
   } else if (key === 'model-config') {
     // 跳转到模型配置页面
     router.push('/model-config')
-  } else if (key === 'code-agent') {
-    // 跳转到Code智能体页面
-    router.push('/code-agent')
   } else if (key === 'rag-knowledge-base') {
     // 跳转到RAG知识库页面
     router.push('/rag-knowledge-base')
   } else if (key === 'ct-diagnosis') {
     // 跳转到CT诊断页面
     router.push('/ct-diagnosis')
+  } else if (key === 'bodycomp-agent') {
+    // 跳转到体成分Agent页面
+    router.push('/bodycomp-agent')
+  } else if (key === 'spine-agent') {
+    // 跳转到脊柱Agent页面
+    router.push('/spine-agent')
   }
 }
 
@@ -674,6 +698,13 @@ const getConversationAvatarStyle = (conversation: any) => {
 /* 子菜单标题中的图标大小 */
 :deep(.ant-menu-submenu-title .anticon) {
   font-size: 18px !important;
+}
+
+/* Iconify 图标对齐调整 */
+:deep(.ant-menu-submenu-title .iconify) {
+  font-size: 18px !important;
+  vertical-align: -0.125em !important;
+  display: inline-block !important;
 }
 
 :deep(.ant-menu-inline) {
