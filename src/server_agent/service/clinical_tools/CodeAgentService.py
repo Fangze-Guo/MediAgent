@@ -8,6 +8,7 @@ import logging
 from typing import AsyncGenerator, List, Optional
 
 from src.server_agent.agent.claude import get_code_agent, get_agent_type, MessageKind
+from src.server_agent.agent.claude.project_config import get_project_config
 from src.server_agent.exceptions import (
     ValidationError, NotFoundError, handle_service_exception
 )
@@ -31,8 +32,18 @@ class CodeAgentService:
             mapper: 可选，外部传入的 mapper 实例（用于共享连接池）
         """
         self.mapper = mapper if mapper is not None else CodeAgentMapper()
-        self.code_agent = get_code_agent()
         logger.info(f"[CodeAgentService] Using agent type: {get_agent_type()}")
+
+    def _get_agent_for_project(self, project_id: Optional[str] = None):
+        """根据 project_id 获取对应的隔离 Agent"""
+        if project_id:
+            config = get_project_config(project_id)
+            if config:
+                logger.info(f"[CodeAgentService] Using isolated agent for project: {project_id}")
+                return get_code_agent(config)
+            else:
+                logger.warning(f"[CodeAgentService] Unknown project_id: {project_id}, using default agent")
+        return get_code_agent()
 
     @handle_service_exception
     async def stream_chat(
@@ -73,6 +84,9 @@ class CodeAgentService:
 
         sdk_session_id = existing.session_id
 
+        # 根据 project_id 获取对应的隔离 Agent
+        code_agent = self._get_agent_for_project(existing.project_id)
+
         # 如果没有 session_id，说明是首次发消息，需要调用 SDK 获取
         if not sdk_session_id:
             logger.info(f"[CodeAgentService] First message for conversation {conversation_id}, SDK will create new session")
@@ -83,7 +97,7 @@ class CodeAgentService:
             full_content = ""
 
             # 使用 SDK 进行流式对话
-            async for chunk_json in self.code_agent.stream_chat(current_message, sdk_session_id):
+            async for chunk_json in code_agent.stream_chat(current_message, sdk_session_id):
                 chunk_data = json.loads(chunk_json)
                 kind = chunk_data.get("kind", "")
 
@@ -155,32 +169,39 @@ class CodeAgentService:
         return full_content
 
     async def confirm_permission(self, session_id: str):
-        """确认权限请求"""
-        await self.code_agent.confirm_permission(session_id)
+        """确认权限请求 — 转发到默认 Agent（权限队列是全局的）"""
+        agent = get_code_agent()
+        await agent.confirm_permission(session_id)
 
     async def cancel_permission(self, session_id: str):
         """取消权限请求"""
-        await self.code_agent.cancel_permission(session_id)
+        agent = get_code_agent()
+        await agent.cancel_permission(session_id)
 
     async def interrupt_session(self, session_id: str) -> bool:
         """中断会话"""
-        return await self.code_agent.interrupt(session_id)
+        agent = get_code_agent()
+        return await agent.interrupt(session_id)
 
     @handle_service_exception
     async def create_conversation(
         self,
         user_id: int,
-        title: Optional[str] = None
+        title: Optional[str] = None,
+        project_id: Optional[str] = None
     ) -> ConversationInfo:
         """创建新会话"""
         if not user_id:
             raise ValidationError(detail="user_id is required")
 
-        conversation = await self.mapper.create_conversation(user_id=user_id, title=title)
+        conversation = await self.mapper.create_conversation(
+            user_id=user_id, title=title, project_id=project_id
+        )
 
         return ConversationInfo(
             conversation_id=conversation.conversation_id,
             user_id=conversation.user_id,
+            project_id=conversation.project_id,
             title=conversation.title,
             created_at=conversation.created_at,
             updated_at=conversation.updated_at,
@@ -193,12 +214,15 @@ class CodeAgentService:
         self,
         user_id: int,
         limit: int = 50,
-        offset: int = 0
+        offset: int = 0,
+        project_id: Optional[str] = None
     ) -> List[ConversationInfo]:
         """获取用户的会话列表"""
         if not user_id:
             raise ValidationError(detail="user_id is required")
-        return await self.mapper.get_conversations_by_user(user_id, limit, offset)
+        return await self.mapper.get_conversations_by_user(
+            user_id, limit, offset, project_id
+        )
 
     @handle_service_exception
     async def get_conversation_detail(

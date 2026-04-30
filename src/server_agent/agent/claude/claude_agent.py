@@ -18,6 +18,13 @@ from claude_agent_sdk.types import (
     PermissionResultDeny,
 )
 
+try:
+    from .project_config import ProjectConfig
+    from .tool_policy import ToolPolicy
+except ImportError:
+    from project_config import ProjectConfig
+    from tool_policy import ToolPolicy
+
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """
@@ -158,7 +165,11 @@ class NormalizedMessage:
 class ClaudeAgent:
     """Claude Code Agent类 - 使用 ClaudeSDKClient 模式"""
 
-    def __init__(self, permission_mode: str = "bypassPermissions"):
+    def __init__(
+        self,
+        permission_mode: str = "bypassPermissions",
+        project_config: Optional[ProjectConfig] = None,
+    ):
         """
         初始化 Claude Code Agent
 
@@ -167,8 +178,19 @@ class ClaudeAgent:
                 - bypassPermissions: 跳过权限检查（默认）
                 - plan: AI 先输出计划，等待用户确认
                 - default: 需要权限确认（通过队列机制实现）
+            project_config: 项目配置（传入后启用工具/路径隔离）
         """
         self._permission_mode = permission_mode  # type: ignore
+        self._project_config = project_config
+        self._tool_policy: Optional[ToolPolicy] = None
+        if project_config:
+            self._tool_policy = ToolPolicy(project_config)
+            logger.info(
+                f"[ClaudeAgent] 启用项目隔离: project={project_config.project_id}, "
+                f"base_dir={project_config.base_dir}, "
+                f"allowed_tools={project_config.allowed_tools}"
+            )
+
         self._last_session_id: Optional[str] = None
         self._active_sessions: dict[str, asyncio.Event] = {}
 
@@ -202,6 +224,15 @@ class ClaudeAgent:
         logger.info(f"[PERMISSION] ===== Hook called! Tool: {tool_name} =====")
         logger.info(f"[PERMISSION] Input data: {input_data}")
         logger.info(f"[PERMISSION] Context: {context}")
+
+        # ===== MVP-2: 工具白名单 + 路径校验 =====
+        if self._tool_policy:
+            allowed, deny_reason = self._tool_policy.validate_tool_call(
+                tool_name, input_data
+            )
+            if not allowed:
+                logger.warning(f"[PERMISSION] ToolPolicy denied: {deny_reason}")
+                return PermissionResultDeny(message=deny_reason or "工具调用被拒绝")
 
         # 从 context 中获取 session_id
         session_id = None
@@ -296,11 +327,22 @@ class ClaudeAgent:
 
         # 创建新的 client
         logger.info(f"[CLIENT] Creating new client with permission_mode={self._permission_mode}, is_resume={is_resume}")
+
+        # 使用项目专属 system_prompt（如果有），否则使用默认
+        system_prompt = SYSTEM_PROMPT
+        if self._project_config and self._project_config.system_prompt:
+            system_prompt = self._project_config.system_prompt
+
+        # 使用项目 base_dir 作为 cwd（如果有），否则使用当前目录
+        cwd = str(Path.cwd())
+        if self._project_config:
+            cwd = str(self._project_config.base_dir)
+
         options = ClaudeAgentOptions(
-            cwd=str(Path.cwd()),
+            cwd=cwd,
             resume=session_id if is_resume else None,  # 仅恢复已有会话时才传 resume
             permission_mode=self._permission_mode,  # type: ignore
-            system_prompt=SYSTEM_PROMPT,
+            system_prompt=system_prompt,
             can_use_tool=self._can_use_tool_hook,  # type: ignore
             hooks={
                 "PreToolUse": [
@@ -761,17 +803,33 @@ class ClaudeAgent:
         return False
 
 
-# 全局 Agent 实例
-_agent_instance: Optional[ClaudeAgent] = None
+# 全局 Agent 实例（按项目隔离）
+_agent_instances: dict[str, ClaudeAgent] = {}
+_default_agent: Optional[ClaudeAgent] = None
 
 
-def get_code_agent() -> ClaudeAgent:
-    """获取全局 Agent 实例"""
-    global _agent_instance
-    if _agent_instance is None:
-        # 使用 default 模式启用权限确认
-        _agent_instance = ClaudeAgent(permission_mode="default")
-    return _agent_instance
+def get_code_agent(project_config: Optional[ProjectConfig] = None) -> ClaudeAgent:
+    """获取 Agent 实例
+
+    Args:
+        project_config: 项目配置。传入后返回该项目的隔离 Agent；
+                        不传则返回默认全局 Agent（向后兼容）。
+    """
+    global _default_agent
+
+    if project_config:
+        pid = project_config.project_id
+        if pid not in _agent_instances:
+            _agent_instances[pid] = ClaudeAgent(
+                permission_mode="default",
+                project_config=project_config,
+            )
+        return _agent_instances[pid]
+
+    # 向后兼容：无 project_config 时返回默认实例
+    if _default_agent is None:
+        _default_agent = ClaudeAgent(permission_mode="default")
+    return _default_agent
 
 
 def get_agent_type() -> str:

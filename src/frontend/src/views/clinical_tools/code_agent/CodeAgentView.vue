@@ -286,8 +286,10 @@
               <div class="welcome-icon">
                 <CodeOutlined />
               </div>
-              <h2 class="welcome-title">{{ t('views_CodeAgentView.welcomeTitle') || 'Code 智能体' }}</h2>
-              <p class="welcome-subtitle">{{ t('views_CodeAgentView.welcomeSubtitle') || '强大的代码助手，帮助您高效完成开发任务' }}</p>
+              <h2 class="welcome-title">{{ projectDisplayName }}</h2>
+              <p class="welcome-subtitle" v-if="currentProjectId === 'bc'">CT 体成分分割与定量分析助手</p>
+              <p class="welcome-subtitle" v-else-if="currentProjectId === 'spine'">CT 脊柱分割与椎体分析助手</p>
+              <p class="welcome-subtitle" v-else>{{ t('views_CodeAgentView.welcomeSubtitle') || '强大的代码助手，帮助您高效完成开发任务' }}</p>
 
               <div class="feature-cards">
                 <div class="feature-card" @click="startNewConversation">
@@ -347,6 +349,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
 import {
   PlusOutlined,
@@ -382,6 +385,21 @@ import {
 } from '@/apis/codeAgent'
 
 const { t } = useI18n()
+const route = useRoute()
+
+// 根据当前路由判断项目标识
+const currentProjectId = computed(() => {
+  if (route.name === 'BodycompAgent') return 'bc'
+  if (route.name === 'SpineAgent') return 'spine'
+  return undefined
+})
+
+// 项目显示名称
+const projectDisplayName = computed(() => {
+  if (currentProjectId.value === 'bc') return '体成分分析'
+  if (currentProjectId.value === 'spine') return '脊柱分析'
+  return 'Code 智能体'
+})
 
 // 搜索关键词
 const searchKeyword = ref('')
@@ -863,7 +881,7 @@ const loadConversations = async () => {
   }
   loadingConversations.value = true
   try {
-    const response = await getConversations()
+    const response = await getConversations(50, 0, currentProjectId.value)
     if (response.code === 200 && response.data) {
       conversations.value = response.data
     } else {
@@ -946,7 +964,7 @@ const handleSearch = () => {
 // 开始新对话 - 调用 API 创建会话
 const startNewConversation = async () => {
   try {
-    const response = await createConversation({})
+    const response = await createConversation({ project_id: currentProjectId.value })
     if (response.code === 200 && response.data) {
       // 选中新创建的会话
       await selectConversation(response.data)
@@ -1012,7 +1030,7 @@ const handleSendMessage = async () => {
   // 如果没有选中会话，先创建新会话
   if (isNewConversation) {
     try {
-      const resp = await createConversation({})
+      const resp = await createConversation({ project_id: currentProjectId.value })
       if (resp.code === 200 && resp.data) {
         await selectConversation(resp.data)
         await loadConversations()
@@ -1201,6 +1219,21 @@ onUnmounted(() => {
   if (resizeObserver) {
     resizeObserver.disconnect()
     resizeObserver = null
+  }
+})
+
+// 监听路由变化，切换项目时重新加载会话列表
+watch(() => route.name, (newRouteName, oldRouteName) => {
+  // 只在 BC 和 Spine 页面之间切换时重新加载
+  if ((newRouteName === 'BodycompAgent' || newRouteName === 'SpineAgent') &&
+      (oldRouteName === 'BodycompAgent' || oldRouteName === 'SpineAgent') &&
+      newRouteName !== oldRouteName) {
+    // 清空当前选中的会话
+    selectedConversationId.value = null
+    selectedConversation.value = null
+    messages.value = []
+    // 重新加载会话列表
+    loadConversations()
   }
 })
 

@@ -18,6 +18,7 @@ export interface ChatRequest {
   conversation_id?: string
   message: string
   messages?: ChatMessage[]  // 历史消息列表
+  project_id?: string  // 项目标识，如 bc, spine
 }
 
 /**
@@ -190,6 +191,7 @@ export type CodeEventType =
  */
 export interface CreateConversationRequest {
   title?: string
+  project_id?: string  // 项目标识，如 bc, spine
 }
 
 /**
@@ -410,11 +412,14 @@ export async function createConversation(request: CreateConversationRequest): Pr
  */
 export async function getConversations(
   limit: number = 50,
-  offset: number = 0
+  offset: number = 0,
+  project_id?: string
 ): Promise<BaseResponse<ConversationInfo[]>> {
-  const response = await get<BaseResponse<ConversationInfo[]>>(
-    `/code-agent/conversations?limit=${limit}&offset=${offset}`
-  )
+  let url = `/code-agent/conversations?limit=${limit}&offset=${offset}`
+  if (project_id) {
+    url += `&project_id=${project_id}`
+  }
+  const response = await get<BaseResponse<ConversationInfo[]>>(url)
   return response.data
 }
 

@@ -85,6 +85,11 @@ class CodeAgentMapper:
 
             if tables_exist:
                 logger.info("Medical consultations tables already exist")
+                # 增量迁移：为已有表添加 project_id 列
+                await conn.execute("""
+                    ALTER TABLE medical_conversations
+                    ADD COLUMN IF NOT EXISTS project_id VARCHAR(50)
+                """)
             else:
                 # 创建会话表 - 使用 UUID 作为 conversation_id
                 await conn.execute("""
@@ -93,6 +98,7 @@ class CodeAgentMapper:
                         conversation_id UUID UNIQUE NOT NULL,
                         session_id VARCHAR(255),
                         user_id BIGINT NOT NULL,
+                        project_id VARCHAR(50),
                         title VARCHAR(500),
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -120,7 +126,8 @@ class CodeAgentMapper:
         user_id: int,
         title: Optional[str] = None,
         conversation_id: Optional[str] = None,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
+        project_id: Optional[str] = None
     ) -> CodeAgentConversation:
         """
         创建新会话
@@ -130,6 +137,7 @@ class CodeAgentMapper:
             title: 会话标题（可选）
             conversation_id: 前端生成的会话ID（可选，默认自动生成）
             session_id: SDK 真实的 session_id（可选）
+            project_id: 项目标识，如 "bc", "spine"（可选）
 
         Returns:
             创建的会话对象
@@ -142,16 +150,17 @@ class CodeAgentMapper:
         async with pool.acquire() as conn:
             record = await conn.fetchrow("""
                 INSERT INTO medical_conversations
-                (conversation_id, session_id, user_id, title)
-                VALUES ($1, $2, $3, $4)
-                RETURNING id, conversation_id, session_id, user_id, title, created_at, updated_at
-            """, conversation_id, session_id, user_id, title)
+                (conversation_id, session_id, user_id, project_id, title)
+                VALUES ($1, $2, $3, $4, $5)
+                RETURNING id, conversation_id, session_id, user_id, project_id, title, created_at, updated_at
+            """, conversation_id, session_id, user_id, project_id, title)
 
         return CodeAgentConversation(
             id=record['id'],
             conversation_id=str(record['conversation_id']) if record['conversation_id'] else None,
             session_id=record['session_id'],
             user_id=record['user_id'],
+            project_id=record['project_id'],
             title=record['title'],
             created_at=record['created_at'],
             updated_at=record['updated_at']
@@ -161,7 +170,8 @@ class CodeAgentMapper:
         self,
         user_id: int,
         limit: int = 50,
-        offset: int = 0
+        offset: int = 0,
+        project_id: Optional[str] = None
     ) -> List[ConversationInfo]:
         """
         获取用户的会话列表
@@ -170,6 +180,7 @@ class CodeAgentMapper:
             user_id: 用户ID
             limit: 返回数量限制
             offset: 偏移量
+            project_id: 项目标识（可选），传入后只返回该项目的会话
 
         Returns:
             会话信息列表
@@ -178,21 +189,33 @@ class CodeAgentMapper:
 
         async with pool.acquire() as conn:
             # 获取会话基本信息
-            rows = await conn.fetch("""
-                SELECT
-                    c.id, c.conversation_id, c.session_id, c.user_id, c.title,
-                    c.created_at, c.updated_at
-                FROM medical_conversations c
-                WHERE c.user_id = $1
-                ORDER BY c.updated_at DESC
-                LIMIT $2 OFFSET $3
-            """, user_id, limit, offset)
+            if project_id:
+                rows = await conn.fetch("""
+                    SELECT
+                        c.id, c.conversation_id, c.session_id, c.user_id,
+                        c.project_id, c.title, c.created_at, c.updated_at
+                    FROM medical_conversations c
+                    WHERE c.user_id = $1 AND c.project_id = $2
+                    ORDER BY c.updated_at DESC
+                    LIMIT $3 OFFSET $4
+                """, user_id, project_id, limit, offset)
+            else:
+                rows = await conn.fetch("""
+                    SELECT
+                        c.id, c.conversation_id, c.session_id, c.user_id,
+                        c.project_id, c.title, c.created_at, c.updated_at
+                    FROM medical_conversations c
+                    WHERE c.user_id = $1
+                    ORDER BY c.updated_at DESC
+                    LIMIT $2 OFFSET $3
+                """, user_id, limit, offset)
 
         return [
             ConversationInfo(
                 conversation_id=str(row['conversation_id']) if row['conversation_id'] else None,
                 session_id=row['session_id'],
                 user_id=row['user_id'],
+                project_id=row['project_id'],
                 title=row['title'],
                 created_at=row['created_at'],
                 updated_at=row['updated_at'],
@@ -219,8 +242,8 @@ class CodeAgentMapper:
 
         async with pool.acquire() as conn:
             record = await conn.fetchrow("""
-                SELECT id, conversation_id, session_id, user_id, title,
-                       created_at, updated_at
+                SELECT id, conversation_id, session_id, user_id, project_id,
+                       title, created_at, updated_at
                 FROM medical_conversations
                 WHERE conversation_id = $1
             """, conversation_id)
@@ -231,6 +254,7 @@ class CodeAgentMapper:
                 conversation_id=str(record['conversation_id']) if record['conversation_id'] else None,
                 session_id=record['session_id'],
                 user_id=record['user_id'],
+                project_id=record['project_id'],
                 title=record['title'],
                 created_at=record['created_at'],
                 updated_at=record['updated_at']

@@ -14,6 +14,7 @@ class CodeAgentConversation:
     user_id: int
     conversation_id: Optional[str] = None  # UUID 格式的会话ID（前端生成）
     session_id: Optional[str] = None  # SDK 真实的 session_id
+    project_id: Optional[str] = None  # 项目标识，如 "bc", "spine"
     title: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -44,6 +45,7 @@ class ConversationInfo:
     user_id: int
     conversation_id: Optional[str] = None
     session_id: Optional[str] = None  # SDK 真实的 session_id
+    project_id: Optional[str] = None  # 项目标识
     title: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

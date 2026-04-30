@@ -22,10 +22,12 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     conversation_id: Optional[str] = Field(None, description="会话ID")
     message: str = Field(..., min_length=1, max_length=5000, description="消息文本")
+    project_id: Optional[str] = Field(None, description="项目标识，如 bc, spine")
 
 
 class CreateConversationRequest(BaseModel):
     title: Optional[str] = Field(None, max_length=500, description="会话标题")
+    project_id: Optional[str] = Field(None, description="项目标识，如 bc, spine")
 
 
 class UpdateConversationRequest(BaseModel):
@@ -354,6 +356,7 @@ class CodeAgentController(BaseController):
             conversation = await self.service.create_conversation(
                 user_id=user_vo.uid,
                 title=request.title,
+                project_id=request.project_id,
             )
 
             response = ConversationInfoResponse(
@@ -370,6 +373,7 @@ class CodeAgentController(BaseController):
 
         @self.router.get("/conversations")
         async def get_conversations(
+            project_id: Optional[str] = Query(None, description="项目标识，如 bc, spine"),
             limit: int = Query(50, ge=1, le=100, description="分页大小"),
             offset: int = Query(0, ge=0, description="偏移量"),
             user_vo: UserVO = Depends(self._get_current_user)
@@ -378,6 +382,7 @@ class CodeAgentController(BaseController):
                 user_id=user_vo.uid,
                 limit=limit,
                 offset=offset,
+                project_id=project_id,
             )
 
             response_list = [
