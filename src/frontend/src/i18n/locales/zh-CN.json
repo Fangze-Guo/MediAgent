@@ -533,13 +533,8 @@
       "files": "文件管理",
       "tasks": "任务管理",
       "datasets": "数据集管理",
-      "appStore": "工具仓库",
+      "skillStore": "Skill 仓库",
       "clinicalTools": "临床工具",
-      "medicalConsultation": "Code 智能体",
-      "ragKnowledgeBase": "RAG 知识库",
-      "ctDiagnosis": "CT 诊断",
-      "bodycomp": "体成分",
-      "spine": "脊柱",
       "modelConfig": "模型配置",
       "logoutConfirm": {
         "title": "确认退出",
@@ -1021,5 +1016,8 @@
       "arrow": "箭头",
       "text": "文字",
       "saveReport": "保存诊断报告"
+    },
+  "views_WorkflowView": {
+      "comingSoon": "功能开发中，敬请期待"
     }
   }

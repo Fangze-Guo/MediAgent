@@ -104,29 +104,29 @@ const routes: RouteRecordRaw[] = [
         }
     },
     {
-        path: '/bodycomp-agent',
-        name: 'BodycompAgent',
+        path: '/gl-nict-agent',
+        name: 'GlNictAgent',
         component: () => import('@/views/clinical_tools/code_agent/CodeAgentView.vue'),
         meta: {
-            title: 'MediAgent - Bodycomp Agent',
+            title: 'MediAgent - GL-NICT Agent',
             requiresAuth: true
         }
     },
     {
-        path: '/spine-agent',
-        name: 'SpineAgent',
-        component: () => import('@/views/clinical_tools/code_agent/CodeAgentView.vue'),
+        path: '/gl-nict-workflow',
+        name: 'GlNictWorkflow',
+        component: () => import('@/views/clinical_tools/WorkflowView.vue'),
         meta: {
-            title: 'MediAgent - Spine Agent',
+            title: 'MediAgent - GL-NICT Workflow',
             requiresAuth: true
         }
     },
     {
-        path: '/rag-knowledge-base',
-        name: 'RagKnowledgeBase',
+        path: '/gl-nict-knowledge-base',
+        name: 'GlNictKnowledgeBase',
         component: () => import('@/views/clinical_tools/rag/RagKnowledgeBaseView.vue'),
         meta: {
-            title: 'MediAgent - Rag Knowledge Base',
+            title: 'MediAgent - GL-NICT Knowledge Base',
             requiresAuth: true
         }
     },
@@ -145,15 +145,6 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/DocumentDetailView.vue'),
         meta: {
             title: 'MediAgent - Document Detail',
-            requiresAuth: true
-        }
-    },
-    {
-        path: '/ct-diagnosis',
-        name: 'CtDiagnosis',
-        component: () => import('@/views/clinical_tools/CtDiagnosisView.vue'),
-        meta: {
-            title: 'MediAgent - Ct Diagnosis',
             requiresAuth: true
         }
     },

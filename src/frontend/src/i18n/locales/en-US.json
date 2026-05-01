@@ -590,13 +590,8 @@
       "files": "File Management",
       "tasks": "Task Management",
       "datasets": "Dataset Management",
-      "appStore": "Tool Repository",
+      "skillStore": "Skill Repository",
       "clinicalTools": "Clinical Tools",
-      "medicalConsultation": "Code Agent",
-      "ragKnowledgeBase": "RAG Knowledge Base",
-      "ctDiagnosis": "CT Diagnosis",
-      "bodycomp": "Body Composition",
-      "spine": "Spine",
       "modelConfig": "Model Configuration",
       "logoutConfirm": {
         "title": "Confirm Logout",
@@ -1078,5 +1073,8 @@
       "arrow": "Arrow",
       "text": "Text",
       "saveReport": "Save Diagnosis Report"
+    },
+  "views_WorkflowView": {
+      "comingSoon": "Feature under development, stay tuned"
     }
   }

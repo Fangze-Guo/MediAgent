@@ -241,50 +241,38 @@ const items = computed(() =>[
     ],
   },
   {
-    key: 'app-store',
-    icon: () => h(AppstoreOutlined),
-    label: t('components_Sidebar.appStore'),
-  },
-  {
     key: 'clinical-tools',
     icon: () => h(MedicineBoxOutlined),
     label: t('components_Sidebar.clinicalTools'),
     children: [
       {
-        key: 'rag-knowledge-base',
-        icon: () => h(Icon, { icon: 'healthicons:i-documents-accepted', style: { fontSize: '20px' } }),
-        label: t('components_Sidebar.ragKnowledgeBase'),
-      },
-      {
-        key: 'ct-diagnosis',
-        icon: () => h(Icon, { icon: 'healthicons:radiology', style: { fontSize: '20px' } }),
-        label: t('components_Sidebar.ctDiagnosis'),
-      },
-      {
-        key: 'bodycomp',
-        icon: () => h(Icon, { icon: 'healthicons:body', style: { fontSize: '20px' } }),
-        label: t('components_Sidebar.bodycomp'),
+        key: 'gl-nict',
+        icon: () => h(Icon, { icon: 'healthicons:medical-records', style: { fontSize: '20px' } }),
+        label: 'GL-NICT',
         children: [
           {
-            key: 'bodycomp-agent',
-            icon: () => h(RobotOutlined, { style: { fontSize: '14px' } }),
+            key: 'gl-nict-agent',
+            icon: () => h(Icon, { icon: 'carbon:bot', style: { fontSize: '14px' } }),
             label: 'Agent',
           },
-        ],
-      },
-      {
-        key: 'spine',
-        icon: () => h(Icon, { icon: 'healthicons:spine', style: { fontSize: '20px' } }),
-        label: t('components_Sidebar.spine'),
-        children: [
           {
-            key: 'spine-agent',
-            icon: () => h(RobotOutlined, { style: { fontSize: '14px' } }),
-            label: 'Agent',
+            key: 'gl-nict-workflow',
+            icon: () => h(Icon, { icon: 'carbon:workflow-automation', style: { fontSize: '14px' } }),
+            label: 'Workflow',
+          },
+          {
+            key: 'gl-nict-knowledge-base',
+            icon: () => h(Icon, { icon: 'healthicons:i-documents-accepted', style: { fontSize: '14px' } }),
+            label: 'Knowledge base',
           },
         ],
       },
     ],
+  },
+  {
+    key: 'app-store',
+    icon: () => h(AppstoreOutlined),
+    label: t('components_Sidebar.skillStore'),
   },
   // 管理员专用菜单项
   ...(currentUser.value?.role === 'admin' ? [{
@@ -335,20 +323,16 @@ const selectedKeys = computed(() => {
     return ['home']
   }
 
-  if (path === '/rag-knowledge-base') {
-    return ['rag-knowledge-base']
+  if (path === '/gl-nict-agent') {
+    return ['gl-nict-agent']
   }
 
-  if (path === '/ct-diagnosis') {
-    return ['ct-diagnosis']
+  if (path === '/gl-nict-workflow') {
+    return ['gl-nict-workflow']
   }
 
-  if (path === '/bodycomp-agent') {
-    return ['bodycomp-agent']
-  }
-
-  if (path === '/spine-agent') {
-    return ['spine-agent']
+  if (path === '/gl-nict-knowledge-base' || path.startsWith('/knowledge-base/')) {
+    return ['gl-nict-knowledge-base']
   }
 
   return []
@@ -378,18 +362,15 @@ const handleMenuClick: MenuProps['onClick'] = ({key}) => {
   } else if (key === 'model-config') {
     // 跳转到模型配置页面
     router.push('/model-config')
-  } else if (key === 'rag-knowledge-base') {
-    // 跳转到RAG知识库页面
-    router.push('/rag-knowledge-base')
-  } else if (key === 'ct-diagnosis') {
-    // 跳转到CT诊断页面
-    router.push('/ct-diagnosis')
-  } else if (key === 'bodycomp-agent') {
-    // 跳转到体成分Agent页面
-    router.push('/bodycomp-agent')
-  } else if (key === 'spine-agent') {
-    // 跳转到脊柱Agent页面
-    router.push('/spine-agent')
+  } else if (key === 'gl-nict-agent') {
+    // 跳转到GL-NICT Agent页面
+    router.push('/gl-nict-agent')
+  } else if (key === 'gl-nict-workflow') {
+    // 跳转到GL-NICT Workflow页面
+    router.push('/gl-nict-workflow')
+  } else if (key === 'gl-nict-knowledge-base') {
+    // 跳转到GL-NICT Knowledge Base页面
+    router.push('/gl-nict-knowledge-base')
   }
 }
 

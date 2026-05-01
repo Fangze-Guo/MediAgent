@@ -52,6 +52,8 @@ SYSTEM_PROMPT = """
    - “正在进行脊柱分割”
    - “正在生成报告”
    而不是技术术语或系统描述
+
+5. 当用户询问或查找数据时，直接去/home/fetters/project/MediAgent/src/server_new/data/files下查找
 """
 
 class MessageKind:
