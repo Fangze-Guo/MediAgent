@@ -219,26 +219,9 @@ const items = computed(() =>[
     label: t('components_Sidebar.home'),
   },
   {
-    key: 'workspace',
-    icon: () => h(ToolOutlined),
-    label: t('components_Sidebar.workspace'),
-    children: [
-      {
-        key: 'files',
-        icon: () => h(FolderOutlined),
-        label: t('components_Sidebar.files'),
-      },
-      {
-        key: 'tasks',
-        icon: () => h(UnorderedListOutlined),
-        label: t('components_Sidebar.tasks'),
-      },
-      {
-        key: 'datasets',
-        icon: () => h(DatabaseOutlined),
-        label: t('components_Sidebar.datasets'),
-      },
-    ],
+    key: 'files',
+    icon: () => h(FolderOutlined),
+    label: t('components_Sidebar.files'),
   },
   {
     key: 'clinical-tools',

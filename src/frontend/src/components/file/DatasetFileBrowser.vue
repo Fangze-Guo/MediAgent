@@ -57,8 +57,17 @@
     </div>
 
     <div class="file-list" @drop="handleDrop" @dragover="handleDragOver" @dragenter="handleDragEnter"
-      @dragleave="handleDragLeave" :class="{ 'drag-over': isDragOver }">
-      <a-table :data-source="dataSource" :columns="columns" :pagination="false" :loading="fileStore.loading"
+      @dragleave="handleDragLeave" :class="{ 'drag-over': isDragOver, 'uploading': uploading }">
+      <!-- 上传遮罩层 -->
+      <div v-if="uploading" class="upload-overlay">
+        <div class="upload-overlay-content">
+          <a-spin size="large" />
+          <div class="upload-text">正在上传文件...</div>
+          <div class="upload-progress-text">{{ uploadProgress.current }} / {{ uploadProgress.total }}</div>
+        </div>
+      </div>
+
+      <a-table :data-source="dataSource" :columns="columns" :pagination="false" :loading="fileStore.loading || uploading"
         :row-selection="{ selectedRowKeys: fileStore.selectedFileIds, onChange: onSelectChange }" size="middle"
         class="file-table">
         <template #bodyCell="{ column, record }">
@@ -164,6 +173,8 @@ const authStore = useAuthStore()
 const previewVisible = ref(false)
 const previewFile = ref<any>(null)
 const isDragOver = ref(false)
+const uploading = ref(false)
+const uploadProgress = ref({ current: 0, total: 0 })
 const currentPath = ref('.')
 const parentPath = ref<string | null>(null)
 
@@ -491,20 +502,77 @@ const handleUploadClick = () => {
 }
 
 const uploadSelectedFiles = async (files: File[]) => {
+  if (!canWrite.value) {
+    message.error('当前目录没有上传权限')
+    return
+  }
+
+  uploading.value = true
+  uploadProgress.value = { current: 0, total: files.length }
+
+  // 显示加载提示
+  const hideLoading = message.loading({
+    content: `正在上传文件 (0/${files.length})...`,
+    duration: 0,
+    key: 'upload-progress'
+  })
+
   try {
-    for (const file of files) {
-      const result = await uploadFile(file, currentPath.value)
-      if (result.code === 200) {
-        await refresh()
-      } else {
-        throw new Error(result.message || t('components_DatasetFileBrowser.uploadSelectedFiles.1'))
+    let successCount = 0
+    let failedCount = 0
+    const errors: string[] = []
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      uploadProgress.value.current = i + 1
+
+      // 更新进度提示
+      message.loading({
+        content: `正在上传文件 (${i + 1}/${files.length}): ${file.name}`,
+        duration: 0,
+        key: 'upload-progress'
+      })
+
+      try {
+        const result = await uploadFile(file, currentPath.value)
+        if (result.code === 200) {
+          successCount++
+        } else {
+          failedCount++
+          errors.push(`${file.name}: ${result.message || '上传失败'}`)
+        }
+      } catch (error) {
+        failedCount++
+        errors.push(`${file.name}: ${(error as Error).message || '上传失败'}`)
       }
     }
-    message.success(t('components_DatasetFileBrowser.uploadSelectedFiles.2', { count: files.length }))
+
+    // 关闭加载提示
+    hideLoading()
+
+    // 刷新文件列表
+    await refresh()
+
+    // 显示结果
+    if (successCount > 0 && failedCount === 0) {
+      message.success(`成功上传 ${successCount} 个文件`)
+    } else if (successCount > 0 && failedCount > 0) {
+      message.warning(`成功上传 ${successCount} 个文件，失败 ${failedCount} 个`)
+      if (errors.length > 0) {
+        console.error('上传失败详情:', errors)
+      }
+    } else {
+      message.error(`上传失败，共 ${failedCount} 个文件`)
+      if (errors.length > 0) {
+        console.error('上传失败详情:', errors)
+      }
+    }
   } catch (error) {
-    message.error(t('components_DatasetFileBrowser.uploadSelectedFiles.3', {
-      message: (error as Error).message || t('components_DatasetFileBrowser.uploadSelectedFiles.4')
-    }))
+    hideLoading()
+    message.error(`上传过程出错: ${(error as Error).message || '未知错误'}`)
+  } finally {
+    uploading.value = false
+    uploadProgress.value = { current: 0, total: 0 }
   }
 }
 
@@ -586,12 +654,50 @@ onUnmounted(() => {
   background: white;
   border-radius: 6px;
   transition: all 0.3s ease;
+  position: relative;
 }
 
 .file-list.drag-over {
   background: #f0f9ff;
   border: 2px dashed #1890ff;
   box-shadow: 0 0 10px rgba(24, 144, 255, 0.3);
+}
+
+.file-list.uploading {
+  pointer-events: none;
+}
+
+/* 上传遮罩层 */
+.upload-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  border-radius: 6px;
+}
+
+.upload-overlay-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.upload-text {
+  font-size: 16px;
+  font-weight: 500;
+  color: #1890ff;
+}
+
+.upload-progress-text {
+  font-size: 14px;
+  color: #666;
 }
 
 .file-table {

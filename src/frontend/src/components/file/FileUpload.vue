@@ -138,7 +138,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   multiple: true,
   accept: 'image/*,.csv,.dcm,.DCM,.nii,.nii.gz',
-  maxSize: 500,
+  maxSize: 1024,
   currentPath: '.'
 })
 

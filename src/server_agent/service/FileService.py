@@ -21,7 +21,7 @@ class FileService:
     """文件服务类"""
 
     def __init__(self):
-        self.MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB（DICOM文件可能较大）
+        self.MAX_FILE_SIZE = 1024 * 1024 * 1024  # 1GB（DICOM文件可能较大）
         self.ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.csv', '.dcm', '.DCM', '.nii', '.nii.gz'}
 
     async def getDataSetFiles(self, target_path: str, user_id: int = None, role: str = 'user') -> FileListVO:
