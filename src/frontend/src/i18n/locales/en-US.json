@@ -1079,5 +1079,37 @@
     },
   "views_WorkflowView": {
       "comingSoon": "Feature under development, stay tuned"
+    },
+  "views_ClinicalToolsView": {
+      "logoText": "Clinical Tools",
+      "headerDescription": "Choose the clinical tools you need to start your intelligent diagnosis journey",
+      "searchPlaceholder": "Search tool name or description",
+      "allCategory": "All",
+      "sectionTitle": "Available Tools",
+      "resultsCount": "{count} projects",
+      "emptyText": "No matching tools found",
+      "emptyHint": "Please try other search keywords or categories",
+      "loading": "Loading...",
+      "categories": {
+        "all": "All",
+        "segmentation": "Segmentation",
+        "neoadjuvant": "Neoadjuvant Therapy"
+      },
+      "projects": {
+        "glNict": {
+          "name": "GL-NICT",
+          "description": "Neoadjuvant Immunotherapy Intelligent Diagnosis System"
+        }
+      },
+      "tools": {
+        "glNictAgent": {
+          "name": "Agent",
+          "description": "AI-driven intelligent diagnosis assistant providing personalized treatment recommendations"
+        },
+        "glNictKnowledgeBase": {
+          "name": "Knowledge Base",
+          "description": "Medical literature and clinical guideline management with intelligent search"
+        }
+      }
     }
   }

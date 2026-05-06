@@ -227,30 +227,6 @@ const items = computed(() =>[
     key: 'clinical-tools',
     icon: () => h(MedicineBoxOutlined),
     label: t('components_Sidebar.clinicalTools'),
-    children: [
-      {
-        key: 'gl-nict',
-        icon: () => h(Icon, { icon: 'healthicons:medical-records', style: { fontSize: '20px' } }),
-        label: 'GL-NICT',
-        children: [
-          {
-            key: 'gl-nict-agent',
-            icon: () => h(Icon, { icon: 'carbon:bot', style: { fontSize: '14px' } }),
-            label: t('components_Sidebar.agent'),
-          },
-          {
-            key: 'gl-nict-workflow',
-            icon: () => h(Icon, { icon: 'carbon:workflow-automation', style: { fontSize: '14px' } }),
-            label: t('components_Sidebar.workflow'),
-          },
-          {
-            key: 'gl-nict-knowledge-base',
-            icon: () => h(Icon, { icon: 'healthicons:i-documents-accepted', style: { fontSize: '14px' } }),
-            label: t('components_Sidebar.knowledgeBase'),
-          },
-        ],
-      },
-    ],
   },
   {
     key: 'app-store',
@@ -271,8 +247,8 @@ const items = computed(() =>[
  * - /conversation/:id → 不高亮（显示对话项高亮）
  * - /app-store → 高亮"工具仓库"
  * - /files → 高亮"文件管理"
- * - /tasks → 高亮"任务管理"
- * - /datasets → 高亮"数据集管理"
+ * - /clinical-tools → 高亮"临床工具"
+ * - /gl-nict-* → 高亮"临床工具"
  * - / → 高亮"新建对话"
  */
 const selectedKeys = computed(() => {
@@ -290,32 +266,19 @@ const selectedKeys = computed(() => {
     return ['files']
   }
 
-  if (path === '/tasks') {
-    return ['tasks']
-  }
-
-  if (path === '/datasets') {
-    return ['datasets']
-  }
-
   if (path === '/model-config') {
     return ['model-config']
   }
 
+  // 临床工具相关页面都高亮"临床工具"菜单
+  if (path === '/clinical-tools' ||
+      path.startsWith('/gl-nict-') ||
+      path.startsWith('/knowledge-base/')) {
+    return ['clinical-tools']
+  }
+
   if (path === '/') {
     return ['home']
-  }
-
-  if (path === '/gl-nict-agent') {
-    return ['gl-nict-agent']
-  }
-
-  if (path === '/gl-nict-workflow') {
-    return ['gl-nict-workflow']
-  }
-
-  if (path === '/gl-nict-knowledge-base' || path.startsWith('/knowledge-base/')) {
-    return ['gl-nict-knowledge-base']
   }
 
   return []
@@ -333,27 +296,15 @@ const handleMenuClick: MenuProps['onClick'] = ({key}) => {
   } else if (key === 'files') {
     // 跳转到文件管理页面
     router.push('/files')
-  } else if (key === 'tasks') {
-    // 跳转到任务管理页面
-    router.push('/tasks')
-  } else if (key === 'datasets') {
-    // 跳转到数据集管理页面
-    router.push('/datasets')
+  } else if (key === 'clinical-tools') {
+    // 跳转到临床工具主页面
+    router.push('/clinical-tools')
   } else if (key === 'app-store') {
     // 跳转到应用商店页面
     router.push('/app-store')
   } else if (key === 'model-config') {
     // 跳转到模型配置页面
     router.push('/model-config')
-  } else if (key === 'gl-nict-agent') {
-    // 跳转到GL-NICT Agent页面
-    router.push('/gl-nict-agent')
-  } else if (key === 'gl-nict-workflow') {
-    // 跳转到GL-NICT Workflow页面
-    router.push('/gl-nict-workflow')
-  } else if (key === 'gl-nict-knowledge-base') {
-    // 跳转到GL-NICT Knowledge Base页面
-    router.push('/gl-nict-knowledge-base')
   }
 }
 

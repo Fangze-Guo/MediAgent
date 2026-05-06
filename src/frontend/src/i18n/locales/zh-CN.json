@@ -1022,5 +1022,37 @@
     },
   "views_WorkflowView": {
       "comingSoon": "功能开发中，敬请期待"
+    },
+  "views_ClinicalToolsView": {
+      "logoText": "临床工具",
+      "headerDescription": "选择您需要使用的临床工具，开启智能诊疗之旅",
+      "searchPlaceholder": "搜索工具名称或描述",
+      "allCategory": "全部",
+      "sectionTitle": "可用工具",
+      "resultsCount": "{count} 个项目",
+      "emptyText": "未找到匹配的工具",
+      "emptyHint": "请尝试其他搜索关键词或分类",
+      "loading": "加载中...",
+      "categories": {
+        "all": "全部",
+        "segmentation": "分割",
+        "neoadjuvant": "新辅助治疗"
+      },
+      "projects": {
+        "glNict": {
+          "name": "GL-NICT",
+          "description": "新辅助免疫治疗智能诊疗系统"
+        }
+      },
+      "tools": {
+        "glNictAgent": {
+          "name": "智能体",
+          "description": "AI 驱动的智能诊疗助手，提供个性化治疗建议"
+        },
+        "glNictKnowledgeBase": {
+          "name": "知识库",
+          "description": "医学文献与临床指南管理，支持智能检索"
+        }
+      }
     }
   }

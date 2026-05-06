@@ -104,6 +104,15 @@ const routes: RouteRecordRaw[] = [
         }
     },
     {
+        path: '/clinical-tools',
+        name: 'ClinicalTools',
+        component: () => import('@/views/clinical_tools/ClinicalToolsView.vue'),
+        meta: {
+            title: 'MediAgent - Clinical Tools',
+            requiresAuth: true
+        }
+    },
+    {
         path: '/gl-nict-agent',
         name: 'GlNictAgent',
         component: () => import('@/views/clinical_tools/code_agent/CodeAgentView.vue'),
