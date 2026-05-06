@@ -40,16 +40,6 @@
             </div>
           </div>
 
-          <!-- Skill 说明文档 -->
-          <div class="section markdown-section">
-            <div class="markdown-content">
-              <MarkdownRenderer 
-                :content="skill.full_description || skill.features || ''" 
-                :enable-highlight="true" 
-              />
-            </div>
-          </div>
-
           <!-- 文件浏览器 -->
           <div class="section files-section">
             <h2 class="section-title">
@@ -57,7 +47,21 @@
               文件浏览
             </h2>
             <div class="files-content">
-              <SkillFileExplorer :skill-id="skillId" />
+              <GitHubStyleFileList :skill-id="skillId" />
+            </div>
+          </div>
+
+          <!-- Skill 说明文档 -->
+          <div class="section markdown-section">
+            <h2 class="section-title">
+              <FileTextOutlined style="margin-right: 8px" />
+              README
+            </h2>
+            <div class="markdown-content">
+              <MarkdownRenderer
+                :content="skill.full_description || skill.features || ''"
+                :enable-highlight="true"
+              />
             </div>
           </div>
         </div>
@@ -127,7 +131,7 @@ import {
 } from '@ant-design/icons-vue'
 import { getSkillDetail, getSkills, type SkillInfo } from '@/apis/skills'
 import MarkdownRenderer from '@/components/markdown-renderer/MarkdownRenderer.vue'
-import SkillFileExplorer from '@/components/SkillFileExplorer.vue'
+import GitHubStyleFileList from '@/components/GitHubStyleFileList.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -324,6 +328,12 @@ onMounted(() => {
   padding: 24px;
 }
 
+.markdown-section .section-title {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e8eaed;
+}
+
 .markdown-content {
   color: #202124;
   line-height: 1.6;
@@ -335,7 +345,7 @@ onMounted(() => {
 }
 
 .files-content {
-  margin-top: 16px;
+  margin-top: 0;
 }
 
 /* 右侧信息栏 */
