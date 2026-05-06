@@ -253,17 +253,17 @@ const items = computed(() =>[
           {
             key: 'gl-nict-agent',
             icon: () => h(Icon, { icon: 'carbon:bot', style: { fontSize: '14px' } }),
-            label: 'Agent',
+            label: t('components_Sidebar.agent'),
           },
           {
             key: 'gl-nict-workflow',
             icon: () => h(Icon, { icon: 'carbon:workflow-automation', style: { fontSize: '14px' } }),
-            label: 'Workflow',
+            label: t('components_Sidebar.workflow'),
           },
           {
             key: 'gl-nict-knowledge-base',
             icon: () => h(Icon, { icon: 'healthicons:i-documents-accepted', style: { fontSize: '14px' } }),
-            label: 'Knowledge base',
+            label: t('components_Sidebar.knowledgeBase'),
           },
         ],
       },

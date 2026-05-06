@@ -398,7 +398,7 @@ const currentProjectId = computed(() => {
 const projectDisplayName = computed(() => {
   if (currentProjectId.value === 'bc') return '体成分分析'
   if (currentProjectId.value === 'spine') return '脊柱分析'
-  return 'Code 智能体'
+  return t('views_CodeAgentView.title')
 })
 
 // 搜索关键词

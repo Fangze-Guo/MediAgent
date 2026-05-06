@@ -542,7 +542,10 @@
         "okText": "退出",
         "cancelText": "取消",
         "successMessage": "已退出登录"
-      }
+      },
+      "agent": "智能体",
+      "workflow": "工作流",
+      "knowledgeBase": "知识库"
     },
   "components_UserProfileModal": {
       "changeAvatar": "更换头像",
@@ -867,7 +870,7 @@
       }
     },
     "views_CodeAgentView": {
-      "title": "Code 智能体",
+      "title": "GL-NICT 智能体",
       "placeholder": "功能开发中，敬请期待",
       "conversationList": "会话列表",
       "newSession": "新建会话",

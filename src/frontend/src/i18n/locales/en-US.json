@@ -599,7 +599,10 @@
         "okText": "Log out",
         "cancelText": "Cancel",
         "successMessage": "Logged out successfully"
-      }
+      },
+      "agent": "Agent",
+      "workflow": "Workflow",
+      "knowledgeBase": "Knowledge Base"
     },
   "components_UserProfileModal": {
       "changeAvatar": "Change Avatar",
@@ -924,7 +927,7 @@
       }
     },
     "views_CodeAgentView": {
-      "title": "Code Agent",
+      "title": "GL-NICT Agent",
       "placeholder": "Feature under development, stay tuned",
       "conversationList": "Conversation List",
       "newSession": "New Session",

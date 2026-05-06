@@ -27,8 +27,11 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """
+SYSTEM_PROMPT_TEMPLATE = """
 你是一个医学影像处理助手。
+
+【用户信息】
+当前用户ID: {user_id}
 
 【输出规范】
 1. 所有输出必须：
@@ -53,8 +56,14 @@ SYSTEM_PROMPT = """
    - “正在生成报告”
    而不是技术术语或系统描述
 
-5. 当用户询问或查找数据时，直接去/home/fetters/project/MediAgent/src/server_new/data/files下查找
-"""
+5. 当用户询问或查找数据时，直接去/home/fetters/project/MediAgent/src/server_new/data/files/private/{user_id}/dataset下查找
+""".strip()
+
+
+def get_system_prompt(user_id: Optional[int] = None) -> str:
+    """根据 user_id 生成 system prompt"""
+    uid = str(user_id) if user_id is not None else "unknown"
+    return SYSTEM_PROMPT_TEMPLATE.replace("{user_id}", uid)
 
 class MessageKind:
     """消息类型常量 - 与参考项目一致"""
@@ -308,13 +317,14 @@ class ClaudeAgent:
         if session_id in self._permission_events:
             self._permission_events[session_id].set()
 
-    async def _get_or_create_client(self, session_id: Optional[str] = None, is_resume: bool = False) -> tuple[ClaudeSDKClient, str]:
+    async def _get_or_create_client(self, session_id: Optional[str] = None, is_resume: bool = False, user_id: Optional[int] = None) -> tuple[ClaudeSDKClient, str]:
         """
         获取或创建 ClaudeSDKClient 实例
 
         Args:
             session_id: 会话ID
             is_resume: 是否为恢复已有会话（True 时使用 resume 参数）
+            user_id: 用户ID，注入到 system_prompt 中
 
         Returns:
             (client, session_id) 元组
@@ -330,8 +340,8 @@ class ClaudeAgent:
         # 创建新的 client
         logger.info(f"[CLIENT] Creating new client with permission_mode={self._permission_mode}, is_resume={is_resume}")
 
-        # 使用项目专属 system_prompt（如果有），否则使用默认
-        system_prompt = SYSTEM_PROMPT
+        # 使用项目专属 system_prompt（如果有），否则根据 user_id 生成
+        system_prompt = get_system_prompt(user_id)
         if self._project_config and self._project_config.system_prompt:
             system_prompt = self._project_config.system_prompt
 
@@ -377,6 +387,7 @@ class ClaudeAgent:
         prompt: str,
         session_id: Optional[str] = None,
         ws_callback: Optional[callable] = None,
+        user_id: Optional[int] = None,
     ) -> AsyncGenerator[NormalizedMessage, None]:
         """
         执行查询并流式输出结果（使用 ClaudeSDKClient）
@@ -385,6 +396,7 @@ class ClaudeAgent:
             prompt: 用户提示词
             session_id: 会话ID（用于恢复会话）
             ws_callback: 回调函数
+            user_id: 用户ID
 
         Yields:
             标准化消息
@@ -410,7 +422,7 @@ class ClaudeAgent:
 
         try:
             # 获取或创建 client
-            client, _ = await self._get_or_create_client(captured_session_id, is_resume=is_resume)
+            client, _ = await self._get_or_create_client(captured_session_id, is_resume=is_resume, user_id=user_id)
             self._last_session_id = captured_session_id
 
             logger.info(f"[QUERY] Starting query with {self._permission_mode} mode, session={captured_session_id}")
@@ -594,7 +606,8 @@ class ClaudeAgent:
         current_message: str,
         session_id: Optional[str] = None,
         is_file: bool = False,
-        use_stream_json: bool = True
+        use_stream_json: bool = True,
+        user_id: Optional[int] = None,
     ) -> AsyncGenerator[str, None]:
         """
         流式对话 - 输出与参考项目一致的格式
@@ -605,6 +618,7 @@ class ClaudeAgent:
             session_id: 会话ID
             is_file: 是否为文件路径（SDK模式不支持）
             use_stream_json: 是否使用流式 JSON 输出格式
+            user_id: 用户ID
 
         Yields:
             JSON 字符串
@@ -644,7 +658,7 @@ class ClaudeAgent:
         # 后台任务：处理消息流
         async def message_stream_handler():
             try:
-                async for msg in self.query(current_message, session_id):
+                async for msg in self.query(current_message, session_id, user_id=user_id):
                     await output_queue.put(("message", msg))
             except Exception as e:
                 logger.error(f"[MESSAGE_STREAM] Error: {e}")
@@ -766,7 +780,8 @@ class ClaudeAgent:
         current_message: str,
         session_id: Optional[str] = None,
         is_file: bool = False,
-        use_stream_json: bool = True
+        use_stream_json: bool = True,
+        user_id: Optional[int] = None,
     ) -> str:
         """
         同步对话（非流式）
@@ -776,12 +791,13 @@ class ClaudeAgent:
             session_id: 会话ID
             is_file: 是否为文件路径
             use_stream_json: 是否使用流式 JSON 输出格式
+            user_id: 用户ID
 
         Returns:
             AI的完整回复
         """
         full_content = ""
-        async for chunk in self.stream_chat(current_message, session_id, is_file, use_stream_json):
+        async for chunk in self.stream_chat(current_message, session_id, is_file, use_stream_json, user_id=user_id):
             try:
                 event_data = json.loads(chunk.strip())
                 if event_data.get("content"):

@@ -97,7 +97,7 @@ class CodeAgentService:
             full_content = ""
 
             # 使用 SDK 进行流式对话
-            async for chunk_json in code_agent.stream_chat(current_message, sdk_session_id):
+            async for chunk_json in code_agent.stream_chat(current_message, sdk_session_id, user_id=user_id):
                 chunk_data = json.loads(chunk_json)
                 kind = chunk_data.get("kind", "")
 
