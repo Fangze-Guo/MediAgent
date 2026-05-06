@@ -35,8 +35,8 @@
 
 <script lang="ts" setup>
 import { ref, onMounted, watch } from 'vue'
-import Sidebar from '@/components/Sidebar.vue'
-import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
+import Sidebar from '@/components/common/Sidebar.vue'
+import LanguageSwitcher from '@/components/common/LanguageSwitcher.vue'
 import { MenuUnfoldOutlined, MenuFoldOutlined } from '@ant-design/icons-vue'
 import { useConversationsStore } from '@/store/conversations'
 import { useAuthStore } from '@/store/auth'

@@ -15,16 +15,16 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/login',
         name: 'Login',
-        component: () => import('@/views/LoginView.vue'),
-        meta: { 
+        component: () => import('@/views/auth/LoginView.vue'),
+        meta: {
             title: 'MediAgent - Login',
-            requiresAuth: false 
+            requiresAuth: false
         }
     },
     {
         path: '/',
         name: 'Home',
-        component: () => import('@/views/HomeView.vue'),
+        component: () => import('@/views/home/HomeView.vue'),
         meta: {
             title: 'MediAgent - Home',
             requiresAuth: true
@@ -33,7 +33,7 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/conversation/:id',
         name: 'Conversation',
-        component: () => import('@/views/ChatView.vue'),
+        component: () => import('@/views/chat/ChatView.vue'),
         meta: {
             title: 'MediAgent - Conversation',
             requiresAuth: true
@@ -42,7 +42,7 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/files',
         name: 'files',
-        component: () => import('@/views/FileManageView.vue'),
+        component: () => import('@/views/file/FileManageView.vue'),
         meta: {
             title: 'MediAgent - Files',
             requiresAuth: true
@@ -51,7 +51,7 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/tasks',
         name: 'Tasks',
-        component: () => import('@/views/TaskManageView.vue'),
+        component: () => import('@/views/dataset/TaskManageView.vue'),
         meta: {
             title: 'MediAgent - Tasks',
             requiresAuth: true
@@ -60,7 +60,7 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/datasets',
         name: 'Datasets',
-        component: () => import('@/views/DatasetManageView.vue'),
+        component: () => import('@/views/dataset/DatasetManageView.vue'),
         meta: {
             title: 'MediAgent - Datasets',
             requiresAuth: true
@@ -69,7 +69,7 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/settings',
         name: 'Settings',
-        component: () => import('@/views/SettingsView.vue'),
+        component: () => import('@/views/settings/SettingsView.vue'),
         meta: {
             title: 'MediAgent - Settings',
             requiresAuth: true
@@ -78,7 +78,7 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/skill-store',
         name: 'SkillStore',
-        component: () => import('@/views/SkillStoreView.vue'),
+        component: () => import('@/views/skill-store/SkillStoreView.vue'),
         meta: {
             title: 'MediAgent - Skill Store',
             requiresAuth: true
@@ -87,7 +87,7 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/skill-store/:id',
         name: 'SkillDetail',
-        component: () => import('@/views/SkillDetailView.vue'),
+        component: () => import('@/views/skill-store/SkillDetailView.vue'),
         meta: {
             title: 'MediAgent - Skill Detail',
             requiresAuth: true
@@ -96,7 +96,7 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/model-config',
         name: 'ModelConfig',
-        component: () => import('@/views/ModelConfigView.vue'),
+        component: () => import('@/views/model/ModelConfigView.vue'),
         meta: {
             title: 'MediAgent - Model Config',
             requiresAuth: true,
@@ -106,7 +106,7 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/clinical-tools',
         name: 'ClinicalTools',
-        component: () => import('@/views/clinical_tools/ClinicalToolsView.vue'),
+        component: () => import('@/views/clinical-tools/ClinicalToolsView.vue'),
         meta: {
             title: 'MediAgent - Clinical Tools',
             requiresAuth: true
@@ -115,7 +115,7 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/gl-nict-agent',
         name: 'GlNictAgent',
-        component: () => import('@/views/clinical_tools/code_agent/CodeAgentView.vue'),
+        component: () => import('@/views/clinical-tools/code_agent/CodeAgentView.vue'),
         meta: {
             title: 'MediAgent - GL-NICT Agent',
             requiresAuth: true
@@ -124,7 +124,7 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/gl-nict-workflow',
         name: 'GlNictWorkflow',
-        component: () => import('@/views/clinical_tools/WorkflowView.vue'),
+        component: () => import('@/views/clinical-tools/WorkflowView.vue'),
         meta: {
             title: 'MediAgent - GL-NICT Workflow',
             requiresAuth: true
@@ -133,7 +133,7 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/gl-nict-knowledge-base',
         name: 'GlNictKnowledgeBase',
-        component: () => import('@/views/clinical_tools/rag/RagKnowledgeBaseView.vue'),
+        component: () => import('@/views/clinical-tools/rag/RagKnowledgeBaseView.vue'),
         meta: {
             title: 'MediAgent - GL-NICT Knowledge Base',
             requiresAuth: true
@@ -142,7 +142,7 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/knowledge-base/:id',
         name: 'KnowledgeBaseDetail',
-        component: () => import('@/views/clinical_tools/rag/RagKnowledgeBaseDetailView.vue'),
+        component: () => import('@/views/clinical-tools/rag/RagKnowledgeBaseDetailView.vue'),
         meta: {
             title: 'MediAgent - Knowledge Base Detail',
             requiresAuth: true
@@ -151,7 +151,7 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/knowledge-base/:kbId/document/:docId',
         name: 'DocumentDetail',
-        component: () => import('@/views/DocumentDetailView.vue'),
+        component: () => import('@/views/dataset/DocumentDetailView.vue'),
         meta: {
             title: 'MediAgent - Document Detail',
             requiresAuth: true

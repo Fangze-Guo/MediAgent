@@ -18,7 +18,7 @@ import { useI18n } from 'vue-i18n'
 import enUS from 'ant-design-vue/es/locale/en_US'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import Layout from '@/layout/Layout.vue'
-import LoginView from '@/views/LoginView.vue'
+import LoginView from '@/views/auth/LoginView.vue'
 import GlobalFileUpload from '@/components/file/GlobalFileUpload.vue'
 
 const route = useRoute()
