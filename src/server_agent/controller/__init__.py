@@ -17,12 +17,12 @@ from src.server_new.mediagent.modules.conversation_manager import ConversationMa
 from src.server_new.mediagent.modules.task_manager import AsyncTaskManager
 from src.server_new.mediagent.paths import DATA_DIR, in_data, in_mediagent
 
-from .AppStoreController import AppStoreController
 from .clinical_tools.CodeAgentController import CodeAgentController
 from .ConversationController import ConversationController
 from .DatasetController import DatasetController
 from .FileController import FileController
 from .ModelController import ModelController
+from .SkillController import SkillController
 from .TaskController import TaskController
 from .UserController import UserController
 
@@ -150,7 +150,7 @@ def create_app() -> FastAPI:
     user_controller = UserController()
     conversation_controller = ConversationController()
     model_controller = ModelController()
-    app_store_controller = AppStoreController()
+    skill_controller = SkillController()
     task_controller = TaskController()
     dataset_controller = DatasetController()
     code_agent_controller = CodeAgentController()
@@ -160,7 +160,7 @@ def create_app() -> FastAPI:
     app.include_router(user_controller.router)
     app.include_router(conversation_controller.router)
     app.include_router(model_controller.router)
-    app.include_router(app_store_controller.router)
+    app.include_router(skill_controller.router)
     app.include_router(task_controller.router)
     app.include_router(dataset_controller.router)
     app.include_router(code_agent_controller.router)
@@ -177,7 +177,7 @@ __all__ = [
     "UserController",
     "ConversationController",
     "ModelController",
-    "AppStoreController",
+    "SkillController",
     "TaskController",
     "DatasetController",
     "CodeAgentController",

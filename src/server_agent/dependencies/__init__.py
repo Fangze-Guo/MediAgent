@@ -10,8 +10,7 @@ from .services import (
     get_file_service,
     get_dataset_service,
     get_task_service,
-    get_model_config_service,
-    get_app_store_service
+    get_model_config_service
 )
 
 __all__ = [
@@ -26,5 +25,4 @@ __all__ = [
     "get_dataset_service",
     "get_task_service",
     "get_model_config_service",
-    "get_app_store_service",
 ]

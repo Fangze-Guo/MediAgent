@@ -76,20 +76,20 @@ const routes: RouteRecordRaw[] = [
         }
     },
     {
-        path: '/app-store',
-        name: 'AppStore',
-        component: () => import('@/views/AppStoreView.vue'),
+        path: '/skill-store',
+        name: 'SkillStore',
+        component: () => import('@/views/SkillStoreView.vue'),
         meta: {
-            title: 'MediAgent - AppStore',
+            title: 'MediAgent - Skill Store',
             requiresAuth: true
         }
     },
     {
-        path: '/app-store/:id',
-        name: 'AppDetail',
-        component: () => import('@/views/AppDetailView.vue'),
+        path: '/skill-store/:id',
+        name: 'SkillDetail',
+        component: () => import('@/views/SkillDetailView.vue'),
         meta: {
-            title: 'MediAgent - AppDetail',
+            title: 'MediAgent - Skill Detail',
             requiresAuth: true
         }
     },

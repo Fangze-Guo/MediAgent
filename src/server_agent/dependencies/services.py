@@ -10,7 +10,6 @@ from src.server_agent.service.FileService import FileService
 from src.server_agent.service.DatasetService import DatasetService
 from src.server_agent.service.TaskService import TaskService
 from src.server_agent.service.ModelConfigService import ModelConfigService
-from src.server_agent.service.AppStoreService import AppStoreService
 
 
 # ==================== 服务实例缓存 ====================
@@ -22,7 +21,6 @@ _file_service: Optional[FileService] = None
 _dataset_service: Optional[DatasetService] = None
 _task_service: Optional[TaskService] = None
 _model_config_service: Optional[ModelConfigService] = None
-_app_store_service: Optional[AppStoreService] = None
 
 
 # ==================== 服务依赖函数 ====================
@@ -78,14 +76,6 @@ def get_model_config_service() -> ModelConfigService:
     return _model_config_service
 
 
-def get_app_store_service() -> AppStoreService:
-    """获取应用商店服务实例"""
-    global _app_store_service
-    if _app_store_service is None:
-        _app_store_service = AppStoreService()
-    return _app_store_service
-
-
 # CodeAgent 服务需要特殊处理，因为它依赖 FastAPI app.state
 def get_code_agent_service():
     """
@@ -103,12 +93,11 @@ def get_code_agent_service():
 def clear_service_cache():
     """清理所有服务缓存（用于测试或重启）"""
     global _user_service, _conversation_service, _file_service
-    global _dataset_service, _task_service, _model_config_service, _app_store_service
-    
+    global _dataset_service, _task_service, _model_config_service
+
     _user_service = None
     _conversation_service = None
     _file_service = None
     _dataset_service = None
     _task_service = None
     _model_config_service = None
-    _app_store_service = None

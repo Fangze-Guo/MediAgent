@@ -229,7 +229,7 @@ const items = computed(() =>[
     label: t('components_Sidebar.clinicalTools'),
   },
   {
-    key: 'app-store',
+    key: 'skill-store',
     icon: () => h(AppstoreOutlined),
     label: t('components_Sidebar.skillStore'),
   },
@@ -258,8 +258,8 @@ const selectedKeys = computed(() => {
     return []
   }
 
-  if (path === '/app-store') {
-    return ['app-store']
+  if (path === '/skill-store' || path.startsWith('/skill-store/')) {
+    return ['skill-store']
   }
 
   if (path === '/files') {
@@ -299,9 +299,9 @@ const handleMenuClick: MenuProps['onClick'] = ({key}) => {
   } else if (key === 'clinical-tools') {
     // 跳转到临床工具主页面
     router.push('/clinical-tools')
-  } else if (key === 'app-store') {
-    // 跳转到应用商店页面
-    router.push('/app-store')
+  } else if (key === 'skill-store') {
+    // 跳转到技能仓库页面
+    router.push('/skill-store')
   } else if (key === 'model-config') {
     // 跳转到模型配置页面
     router.push('/model-config')
