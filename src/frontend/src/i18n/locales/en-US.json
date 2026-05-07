@@ -21,6 +21,23 @@
     "category": "Category",
     "status": "Status"
   },
+  "breadcrumb": {
+    "home": "Home",
+    "conversation": "Conversation",
+    "files": "File Management",
+    "tasks": "Task Management",
+    "datasets": "Dataset Management",
+    "settings": "Settings",
+    "skillStore": "Skill Store",
+    "skillDetail": "Skill Detail",
+    "modelConfig": "Model Configuration",
+    "clinicalTools": "Clinical Tools",
+    "glNictAgent": "GL-NICT Agent",
+    "glNictWorkflow": "GL-NICT Workflow",
+    "glNictKnowledgeBase": "GL-NICT Knowledge Base",
+    "knowledgeBaseDetail": "Knowledge Base Detail",
+    "documentDetail": "Document Detail"
+  },
   "task": {
     "title": "Task List",
     "searchPlaceholder": "Search task name",

@@ -240,13 +240,13 @@ const navigateTo = (path: string) => {
 /* ==================== 整体布局 ==================== */
 .clinical-tools {
   min-height: 100vh;
-  background: #f5f7fa;
+  background: var(--bg-secondary);
 }
 
 /* ==================== 顶部导航栏 ==================== */
 .tools-header {
-  background: white;
-  border-bottom: 1px solid #e5e7eb;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
   position: sticky;
   top: 0;
   z-index: 100;
@@ -296,13 +296,13 @@ const navigateTo = (path: string) => {
 .logo-title {
   font-size: 24px;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--text-primary);
   margin: 0 0 4px 0;
 }
 
 .logo-subtitle {
   font-size: 14px;
-  color: #6b7280;
+  color: var(--text-secondary);
   margin: 0;
   line-height: 1.5;
 }
@@ -317,8 +317,8 @@ const navigateTo = (path: string) => {
 
 /* ==================== 分类标签栏 ==================== */
 .categories-bar {
-  background: white;
-  border-bottom: 1px solid #e5e7eb;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
   position: sticky;
   top: 89px;
   z-index: 99;
@@ -342,7 +342,7 @@ const navigateTo = (path: string) => {
   padding: 16px 0;
   font-size: 14px;
   font-weight: 500;
-  color: #6b7280;
+  color: var(--text-secondary);
   cursor: pointer;
   white-space: nowrap;
   border-bottom: 2px solid transparent;
@@ -350,12 +350,12 @@ const navigateTo = (path: string) => {
 }
 
 .category-tab:hover {
-  color: #1890ff;
+  color: var(--link-color);
 }
 
 .category-tab.active {
-  color: #1890ff;
-  border-bottom-color: #1890ff;
+  color: var(--link-color);
+  border-bottom-color: var(--link-color);
 }
 
 /* ==================== 主内容区 ==================== */
@@ -383,13 +383,13 @@ const navigateTo = (path: string) => {
 .loading-state p,
 .empty-text {
   font-size: 16px;
-  color: #6b7280;
+  color: var(--text-secondary);
   margin-top: 16px;
 }
 
 .empty-hint {
   font-size: 14px;
-  color: #9ca3af;
+  color: var(--text-tertiary);
   margin-top: 8px;
 }
 
@@ -404,13 +404,13 @@ const navigateTo = (path: string) => {
 .section-title {
   font-size: 20px;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--text-primary);
   margin: 0;
 }
 
 .results-count {
   font-size: 14px;
-  color: #6b7280;
+  color: var(--text-secondary);
 }
 
 /* ==================== 项目网格 ==================== */
@@ -422,8 +422,8 @@ const navigateTo = (path: string) => {
 
 /* ==================== 项目卡片 ==================== */
 .project-card {
-  background: white;
-  border: 1px solid #e5e7eb;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
   border-radius: 12px;
   overflow: hidden;
   transition: all 0.2s ease;
@@ -431,13 +431,13 @@ const navigateTo = (path: string) => {
 
 .project-card:hover {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  border-color: #d1d5db;
+  border-color: var(--border-color-light);
 }
 
 /* 项目头部 */
 .project-header {
   padding: 24px;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--bg-secondary);
   display: flex;
   align-items: flex-start;
   gap: 16px;
@@ -468,12 +468,12 @@ const navigateTo = (path: string) => {
   font-size: 20px;
   font-weight: 600;
   margin: 0 0 8px 0;
-  color: #1f2937;
+  color: var(--text-primary);
 }
 
 .project-description {
   font-size: 14px;
-  color: #6b7280;
+  color: var(--text-secondary);
   margin: 0;
   line-height: 1.6;
 }
@@ -490,7 +490,7 @@ const navigateTo = (path: string) => {
   justify-content: space-between;
   padding: 16px;
   margin-bottom: 12px;
-  background: #f9fafb;
+  background: var(--bg-secondary);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -502,8 +502,8 @@ const navigateTo = (path: string) => {
 }
 
 .tool-item:hover {
-  background: white;
-  border-color: #1890ff;
+  background: var(--bg-primary);
+  border-color: var(--link-color);
   box-shadow: 0 2px 8px rgba(24, 144, 255, 0.1);
 }
 
@@ -518,7 +518,7 @@ const navigateTo = (path: string) => {
 .tool-icon-wrapper {
   width: 40px;
   height: 40px;
-  background: white;
+  background: var(--bg-primary);
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -538,26 +538,26 @@ const navigateTo = (path: string) => {
 .tool-name {
   font-size: 15px;
   font-weight: 500;
-  color: #1f2937;
+  color: var(--text-primary);
   margin: 0 0 4px 0;
 }
 
 .tool-description {
   font-size: 13px;
-  color: #6b7280;
+  color: var(--text-secondary);
   margin: 0;
   line-height: 1.5;
 }
 
 .tool-arrow {
   flex-shrink: 0;
-  color: #d1d5db;
+  color: var(--border-color);
   font-size: 14px;
   transition: all 0.2s ease;
 }
 
 .tool-item:hover .tool-arrow {
-  color: #1890ff;
+  color: var(--link-color);
 }
 
 /* ==================== 响应式设计 ==================== */

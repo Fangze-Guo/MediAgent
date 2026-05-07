@@ -45,7 +45,7 @@ const handleSearch = () => {
 
 <style scoped>
 .file-manage {
-  background-color: #f0f2f5;
+  background-color: var(--bg-secondary);
   border-radius: 8px;
   margin: 12px;
   padding: 16px;
@@ -53,7 +53,7 @@ const handleSearch = () => {
 }
 
 .content {
-  background: white;
+  background: var(--bg-primary);
   padding: 0;
   border-radius: 8px;
 }
@@ -64,11 +64,11 @@ const handleSearch = () => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 20px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-color-light);
 }
 
 .top-toolbar {
-  background: #fafafa;
+  background: var(--bg-secondary);
   border-top-left-radius: 8px;
   border-top-right-radius: 8px;
 }
@@ -77,7 +77,7 @@ const handleSearch = () => {
   margin: 0;
   font-size: 20px;
   font-weight: 500;
-  color: #333;
+  color: var(--text-primary);
 }
 
 /* 文件列表容器 */
@@ -87,12 +87,12 @@ const handleSearch = () => {
 
 .file-info h3 {
   margin: 0;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .file-info p {
   margin: 0;
-  color: #666;
+  color: var(--text-secondary);
   font-size: 14px;
 }
 

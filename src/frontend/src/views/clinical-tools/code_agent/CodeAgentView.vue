@@ -1265,7 +1265,7 @@ onUnmounted(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #f5f7fa;
+  background: var(--bg-secondary);
   box-sizing: border-box;
   overflow: hidden;
 }
@@ -1282,7 +1282,7 @@ onUnmounted(() => {
   margin: 0;
   font-size: 24px;
   font-weight: 600;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .content-grid {
@@ -1310,15 +1310,15 @@ onUnmounted(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  border: 1px solid #e8e8e8;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
 
 /* 穿透 Ant Design Card 内部，打通 Flex 布局 */
 :deep(.list-card > .ant-card-head) {
-  border-bottom: 1px solid #e8e8e8;
-  background: #fafbfc;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
   border-radius: 8px 8px 0 0;
 }
 
@@ -1330,6 +1330,7 @@ onUnmounted(() => {
   min-height: 0;
   overflow: hidden;
   padding: 16px;
+  background: var(--bg-primary);
 }
 
 .card-title-row {
@@ -1356,26 +1357,31 @@ onUnmounted(() => {
 
 .conversation-item {
   padding: 12px;
-  border: 1px solid #e8e8e8;
+  border: 1px solid var(--border-color-light);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.3s ease;
   position: relative;
   flex-shrink: 0;
   min-width: 0;
-  background: #fff;
+  background: var(--bg-primary);
 }
 
 .conversation-item:hover {
-  background-color: #f9f9f9;
+  background-color: var(--hover-bg);
   border-color: #40a9ff;
   box-shadow: 0 2px 8px rgba(24, 144, 255, 0.15);
 }
 
 .conversation-item.active {
-  background: linear-gradient(135deg, #e6f7ff 0%, #f0f5ff 100%);
+  background: var(--bg-secondary);
   border-color: #1890ff;
   box-shadow: 0 4px 12px rgba(24, 144, 255, 0.25);
+}
+
+.conversation-item.active .patient-name {
+  color: #1890ff;
+  font-weight: 600;
 }
 
 .conversation-header {
@@ -1390,7 +1396,7 @@ onUnmounted(() => {
 
 .patient-name {
   font-weight: 500;
-  color: #333;
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1401,7 +1407,7 @@ onUnmounted(() => {
 
 .conversation-time {
   font-size: 12px;
-  color: #999;
+  color: var(--text-tertiary);
   flex-shrink: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1418,7 +1424,7 @@ onUnmounted(() => {
 
 .conversation-preview {
   font-size: 14px;
-  color: #666;
+  color: var(--text-secondary);
   margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1462,11 +1468,15 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid #e8e8e8;
-  border-radius: 8px;
-  background: #fff;
+  border: 1px solid var(--border-color);
+  border-radius: 0 !important;
+  background: var(--bg-primary);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
   contain: layout;
+}
+
+:deep(.detail-card.ant-card) {
+  border-radius: 0 !important;
 }
 
 :deep(.detail-card > .ant-card-body) {
@@ -1476,6 +1486,34 @@ onUnmounted(() => {
   min-height: 0;
   overflow: hidden;
   padding: 0;
+  background: var(--bg-primary);
+  border-radius: 0 !important;
+}
+
+/* Ant Design Table 暗色模式适配 */
+:deep(.ant-table) {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+:deep(.ant-table-thead > tr > th) {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+:deep(.ant-table-tbody > tr > td) {
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+:deep(.ant-table-tbody > tr:hover > td) {
+  background: var(--hover-bg);
+}
+
+:deep(.ant-table-wrapper) {
+  background: var(--bg-primary);
 }
 
 .new-session-container {
@@ -1486,7 +1524,7 @@ onUnmounted(() => {
   align-items: center;
   padding: 60px 40px;
   min-height: 0;
-  background: linear-gradient(135deg, #f5f7fa 0%, #ffffff 100%);
+  background: var(--bg-primary);
 }
 
 .new-session-welcome {
@@ -1516,14 +1554,14 @@ onUnmounted(() => {
 .welcome-title {
   font-size: 32px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-primary);
   margin: 0 0 12px 0;
   letter-spacing: -0.5px;
 }
 
 .welcome-subtitle {
   font-size: 16px;
-  color: #666;
+  color: var(--text-secondary);
   margin: 0 0 48px 0;
   line-height: 1.6;
 }
@@ -1536,12 +1574,12 @@ onUnmounted(() => {
 }
 
 .feature-card {
-  background: #fff;
+  background: var(--bg-primary);
   border-radius: 12px;
   padding: 32px 24px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   transition: all 0.3s ease;
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--border-color-light);
   cursor: pointer;
   user-select: none;
 }
@@ -1564,13 +1602,13 @@ onUnmounted(() => {
 .feature-title {
   font-size: 18px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-primary);
   margin-bottom: 8px;
 }
 
 .feature-desc {
   font-size: 14px;
-  color: #888;
+  color: var(--text-secondary);
   line-height: 1.5;
 }
 
@@ -1588,7 +1626,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 24px;
-  background: #fafafa;
+  background: var(--bg-secondary);
   padding: 16px;
   margin-top: 16px;
   min-height: 0;
@@ -1677,8 +1715,8 @@ onUnmounted(() => {
 .message-content {
   padding: 12px 16px;
   border-radius: 8px;
-  background: #fff;
-  border: 1px solid #e8e8e8;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
   word-wrap: break-word;
   overflow-wrap: break-word;
@@ -1704,17 +1742,17 @@ onUnmounted(() => {
 }
 
 .bubble-user {
-  background: #e3f2fd;
-  color: #1a1a1a;
-  border: 1px solid #90caf9;
-  box-shadow: 0 2px 8px rgba(66, 165, 245, 0.2);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid #1890ff;
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.2);
 }
 
 /* Skill Call 橙色气泡 */
 .bubble-skill {
-  background: linear-gradient(135deg, #fff7e6 0%, #ffe7ba 100%);
-  color: #d4380d;
-  border: 1px solid #ffbb6b;
+  background: var(--bg-secondary);
+  color: #fa8c16;
+  border: 1px solid #fa8c16;
   box-shadow: 0 2px 8px rgba(255, 122, 69, 0.15);
   display: inline-flex;
   align-items: center;
@@ -1726,8 +1764,8 @@ onUnmounted(() => {
 .skill-time {
   margin-left: auto;
   font-size: 11px;
-  color: #d4380d;
-  opacity: 0.6;
+  color: #fa8c16;
+  opacity: 0.8;
 }
 
 .skill-icon {
@@ -1740,13 +1778,13 @@ onUnmounted(() => {
 .skill-name {
   font-weight: 600;
   font-size: 13px;
-  color: #d4380d;
+  color: #fa8c16;
   line-height: 1;
 }
 
 .skill-label {
   font-size: 12px;
-  color: #ff7a45;
+  color: #fa8c16;
   font-weight: 500;
   margin-left: 10px;
   line-height: 1;
@@ -1754,8 +1792,8 @@ onUnmounted(() => {
 
 /* Todo 紫色气泡 */
 .todo-bubble {
-  background: linear-gradient(135deg, #faf5ff 0%, #ede9fe 100%);
-  border: 1px solid #c4b5fd;
+  background: var(--bg-secondary);
+  border: 1px solid #7c3aed;
   border-radius: 8px;
   padding: 8px 14px;
   display: inline-flex;
@@ -1835,8 +1873,8 @@ onUnmounted(() => {
 
 /* Plan 确认卡片 */
 .plan-card {
-  background: linear-gradient(135deg, #fff7e6 0%, #ffe7ba 100%);
-  border: 1px solid #ffbb6b;
+  background: var(--bg-secondary);
+  border: 1px solid #fa8c16;
   border-radius: 8px;
   padding: 16px;
   margin: 16px 0;
@@ -1847,7 +1885,7 @@ onUnmounted(() => {
 
 .plan-content {
   margin-bottom: 12px;
-  color: #d4380d;
+  color: var(--text-primary);
   font-size: 14px;
   line-height: 1.5;
 }
@@ -1859,14 +1897,14 @@ onUnmounted(() => {
 
 /* 权限确认卡片 */
 .permission-card {
-  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-  border: 2px solid #38bdf8;
+  background: var(--bg-secondary);
+  border: 2px solid #1890ff;
   border-radius: 12px;
   padding: 20px;
   margin: 16px 0;
   max-width: 80%;
   align-self: flex-start;
-  box-shadow: 0 4px 16px rgba(56, 189, 248, 0.2);
+  box-shadow: 0 4px 16px rgba(24, 144, 255, 0.2);
   animation: slideIn 0.3s ease-out;
 }
 
@@ -1897,7 +1935,7 @@ onUnmounted(() => {
 .permission-title {
   font-size: 16px;
   font-weight: 600;
-  color: #0c4a6e;
+  color: var(--text-primary);
 }
 
 .permission-content {
@@ -1915,18 +1953,18 @@ onUnmounted(() => {
 
 .permission-tool .label {
   font-weight: 600;
-  color: #0369a1;
+  color: var(--text-primary);
   font-size: 14px;
 }
 
 .permission-tool .value {
-  color: #0c4a6e;
+  color: var(--text-primary);
   font-size: 14px;
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-  background: #fff;
+  background: var(--bg-primary);
   padding: 4px 8px;
   border-radius: 4px;
-  border: 1px solid #bae6fd;
+  border: 1px solid var(--border-color);
 }
 
 .permission-input {
@@ -1937,18 +1975,18 @@ onUnmounted(() => {
 
 .permission-input .label {
   font-weight: 600;
-  color: #0369a1;
+  color: var(--text-primary);
   font-size: 14px;
 }
 
 .input-json {
-  background: #fff;
-  border: 1px solid #bae6fd;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   padding: 12px;
   margin: 0;
   font-size: 13px;
-  color: #0c4a6e;
+  color: var(--text-primary);
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
   line-height: 1.5;
   max-height: 200px;
@@ -1980,16 +2018,16 @@ onUnmounted(() => {
 }
 
 .message-time {
-  color: #b8b8b8;
+  color: var(--text-secondary);
   font-size: 11px;
   line-height: 1;
 }
 
 .message-time-inline {
-  color: #999;
+  color: var(--text-secondary);
   font-size: 11px;
   margin-top: 8px;
-  opacity: 0.7;
+  opacity: 1;
   text-align: right;
 }
 
@@ -2011,19 +2049,19 @@ onUnmounted(() => {
 }
 
 .message-user .message-time-inline {
-  color: rgba(0, 0, 0, 0.5);
+  color: var(--text-secondary);
 }
 
 /* 思考块样式 */
 .thinking-block {
-  background: #f0f4f8;
-  border: 1px solid #d0dce8;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
   border-left: 4px solid #1890ff;
   border-radius: 6px;
   padding: 12px;
   margin-bottom: 12px;
   font-size: 13px;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .thinking-header {
@@ -2040,7 +2078,7 @@ onUnmounted(() => {
 }
 
 .thinking-length {
-  color: #999;
+  color: var(--text-tertiary);
   font-size: 12px;
   font-weight: normal;
 }
@@ -2049,7 +2087,7 @@ onUnmounted(() => {
   white-space: pre-wrap;
   word-wrap: break-word;
   line-height: 1.5;
-  color: #666;
+  color: var(--text-secondary);
   max-height: 200px;
   overflow-y: auto;
 }
@@ -2057,6 +2095,7 @@ onUnmounted(() => {
 /* Markdown 渲染样式 */
 .message-markdown {
   line-height: 1.6;
+  color: var(--text-primary);
 }
 
 .message-markdown :deep(h1),
@@ -2067,7 +2106,7 @@ onUnmounted(() => {
 .message-markdown :deep(h6) {
   margin: 12px 0 6px 0;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-primary);
 }
 
 .message-markdown :deep(h1) { font-size: 1.3em; }
@@ -2076,21 +2115,24 @@ onUnmounted(() => {
 
 .message-markdown :deep(p) {
   margin: 6px 0;
+  color: var(--text-primary);
 }
 
 .message-markdown :deep(ul),
 .message-markdown :deep(ol) {
   margin: 6px 0;
   padding-left: 20px;
+  color: var(--text-primary);
 }
 
 .message-markdown :deep(li) {
   margin: 3px 0;
+  color: var(--text-primary);
 }
 
 .message-markdown :deep(pre) {
-  background: #f6f8fa;
-  border: 1px solid #e1e4e8;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
   border-radius: 4px;
   padding: 10px 12px;
   margin: 8px 0;
@@ -2098,14 +2140,16 @@ onUnmounted(() => {
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
   font-size: 13px;
   line-height: 1.45;
+  color: var(--text-primary);
 }
 
 .message-markdown :deep(code) {
-  background: #f6f8fa;
+  background: var(--bg-secondary);
   border-radius: 3px;
   padding: 1px 4px;
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
   font-size: 0.9em;
+  color: var(--text-primary);
 }
 
 .message-markdown :deep(pre code) {
@@ -2115,10 +2159,10 @@ onUnmounted(() => {
 }
 
 .message-markdown :deep(blockquote) {
-  border-left: 3px solid #dfe2e5;
+  border-left: 3px solid var(--border-color);
   padding-left: 12px;
   margin: 8px 0;
-  color: #6a737d;
+  color: var(--text-secondary);
   font-style: italic;
 }
 
@@ -2127,18 +2171,26 @@ onUnmounted(() => {
   margin: 8px 0;
   width: 100%;
   font-size: 13px;
+  background: var(--bg-primary);
 }
 
 .message-markdown :deep(th),
 .message-markdown :deep(td) {
-  border: 1px solid #dfe2e5;
+  border: 1px solid var(--border-color);
   padding: 6px 10px;
   text-align: left;
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 .message-markdown :deep(th) {
-  background: #f6f8fa;
+  background: var(--bg-secondary);
   font-weight: 600;
+  color: var(--text-primary);
+}
+
+.message-markdown :deep(tbody tr:hover td) {
+  background: var(--hover-bg);
 }
 
 .message-markdown :deep(a) {
@@ -2151,11 +2203,18 @@ onUnmounted(() => {
 }
 
 .message-markdown :deep(strong) {
-  font-weight: 600;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .message-markdown :deep(strong) {
+  font-weight: 800;
+  color: #ffffff;
 }
 
 .message-markdown :deep(em) {
   font-style: italic;
+  color: var(--text-primary);
 }
 
 @keyframes dot-bounce {
@@ -2205,7 +2264,7 @@ onUnmounted(() => {
 }
 
 .loading-text {
-  color: #666;
+  color: var(--text-secondary);
   font-size: 13px;
   font-weight: 500;
   letter-spacing: 0.5px;
@@ -2217,21 +2276,18 @@ onUnmounted(() => {
 .input-area {
   flex-shrink: 0;
   padding: 0;
-  margin-top: 16px;
 }
 
 .input-container {
-  background: #fff;
-  border: 1px solid #e8e8e8;
-  border-radius: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 0;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   transition: all 0.3s ease;
 }
 
 .input-container:focus-within {
   border-color: #1890ff;
-  box-shadow: 0 2px 12px rgba(24, 144, 255, 0.15);
 }
 
 .input-toolbar {
@@ -2239,8 +2295,8 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  border-bottom: 1px solid #f0f0f0;
-  background: #fafafa;
+  border-bottom: 1px solid var(--border-color-light);
+  background: var(--bg-secondary);
 }
 
 .toolbar-left,
@@ -2250,7 +2306,7 @@ onUnmounted(() => {
 }
 
 .toolbar-btn {
-  color: #666;
+  color: var(--text-secondary);
   transition: all 0.2s;
 }
 
@@ -2271,7 +2327,7 @@ onUnmounted(() => {
   font-size: 14px;
   line-height: 1.6;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  color: #333;
+  color: var(--text-primary);
   background: transparent;
   min-height: 24px;
   max-height: 200px;
@@ -2279,11 +2335,11 @@ onUnmounted(() => {
 }
 
 .message-textarea::placeholder {
-  color: #bbb;
+  color: var(--text-tertiary);
 }
 
 .message-textarea:disabled {
-  background: #f5f5f5;
+  background: var(--bg-secondary);
   cursor: not-allowed;
 }
 
@@ -2292,8 +2348,9 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 8px 16px;
-  border-top: 1px solid #f0f0f0;
-  background: #fafafa;
+  border-top: 1px solid var(--border-color-light);
+  background: var(--bg-secondary);
+  border-radius: 0 !important;
 }
 
 .input-hint {
@@ -2302,7 +2359,7 @@ onUnmounted(() => {
 
 .hint-text {
   font-size: 12px;
-  color: #999;
+  color: var(--text-tertiary);
 }
 
 .send-btn {
@@ -2357,22 +2414,22 @@ onUnmounted(() => {
 }
 .messages-container::-webkit-scrollbar-track,
 .conversation-list::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: var(--bg-secondary);
   border-radius: 4px;
 }
 .messages-container::-webkit-scrollbar-thumb,
 .conversation-list::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
+  background: var(--border-color);
   border-radius: 4px;
 }
 .messages-container::-webkit-scrollbar-thumb:hover,
 .conversation-list::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
+  background: var(--text-tertiary);
 }
 .messages-container,
 .conversation-list {
   scrollbar-width: thin;
-  scrollbar-color: #c1c1c1 #f1f1f1;
+  scrollbar-color: var(--border-color) var(--bg-secondary);
 }
 
 /* ==========================================
@@ -2418,7 +2475,7 @@ onUnmounted(() => {
 /* 删除确认气泡框 */
 .delete-confirm-popover {
   z-index: 9999;
-  background: #fff;
+  background: var(--bg-primary);
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
   padding: 12px;
@@ -2433,7 +2490,7 @@ onUnmounted(() => {
 
 .delete-confirm-text {
   font-size: 14px;
-  color: #333;
+  color: var(--text-primary);
   font-weight: 500;
 }
 
@@ -2452,7 +2509,7 @@ onUnmounted(() => {
   height: 0;
   border-left: 6px solid transparent;
   border-right: 6px solid transparent;
-  border-top: 6px solid #fff;
+  border-top: 6px solid var(--bg-primary);
 }
 
 .delete-confirm-overlay {

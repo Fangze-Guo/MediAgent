@@ -199,17 +199,17 @@ onMounted(() => {
 
 <style scoped>
 .github-file-list {
-  border: 1px solid #e1e4e8;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   overflow: hidden;
-  background: #fff;
+  background: var(--bg-primary);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .empty-state {
   text-align: center;
   padding: 80px 20px;
-  color: #6a737d;
+  color: var(--text-secondary);
 }
 
 .empty-state p {
@@ -224,16 +224,16 @@ onMounted(() => {
 
 /* 文件表格 */
 .file-table {
-  background: #fafbfc;
+  background: var(--bg-secondary);
 }
 
 .file-row {
   display: flex;
   align-items: center;
-  border-bottom: 1px solid #e1e4e8;
+  border-bottom: 1px solid var(--border-color);
   cursor: pointer;
   transition: all 0.15s ease;
-  background: #fff;
+  background: var(--bg-primary);
 }
 
 .file-row:last-child {
@@ -241,19 +241,19 @@ onMounted(() => {
 }
 
 .file-row:hover {
-  background-color: #f6f8fa;
-  border-left: 3px solid #0366d6;
+  background-color: var(--hover-bg);
+  border-left: 3px solid var(--link-color);
   padding-left: calc(var(--indent) - 3px);
 }
 
 .file-row.is-expanded {
-  background-color: #f6f8fa;
+  background-color: var(--hover-bg);
 }
 
 .file-cell {
   padding: 10px 16px;
   font-size: 14px;
-  color: #24292e;
+  color: var(--text-primary);
 }
 
 .file-name-cell {
@@ -271,13 +271,13 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   font-size: 10px;
-  color: #6a737d;
+  color: var(--text-secondary);
   flex-shrink: 0;
   transition: transform 0.2s ease;
 }
 
 .file-row:hover .expand-icon {
-  color: #0366d6;
+  color: var(--link-color);
 }
 
 .file-icon {
@@ -298,7 +298,7 @@ onMounted(() => {
 .file-name {
   font-weight: 500;
   font-size: 14px;
-  color: #0366d6;
+  color: var(--link-color);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -306,17 +306,17 @@ onMounted(() => {
 }
 
 .file-row:hover .file-name {
-  color: #0366d6;
+  color: var(--link-hover);
   text-decoration: underline;
 }
 
 .is-directory .file-name {
-  color: #24292e;
+  color: var(--text-primary);
   font-weight: 500;
 }
 
 .is-directory:hover .file-name {
-  color: #0366d6;
+  color: var(--link-color);
 }
 
 .file-size-cell {
@@ -327,14 +327,14 @@ onMounted(() => {
 
 .file-size {
   font-size: 12px;
-  color: #6a737d;
+  color: var(--text-secondary);
   font-family: 'SFMono-Regular', 'Consolas', monospace;
 }
 
 /* 文件查看器 */
 .file-viewer {
   margin-top: 24px;
-  border: 1px solid #e1e4e8;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
@@ -345,8 +345,8 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 14px 20px;
-  background: linear-gradient(180deg, #fafbfc 0%, #f6f8fa 100%);
-  border-bottom: 1px solid #e1e4e8;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .viewer-title {
@@ -355,20 +355,20 @@ onMounted(() => {
   gap: 10px;
   font-size: 14px;
   font-weight: 600;
-  color: #24292e;
+  color: var(--text-primary);
 }
 
 .viewer-title .anticon {
-  color: #0366d6;
+  color: var(--link-color);
 }
 
 .file-size-badge {
   font-size: 11px;
   font-weight: 500;
-  color: #6a737d;
+  color: var(--text-secondary);
   padding: 3px 10px;
-  background: #fff;
-  border: 1px solid #e1e4e8;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
   border-radius: 16px;
   font-family: 'SFMono-Regular', 'Consolas', monospace;
 }
@@ -376,7 +376,7 @@ onMounted(() => {
 .viewer-body {
   max-height: 600px;
   overflow: auto;
-  background: #f6f8fa;
+  background: var(--bg-secondary);
 }
 
 .viewer-body::-webkit-scrollbar {
@@ -385,16 +385,16 @@ onMounted(() => {
 }
 
 .viewer-body::-webkit-scrollbar-track {
-  background: #f6f8fa;
+  background: var(--bg-secondary);
 }
 
 .viewer-body::-webkit-scrollbar-thumb {
-  background: #d1d5da;
+  background: var(--border-color);
   border-radius: 5px;
 }
 
 .viewer-body::-webkit-scrollbar-thumb:hover {
-  background: #959da5;
+  background: var(--text-tertiary);
 }
 
 .binary-file {
@@ -404,7 +404,7 @@ onMounted(() => {
   justify-content: center;
   padding: 80px 20px;
   gap: 16px;
-  color: #6a737d;
+  color: var(--text-secondary);
 }
 
 .binary-file p {
@@ -414,12 +414,12 @@ onMounted(() => {
 .code-content {
   margin: 0;
   padding: 20px;
-  background: #fff;
+  background: var(--bg-primary);
   border: none;
   font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', 'Menlo', monospace;
   font-size: 13px;
   line-height: 1.7;
-  color: #24292e;
+  color: var(--text-primary);
   overflow-x: auto;
   tab-size: 4;
 }
@@ -429,11 +429,11 @@ onMounted(() => {
 }
 
 .code-content::-webkit-scrollbar-track {
-  background: #f6f8fa;
+  background: var(--bg-secondary);
 }
 
 .code-content::-webkit-scrollbar-thumb {
-  background: #d1d5da;
+  background: var(--border-color);
   border-radius: 4px;
 }
 

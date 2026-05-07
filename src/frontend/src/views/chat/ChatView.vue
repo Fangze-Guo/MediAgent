@@ -895,23 +895,23 @@ const getAssistantAvatarStyle = () => {
 
 /* AI 气泡：白底轻阴影 */
 .message.ai {
-  background: #ffffff;
+  background: var(--bg-primary);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--border-color-light);
 }
 
 /* 用户气泡：白底与白色文字 */
 .message.user {
-  background: #ffffff;
+  background: var(--bg-primary);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 /* 底部区域 */
 .ant-layout-footer {
   padding: 0;
-  background: #ffffff;
+  background: var(--bg-primary);
   min-height: auto; /* 移除固定高度，让内容自适应 */
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border-color);
 }
 
 /* 输入区域：固定在底部 */
@@ -923,8 +923,8 @@ const getAssistantAvatarStyle = () => {
 /* 当前会话文件显示区域 */
 .session-files {
   padding: 12px 16px;
-  background: #f8f9fa;
-  border-bottom: 1px solid #e5e7eb;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .session-files .files-header {
@@ -940,7 +940,7 @@ const getAssistantAvatarStyle = () => {
   gap: 6px;
   font-size: 14px;
   font-weight: 500;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .session-files .files-list {
@@ -954,14 +954,14 @@ const getAssistantAvatarStyle = () => {
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  background: white;
-  border: 1px solid #e5e7eb;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   transition: all 0.2s ease;
 }
 
 .session-files .file-item:hover {
-  border-color: #d1d5db;
+  border-color: var(--border-color-light);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
@@ -973,7 +973,7 @@ const getAssistantAvatarStyle = () => {
 }
 
 .session-files .file-icon {
-  color: #6b7280;
+  color: var(--text-secondary);
   font-size: 16px;
 }
 
@@ -985,7 +985,7 @@ const getAssistantAvatarStyle = () => {
 .session-files .file-name {
   font-size: 14px;
   font-weight: 500;
-  color: #333;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -993,7 +993,7 @@ const getAssistantAvatarStyle = () => {
 
 .session-files .file-meta {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--text-secondary);
   margin-top: 2px;
 }
 
@@ -1003,12 +1003,12 @@ const getAssistantAvatarStyle = () => {
   width: 100%;
   display: flex;
   flex-direction: column;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border-color);
   overflow: hidden;
 }
 
 .input-container:focus-within {
-  border-color: #4f46e5;
+  border-color: var(--link-color);
 }
 
 
@@ -1022,13 +1022,13 @@ const getAssistantAvatarStyle = () => {
   min-height: 60px; /* 增加最小高度 */
   max-height: 150px; /* 增加最大高度 */
   width: 100%;
-  color: #374151;
+  color: var(--text-primary);
   padding: 12px 16px; /* 增加内边距 */
   line-height: 1.6; /* 增加行高，让换行更明显 */
 }
 
 .message-input::placeholder {
-  color: #9ca3af;
+  color: var(--text-tertiary);
 }
 
 /* 输入操作按钮组 */
@@ -1039,8 +1039,8 @@ const getAssistantAvatarStyle = () => {
 }
 
 .upload-btn {
-  color: #666;
-  border: 1px solid #d9d9d9;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   width: 40px;
   height: 40px;
@@ -1051,34 +1051,34 @@ const getAssistantAvatarStyle = () => {
 }
 
 .upload-btn:hover {
-  color: #1890ff;
-  border-color: #1890ff;
+  color: var(--link-color);
+  border-color: var(--link-color);
 }
 
 /* 发送按钮样式 */
 .send-btn {
   height: 30px;
-  background: #374151;
+  background: var(--text-primary);
   border: none;
-  color: white;
+  color: var(--bg-primary);
 }
 
 .send-btn:hover:not(:disabled) {
-  background: #1f2937;
+  background: var(--text-secondary);
 }
 
 .send-btn:disabled {
-  background: #d1d5db;
-  color: #9ca3af;
+  background: var(--border-color);
+  color: var(--text-tertiary);
   cursor: not-allowed;
 }
 
 /* 思考过程样式 */
 .thinking-section {
   margin-bottom: 12px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border-color);
   border-radius: 12px;
-  background: #f9fafb;
+  background: var(--bg-secondary);
   overflow: hidden;
 }
 
@@ -1087,17 +1087,17 @@ const getAssistantAvatarStyle = () => {
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
-  background: #f3f4f6;
+  background: var(--bg-secondary);
   cursor: pointer;
   transition: all 0.2s ease;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--border-color);
   font-size: 13px;
-  color: #374151;
+  color: var(--text-primary);
   font-weight: 500;
 }
 
 .thinking-header:hover {
-  background: #e5e7eb;
+  background: var(--hover-bg);
 }
 
 .thinking-header .anticon {
@@ -1112,28 +1112,28 @@ const getAssistantAvatarStyle = () => {
   line-height: 1.2;
   border-radius: 6px;
   transition: all 0.2s ease;
-  color: #6b7280;
+  color: var(--text-secondary);
 }
 
 .toggle-thinking-btn:hover {
-  background: #d1d5db;
-  color: #374151;
+  background: var(--border-color);
+  color: var(--text-primary);
 }
 
 .thinking-content {
   padding: 16px;
-  background: #ffffff;
+  background: var(--bg-primary);
   white-space: pre-wrap;
   word-wrap: break-word;
   font-size: 14px;
   line-height: 1.5;
-  color: #374151;
+  color: var(--text-primary);
 }
 
 .response-content {
   font-size: 14px;
   line-height: 1.6;
-  color: #333;
+  color: var(--text-primary);
 }
 
 /* 顶部工具栏 */
@@ -1142,8 +1142,8 @@ const getAssistantAvatarStyle = () => {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px; /* 增加内边距 */
-  background: #f9fafb;
-  border-bottom: 1px solid #e5e7eb;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
   height: auto; /* 改为自适应高度 */
   min-height: 60px; /* 增加最小高度 */
 }
@@ -1199,13 +1199,13 @@ const getAssistantAvatarStyle = () => {
   align-items: center;
   justify-content: center;
   border-radius: 6px;
-  color: #6b7280;
+  color: var(--text-secondary);
   transition: all 0.2s ease;
 }
 
 .toolbar-icon:hover {
-  background: #e5e7eb;
-  color: #374151;
+  background: var(--hover-bg);
+  color: var(--text-primary);
 }
 
 /* 输入框区域 */
@@ -1233,13 +1233,13 @@ const getAssistantAvatarStyle = () => {
 
 .hint-text {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--text-tertiary);
   user-select: none;
   transition: color 0.2s ease;
 }
 
 .input-container:focus-within .hint-text {
-  color: #6b7280;
+  color: var(--text-secondary);
 }
 
 /* 发送按钮组 */

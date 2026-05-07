@@ -164,13 +164,13 @@ const goToSkillDetail = (id: string) => {
 <style scoped>
 .skill-store {
   min-height: 100vh;
-  background: #ffffff;
+  background: var(--bg-primary);
 }
 
 /* 顶部导航栏 */
 .store-header {
-  background: #fff;
-  border-bottom: 1px solid #e8eaed;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
   position: sticky;
   top: 0;
   z-index: 100;
@@ -191,7 +191,7 @@ const goToSkillDetail = (id: string) => {
   gap: 12px;
   font-size: 20px;
   font-weight: 500;
-  color: #202124;
+  color: var(--text-primary);
   white-space: nowrap;
 }
 
@@ -218,8 +218,8 @@ const goToSkillDetail = (id: string) => {
 
 /* 分类标签栏 */
 .categories-bar {
-  background: #fff;
-  border-bottom: 1px solid #e8eaed;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
   position: sticky;
   top: 65px;
   z-index: 99;
@@ -244,7 +244,7 @@ const goToSkillDetail = (id: string) => {
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
-  color: #5f6368;
+  color: var(--text-secondary);
   border-bottom: 3px solid transparent;
   transition: all 0.2s;
   white-space: nowrap;
@@ -252,18 +252,18 @@ const goToSkillDetail = (id: string) => {
 }
 
 .category-tab:hover {
-  color: #1a73e8;
-  background: #f1f3f4;
+  color: var(--link-color);
+  background: var(--hover-bg);
 }
 
 .category-tab.active {
-  color: #1a73e8;
-  border-bottom-color: #1a73e8;
+  color: var(--link-color);
+  border-bottom-color: var(--link-color);
 }
 
 /* 主内容区 */
 .store-main {
-  background: #fff;
+  background: var(--bg-primary);
   min-height: calc(100vh - 200px);
 }
 
@@ -282,19 +282,19 @@ const goToSkillDetail = (id: string) => {
 
 .loading-state p {
   margin-top: 16px;
-  color: #5f6368;
+  color: var(--text-secondary);
   font-size: 16px;
 }
 
 .empty-text {
   font-size: 20px;
-  color: #5f6368;
+  color: var(--text-secondary);
   margin: 16px 0 8px 0;
 }
 
 .empty-hint {
   font-size: 14px;
-  color: #80868b;
+  color: var(--text-tertiary);
   margin: 0;
 }
 
@@ -305,19 +305,19 @@ const goToSkillDetail = (id: string) => {
   justify-content: space-between;
   margin-bottom: 24px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #e8eaed;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .section-title {
   font-size: 24px;
   font-weight: 500;
-  color: #202124;
+  color: var(--text-primary);
   margin: 0;
 }
 
 .results-count {
   font-size: 14px;
-  color: #5f6368;
+  color: var(--text-secondary);
 }
 
 /* 技能网格布局 */
@@ -329,8 +329,8 @@ const goToSkillDetail = (id: string) => {
 
 /* 技能卡片 */
 .skill-card {
-  background: #fff;
-  border: 1px solid #dadce0;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 20px;
   cursor: pointer;
@@ -341,7 +341,7 @@ const goToSkillDetail = (id: string) => {
 
 .skill-card:hover {
   box-shadow: 0 1px 3px 1px rgba(60, 64, 67, 0.15);
-  border-color: #dadce0;
+  border-color: var(--border-color-light);
 }
 
 .card-header {
@@ -368,7 +368,7 @@ const goToSkillDetail = (id: string) => {
 .skill-name {
   font-size: 16px;
   font-weight: 500;
-  color: #202124;
+  color: var(--text-primary);
   margin: 0 0 4px 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -377,7 +377,7 @@ const goToSkillDetail = (id: string) => {
 
 .skill-author {
   font-size: 12px;
-  color: #5f6368;
+  color: var(--text-secondary);
   margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -386,7 +386,7 @@ const goToSkillDetail = (id: string) => {
 
 .skill-description {
   font-size: 13px;
-  color: #5f6368;
+  color: var(--text-secondary);
   line-height: 1.6;
   margin: 0 0 16px 0;
   display: -webkit-box;
@@ -402,7 +402,7 @@ const goToSkillDetail = (id: string) => {
   align-items: center;
   margin-top: auto;
   padding-top: 12px;
-  border-top: 1px solid #f1f3f4;
+  border-top: 1px solid var(--bg-secondary);
 }
 
 .skill-category-badge {

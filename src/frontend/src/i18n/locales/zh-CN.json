@@ -21,6 +21,23 @@
     "category": "分类",
     "status": "状态"
   },
+  "breadcrumb": {
+    "home": "首页",
+    "conversation": "对话",
+    "files": "文件管理",
+    "tasks": "任务管理",
+    "datasets": "数据集管理",
+    "settings": "设置",
+    "skillStore": "技能商店",
+    "skillDetail": "技能详情",
+    "modelConfig": "模型配置",
+    "clinicalTools": "临床工具",
+    "glNictAgent": "GL-NICT Agent",
+    "glNictWorkflow": "GL-NICT 工作流",
+    "glNictKnowledgeBase": "GL-NICT 知识库",
+    "knowledgeBaseDetail": "知识库详情",
+    "documentDetail": "文档详情"
+  },
   "task": {
     "title": "任务列表",
     "searchPlaceholder": "搜索任务名称",

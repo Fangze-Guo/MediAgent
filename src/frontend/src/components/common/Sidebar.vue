@@ -462,8 +462,8 @@ const getConversationAvatarStyle = (conversation: any) => {
 .sidebar {
   width: 300px;
   height: 100%;
-  background: white;
-  border-right: 1px solid #e0e0e0;
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -490,7 +490,7 @@ const getConversationAvatarStyle = (conversation: any) => {
   width: 24px;
   height: 24px;
   border-radius: 4px;
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--border-color) 50%, var(--bg-secondary) 75%);
   background-size: 200% 100%;
   animation: skeleton-loading 1.5s ease-in-out infinite;
 }
@@ -499,7 +499,7 @@ const getConversationAvatarStyle = (conversation: any) => {
   flex: 1;
   height: 16px;
   border-radius: 4px;
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--border-color) 50%, var(--bg-secondary) 75%);
   background-size: 200% 100%;
   animation: skeleton-loading 1.5s ease-in-out infinite;
 }
@@ -516,7 +516,7 @@ const getConversationAvatarStyle = (conversation: any) => {
   align-items: center;
   padding: 12px;
   border-radius: 8px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border-color);
   gap: 12px;
 }
 
@@ -524,7 +524,7 @@ const getConversationAvatarStyle = (conversation: any) => {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--border-color) 50%, var(--bg-secondary) 75%);
   background-size: 200% 100%;
   animation: skeleton-loading 1.5s ease-in-out infinite;
   flex-shrink: 0;
@@ -541,7 +541,7 @@ const getConversationAvatarStyle = (conversation: any) => {
   width: 70%;
   height: 14px;
   border-radius: 4px;
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--border-color) 50%, var(--bg-secondary) 75%);
   background-size: 200% 100%;
   animation: skeleton-loading 1.5s ease-in-out infinite;
 }
@@ -550,7 +550,7 @@ const getConversationAvatarStyle = (conversation: any) => {
   width: 90%;
   height: 12px;
   border-radius: 4px;
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--border-color) 50%, var(--bg-secondary) 75%);
   background-size: 200% 100%;
   animation: skeleton-loading 1.5s ease-in-out infinite;
 }
@@ -634,7 +634,7 @@ const getConversationAvatarStyle = (conversation: any) => {
 /* 顶部标题区：内边距与底部分隔线 */
 .sidebar-header {
   padding: 20px;
-  border-bottom: 1px solid #e0e0e0;
+  border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -651,7 +651,7 @@ const getConversationAvatarStyle = (conversation: any) => {
 /* 标题文本：大小与颜色 */
 .sidebar-header h3 {
   margin: 0;
-  color: #333;
+  color: var(--text-primary);
   font-size: 18px;
   font-weight: 600;
 }
@@ -667,7 +667,7 @@ const getConversationAvatarStyle = (conversation: any) => {
 /* 历史区域标题：间距、字号与颜色 */
 .history-section h4 {
   margin: 0 0 16px 0;
-  color: #666;
+  color: var(--text-secondary);
   font-size: 14px;
   font-weight: 500;
 }
@@ -685,9 +685,9 @@ const getConversationAvatarStyle = (conversation: any) => {
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border-color);
   margin-bottom: 10px;
-  background: #fff;
+  background: var(--bg-primary);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -695,8 +695,8 @@ const getConversationAvatarStyle = (conversation: any) => {
 
 /* 对话项悬停：浅灰背景与边框高亮 */
 .chat-item:hover {
-  background: #f8f9fa;
-  border-color: #e9ecef;
+  background: var(--hover-bg);
+  border-color: var(--border-color-light);
 }
 
 /* 激活中的对话项：浅蓝背景与主色边框 */
@@ -708,7 +708,7 @@ const getConversationAvatarStyle = (conversation: any) => {
 /* 对话标题：加粗、字号与颜色 */
 .chat-title {
   font-weight: 500;
-  color: #333;
+  color: var(--text-primary);
   margin-bottom: 4px;
   font-size: 14px;
 }
@@ -723,7 +723,7 @@ const getConversationAvatarStyle = (conversation: any) => {
 
 /* 对话预览：灰色小号文字，超出省略 */
 .chat-preview {
-  color: #666;
+  color: var(--text-secondary);
   font-size: 12px;
   display: block;
   width: 160px;
@@ -786,8 +786,8 @@ const getConversationAvatarStyle = (conversation: any) => {
   left: 0;
   right: 0;
   padding: 16px 20px;
-  background: white;
-  border-top: 1px solid #f0f0f0;
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border-color-light);
   box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06);
 }
 
@@ -803,7 +803,7 @@ const getConversationAvatarStyle = (conversation: any) => {
 }
 
 .user-info:hover {
-  background-color: #f5f5f5;
+  background-color: var(--hover-bg);
 }
 
 .user-avatar {
@@ -821,7 +821,7 @@ const getConversationAvatarStyle = (conversation: any) => {
   box-shadow: 0 2px 8px rgba(24, 144, 255, 0.3);
   transition: all 0.3s ease;
   overflow: hidden;
-  border: 2px solid #fff;
+  border: 2px solid var(--bg-primary);
 }
 
 .avatar-image {
@@ -846,15 +846,15 @@ const getConversationAvatarStyle = (conversation: any) => {
 
 .user-name {
   font-weight: 600;
-  color: #333;
+  color: var(--text-primary);
   margin-bottom: 4px;
   font-size: 14px;
 }
 
 .user-uid {
   font-size: 12px;
-  color: #999;
-  background: #f5f5f5;
+  color: var(--text-tertiary);
+  background: var(--bg-secondary);
   padding: 2px 6px;
   border-radius: 4px;
   display: inline-block;
@@ -903,12 +903,12 @@ const getConversationAvatarStyle = (conversation: any) => {
 
 /* 滚动条拇指：半透明深色、圆角 */
 .sidebar-content::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--border-color);
   border-radius: 3px;
 }
 
 /* 滚动条拇指悬停：稍深颜色 */
 .sidebar-content::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--text-tertiary);
 }
 </style>

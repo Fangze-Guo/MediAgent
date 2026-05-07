@@ -133,12 +133,12 @@ const startConversation = async () => {
 .title {
   margin: 0 0 8px 0;
   font-size: 28px;
-  color: #222;
+  color: var(--text-primary);
 }
 
 .subtitle {
   margin: 0 0 24px 0;
-  color: #666;
+  color: var(--text-secondary);
 }
 
 .start-box {
@@ -167,9 +167,9 @@ const startConversation = async () => {
   padding: 12px 20px;
   border-radius: 24px;
   font-size: 14px;
-  border: 1px solid #e0e0e0;
-  background-color: white;
-  color: #666;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-primary);
+  color: var(--text-secondary);
   transition: all 0.2s ease;
   cursor: pointer;
   display: flex;
@@ -179,8 +179,8 @@ const startConversation = async () => {
 }
 
 .skill-btn:hover {
-  background-color: #f5f5f5;
-  border-color: #d9d9d9;
+  background-color: var(--hover-bg);
+  border-color: var(--border-color-light);
 }
 
 .skill-icon {

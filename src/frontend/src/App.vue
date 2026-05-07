@@ -1,5 +1,5 @@
 <template>
-  <a-config-provider :locale="antdLocale">
+  <a-config-provider :locale="antdLocale" :theme="themeConfig">
     <div id="app">
       <!-- 登录页面使用独立布局 -->
       <LoginView v-if="isLoginPage" />
@@ -15,14 +15,17 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { theme } from 'ant-design-vue'
 import enUS from 'ant-design-vue/es/locale/en_US'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import Layout from '@/layout/Layout.vue'
 import LoginView from '@/views/auth/LoginView.vue'
 import GlobalFileUpload from '@/components/file/GlobalFileUpload.vue'
+import { useThemeStore } from '@/store/theme'
 
 const route = useRoute()
 const { locale } = useI18n()
+const themeStore = useThemeStore()
 
 // Ant Design locale mapping
 const localeMap = {
@@ -34,6 +37,14 @@ const localeMap = {
 const antdLocale = computed(() => {
   return localeMap[locale.value as keyof typeof localeMap] || enUS
 })
+
+// Ant Design 主题配置
+const themeConfig = computed(() => ({
+  algorithm: themeStore.isDark ? theme.darkAlgorithm : theme.defaultAlgorithm,
+  token: {
+    colorPrimary: '#1890ff',
+  }
+}))
 
 // 判断是否为登录页面
 const isLoginPage = computed(() => route.name === 'Login')
