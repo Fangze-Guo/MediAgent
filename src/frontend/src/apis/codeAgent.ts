@@ -176,6 +176,16 @@ export interface PermissionRequestEvent {
 }
 
 /**
+ * Skill 后台提交事件
+ */
+export interface SkillSubmittedEvent {
+  kind: 'skill_submitted'
+  taskId: string
+  skillName: string
+  status: 'pending'
+}
+
+/**
  * 联合类型：所有可能的流式事件
  */
 export type CodeEventType =
@@ -185,6 +195,7 @@ export type CodeEventType =
   | ResultEvent
   | SessionCreatedEvent
   | PermissionRequestEvent
+  | SkillSubmittedEvent
 
 /**
  * 创建会话请求接口
@@ -202,6 +213,24 @@ export interface UpdateConversationRequest {
 }
 
 /**
+ * Skill 后台任务信息
+ */
+export interface SkillTaskInfo {
+  task_id: string
+  skill_name: string
+  conversation_id: string
+  status: 'pending' | 'running' | 'success' | 'failed'
+  progress: number
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+  elapsed_seconds: number | null
+  logs: string[]
+  output: Record<string, any> | null
+  error: string | null
+}
+
+/**
  * 消息响应接口
  */
 export interface MessageResponse {
@@ -209,13 +238,21 @@ export interface MessageResponse {
   conversation_id: string
   role?: 'user' | 'assistant' | null  // null 表示非消息事件（如 skill_call）
   content?: string | null
-  thinking?: string  // ✅ 新增：思考内容
+  thinking?: string
   created_at?: string
   loading?: boolean
   // Skill call 字段
-  event_type?: 'skill_call' | 'todo' | null
+  event_type?: 'skill_call' | 'skill_submitted' | 'todo' | null
   skill_name?: string | null
   skill_arguments?: string | null
+  // Skill 后台任务字段（event_type === 'skill_submitted' 时有效）
+  skill_task_id?: string
+  skill_status?: 'pending' | 'running' | 'success' | 'failed'
+  skill_progress?: number
+  skill_started_at?: string | null
+  skill_finished_at?: string | null
+  skill_elapsed_seconds?: number | null
+  skill_error?: string | null
   // Todo 事件字段
   todo_list?: TodoItem[]
 }
@@ -508,5 +545,28 @@ export async function cancelPermission(request: PermissionRequest): Promise<Base
  */
 export async function interruptSession(session_id: string): Promise<BaseResponse<boolean>> {
   const response = await post<BaseResponse<boolean>>(`/code-agent/interrupt/${session_id}`, {})
+  return response.data
+}
+
+/**
+ * 查询单个 Skill 后台任务状态
+ * @param task_id 任务 ID
+ * @returns 任务详情
+ */
+export async function getSkillTask(task_id: string): Promise<BaseResponse<SkillTaskInfo>> {
+  const response = await get<BaseResponse<SkillTaskInfo>>(`/code-agent/skill-tasks/${task_id}`)
+  return response.data
+}
+
+/**
+ * 查询 Skill 后台任务列表
+ * @param conversation_id 可选，按会话筛选
+ * @returns 任务列表
+ */
+export async function listSkillTasks(conversation_id?: string): Promise<BaseResponse<SkillTaskInfo[]>> {
+  const url = conversation_id
+    ? `/code-agent/skill-tasks?conversation_id=${conversation_id}`
+    : '/code-agent/skill-tasks'
+  const response = await get<BaseResponse<SkillTaskInfo[]>>(url)
   return response.data
 }

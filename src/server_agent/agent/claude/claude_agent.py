@@ -56,7 +56,23 @@ SYSTEM_PROMPT_TEMPLATE = """
    - “正在生成报告”
    而不是技术术语或系统描述
 
-5. 当用户询问或查找数据时，直接去/home/fetters/project/MediAgent/src/server_new/data/files/private/{user_id}/dataset下查找
+【数据目录】
+5. 当用户询问或查找数据时，直接去以下目录查找：
+   /home/fetters/project/MediAgent/src/server_new/data/files/private/{user_id}/
+
+【输出文件命名规范】
+6. 所有输出结果文件必须遵守以下命名规范：
+   - 使用小写字母和连字符，不使用空格或下划线
+   - 格式：{{原始文件名}}-{{任务类型}}-{{YYYYMMDD}}.{{扩展名}}
+   - 示例：patient001-bodycomp-seg-20240508.nii.gz、report-bodycomp-20240508.xlsx
+   - 禁止使用中文、特殊字符、随机字符串作为文件名
+
+【输出目录规范】
+7. 所有任务的输出结果必须保存到用户专属目录下，按任务类型新建子目录，禁止写入 dataset 目录：
+   - 输出根目录：/home/fetters/project/MediAgent/src/server_new/data/files/private/{user_id}/
+   - 每次任务在上述根目录下新建子目录，命名格式：{{任务类型}}-{{YYYYMMDD}}
+   - 示例：/home/fetters/project/MediAgent/src/server_new/data/files/private/{user_id}/bodycomp-seg-20240508/
+   - 严禁将结果写入 dataset 或其任何子目录
 """.strip()
 
 
@@ -213,6 +229,10 @@ class ClaudeAgent:
         # ClaudeSDKClient 实例（每个会话一个）
         self._clients: dict[str, ClaudeSDKClient] = {}  # session_id -> client
 
+        # Skill 后台任务：用于在 hook 和 stream_chat 之间传递 task_id
+        self._last_skill_task_id: Optional[str] = None
+        self._last_skill_name: Optional[str] = None
+
     async def _dummy_hook(self, input_data: Any, tool_use_id: Any, context: Any):
         """
         Dummy hook - 官方文档要求的 Python workaround：保持流打开，才能触发 can_use_tool
@@ -235,6 +255,78 @@ class ClaudeAgent:
         logger.info(f"[PERMISSION] ===== Hook called! Tool: {tool_name} =====")
         logger.info(f"[PERMISSION] Input data: {input_data}")
         logger.info(f"[PERMISSION] Context: {context}")
+
+        # ===== Skill 工具：提交后台任务，立即返回 Deny（伪造 tool_result）=====
+        if tool_name == "Skill":
+            skill_name = input_data.get("skill", "unknown") if isinstance(input_data, dict) else "unknown"
+            # 从 context 中提取 conversation_id（由 stream_chat 注入）
+            conversation_id = ""
+            if isinstance(context, dict):
+                conversation_id = context.get("conversation_id", "")
+            elif hasattr(context, "conversation_id"):
+                conversation_id = getattr(context, "conversation_id", "")
+
+            from src.server_agent.service.SkillTaskManager import get_skill_task_manager
+            task_manager = get_skill_task_manager()
+            params = dict(input_data) if isinstance(input_data, dict) else {}
+            task_id = task_manager.submit(
+                skill_name=skill_name,
+                params=params,
+                conversation_id=conversation_id,
+            )
+            # 将 task_id 暂存到实例，供 stream_chat 读取并推送给前端
+            self._last_skill_task_id = task_id
+            self._last_skill_name = skill_name
+            logger.info(f"[PERMISSION] Skill '{skill_name}' submitted as background task {task_id}")
+            return PermissionResultDeny(
+                message=f"Skill '{skill_name}' 已提交后台执行，任务ID: {task_id}。"
+                        f"请直接告知用户：任务正在后台运行，完成后可在界面查看结果。"
+            )
+
+        # ===== Bash 工具调用 Skill 脚本：也提交后台任务 =====
+        if tool_name == "Bash":
+            command = input_data.get("command", "") if isinstance(input_data, dict) else ""
+            # 检测是否是 skill 脚本调用（路径包含 /.claude/skills/）
+            if "/.claude/skills/" in command:
+                import re
+                match = re.search(r'/\.claude/skills/([^/\s]+)', command)
+                skill_name = match.group(1) if match else "unknown-skill"
+
+                # 提取 conversation_id
+                conversation_id = ""
+                if isinstance(context, dict):
+                    conversation_id = context.get("conversation_id", "")
+                elif hasattr(context, "conversation_id"):
+                    conversation_id = getattr(context, "conversation_id", "")
+
+                from src.server_agent.service.SkillTaskManager import get_skill_task_manager
+                task_manager = get_skill_task_manager()
+                params = {"command": command}
+                task_id = task_manager.submit(
+                    skill_name=skill_name,
+                    params=params,
+                    conversation_id=conversation_id,
+                )
+                logger.info(f"[PERMISSION] Bash skill '{skill_name}' submitted as background task {task_id}")
+
+                # 直接把 skill_submitted 事件注入 permission_queue，
+                # 由 stream_chat 的 permission_listener 转发给前端
+                # 这样不依赖 TOOL_USE 消息的时序
+                skill_submitted_event = {
+                    "kind": "skill_submitted",
+                    "taskId": task_id,
+                    "skillName": skill_name,
+                    "status": "pending",
+                    "provider": "claude",
+                    "done": False,
+                    "_is_skill_submitted": True,  # 标记，区别于权限请求
+                }
+                await self._permission_queue.put(skill_submitted_event)
+
+                return PermissionResultDeny(
+                    message=f"Skill '{skill_name}' 已提交后台执行，任务ID: {task_id}。"
+                            f"请直接告知用户：任务正在后台运行，完成后可在界面查看结果。"
+                )
 
         # ===== MVP-2: 工具白名单 + 路径校验 =====
         if self._tool_policy:
@@ -639,17 +731,22 @@ class ClaudeAgent:
                             self._permission_queue.get(),
                             timeout=0.1
                         )
-                        permission_msg = {
-                            "kind": MessageKind.PERMISSION_REQUEST,
-                            "sessionId": permission_data["session_id"],
-                            "toolName": permission_data["tool_name"],
-                            "input": permission_data["tool_input"],
-                            "requestId": permission_data["request_id"],
-                            "provider": "claude",
-                            "done": False,
-                        }
-                        logger.info(f"[PERMISSION_LISTENER] Forwarding permission request: {permission_data['tool_name']}")
-                        await output_queue.put(("permission", permission_msg))
+                        # skill_submitted 事件直接转发，不包装成权限请求
+                        if permission_data.get("_is_skill_submitted"):
+                            logger.info(f"[PERMISSION_LISTENER] Forwarding skill_submitted: {permission_data.get('skillName')}")
+                            await output_queue.put(("skill_submitted", permission_data))
+                        else:
+                            permission_msg = {
+                                "kind": MessageKind.PERMISSION_REQUEST,
+                                "sessionId": permission_data["session_id"],
+                                "toolName": permission_data["tool_name"],
+                                "input": permission_data["tool_input"],
+                                "requestId": permission_data["request_id"],
+                                "provider": "claude",
+                                "done": False,
+                            }
+                            logger.info(f"[PERMISSION_LISTENER] Forwarding permission request: {permission_data['tool_name']}")
+                            await output_queue.put(("permission", permission_msg))
                     except asyncio.TimeoutError:
                         continue
             except Exception as e:
@@ -683,6 +780,13 @@ class ClaudeAgent:
                     # 发送权限请求
                     logger.info(f"[PERMISSION_REQUEST] Sending to frontend: {item_data['toolName']}")
                     yield json.dumps(item_data, ensure_ascii=False)
+
+                elif item_type == "skill_submitted":
+                    # 发送 skill 后台任务提交事件
+                    logger.info(f"[SKILL_SUBMITTED] Sending to frontend: {item_data.get('skillName')}, task={item_data.get('taskId')}")
+                    # 去掉内部标记字段再推给前端
+                    event = {k: v for k, v in item_data.items() if k != "_is_skill_submitted"}
+                    yield json.dumps(event, ensure_ascii=False)
 
                 elif item_type == "message":
                     msg = item_data

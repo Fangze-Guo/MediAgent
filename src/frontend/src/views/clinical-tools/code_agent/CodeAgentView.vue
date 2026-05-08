@@ -2,8 +2,10 @@
   <div class="code-agent-container">
     <!-- 主要内容区域 -->
     <div class="content-grid">
-      <!-- 左侧：对话列表 -->
-      <div class="conversation-list-section">
+      <!-- 左侧面板：对话列表 + Work Flow -->
+      <div class="left-panel">
+        <!-- 对话列表 -->
+        <div class="conversation-list-section">
         <a-card :loading="loadingConversations" class="list-card">
           <template #title>
             <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
@@ -63,6 +65,71 @@
         </a-card>
       </div>
 
+      <!-- Work Flow 面板 -->
+      <div class="workflow-section">
+        <div class="workflow-header">
+          <span class="workflow-title">
+            <span class="workflow-title-icon">⚡</span>
+            Work Flow
+          </span>
+          <span v-if="runningTaskCount > 0" class="workflow-running-badge">{{ runningTaskCount }}</span>
+        </div>
+
+        <div v-if="allSkillTasks.length === 0" class="workflow-empty">
+          <span class="workflow-empty-icon">🗂️</span>
+          <span>暂无后台任务</span>
+        </div>
+
+        <div v-else class="workflow-task-list">
+          <div
+            v-for="task in allSkillTasks"
+            :key="task.task_id"
+            class="workflow-task-item"
+            :class="`workflow-task-${task.status}`"
+          >
+            <!-- 任务头部 -->
+            <div class="workflow-task-header">
+              <span class="workflow-task-status-icon">
+                <span v-if="task.status === 'pending'">⏳</span>
+                <span v-else-if="task.status === 'running'" class="spin">⟳</span>
+                <span v-else-if="task.status === 'success'">✓</span>
+                <span v-else-if="task.status === 'failed'">✕</span>
+              </span>
+              <span class="workflow-task-name">{{ task.skill_name }}</span>
+              <span class="workflow-task-status-text">
+                <span v-if="task.status === 'pending'">等待中</span>
+                <span v-else-if="task.status === 'running'">执行中</span>
+                <span v-else-if="task.status === 'success'">已完成</span>
+                <span v-else-if="task.status === 'failed'">失败</span>
+              </span>
+            </div>
+
+            <!-- 进度条（running 时） -->
+            <div v-if="task.status === 'running'" class="workflow-progress-bar">
+              <div
+                class="workflow-progress-fill"
+                :style="{ width: `${task.skill_progress || 0}%` }"
+              ></div>
+            </div>
+
+            <!-- 底部元信息 -->
+            <div class="workflow-task-meta">
+              <span class="workflow-task-conv">{{ getConvTitle(task.conversation_id) }}</span>
+              <span v-if="task.status === 'success' && task.skill_elapsed_seconds != null" class="workflow-task-elapsed">
+                {{ task.skill_elapsed_seconds.toFixed(1) }}s
+              </span>
+              <span v-else-if="task.status === 'failed'" class="workflow-task-error-hint" :title="task.skill_error || ''">
+                查看错误
+              </span>
+              <span v-else class="workflow-task-time">{{ formatTime(task.created_at) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- /Work Flow 面板 -->
+      </div>
+      <!-- /left-panel -->
+
       <!-- 右侧：对话详情 -->
       <div class="conversation-detail-section">
         <!-- 有选中会话时显示完整卡片 -->
@@ -83,13 +150,50 @@
               class="message-item"
               :class="message.event_type === 'todo' ? 'message-todo' : (message.event_type === 'skill_call' ? 'message-skill' : (message.role === 'user' ? 'message-user' : 'message-ai'))"
             >
-              <!-- Skill Call 事件：橙色气泡 -->
+              <!-- Skill Call 事件：橙色气泡（历史记录中的旧格式） -->
               <template v-if="message.event_type === 'skill_call'">
                 <div class="message-bubble bubble-skill">
                   <span class="skill-icon">🔧</span>
                   <span class="skill-name">{{ message.skill_name }}</span>
                   <span class="skill-label">skill call</span>
                   <span class="skill-time">{{ formatTime(message.created_at) }}</span>
+                </div>
+              </template>
+
+              <!-- Skill 后台任务气泡：带状态的动态气泡 -->
+              <template v-else-if="message.event_type === 'skill_submitted'">
+                <div class="bubble-skill-task" :class="`skill-task-${message.skill_status || 'pending'}`">
+                  <div class="skill-task-header">
+                    <span class="skill-task-icon">
+                      <span v-if="message.skill_status === 'pending'">⏳</span>
+                      <span v-else-if="message.skill_status === 'running'" class="spin">⟳</span>
+                      <span v-else-if="message.skill_status === 'success'">✓</span>
+                      <span v-else-if="message.skill_status === 'failed'">✕</span>
+                    </span>
+                    <span class="skill-task-name">{{ message.skill_name }}</span>
+                    <span class="skill-task-badge">
+                      <span v-if="message.skill_status === 'pending'">正在提交...</span>
+                      <span v-else-if="message.skill_status === 'running'">执行中</span>
+                      <span v-else-if="message.skill_status === 'success'">执行完成</span>
+                      <span v-else-if="message.skill_status === 'failed'">执行失败</span>
+                    </span>
+                    <span class="skill-task-time">{{ formatTime(message.created_at) }}</span>
+                  </div>
+                  <!-- 进度条（running 时显示） -->
+                  <div v-if="message.skill_status === 'running'" class="skill-task-progress-bar">
+                    <div
+                      class="skill-task-progress-fill"
+                      :style="{ width: `${message.skill_progress || 0}%` }"
+                    ></div>
+                  </div>
+                  <!-- 耗时（成功时显示） -->
+                  <div v-if="message.skill_status === 'success' && message.skill_elapsed_seconds != null" class="skill-task-meta">
+                    耗时 {{ message.skill_elapsed_seconds.toFixed(1) }} 秒
+                  </div>
+                  <!-- 错误信息（失败时显示） -->
+                  <div v-if="message.skill_status === 'failed' && message.skill_error" class="skill-task-error">
+                    {{ message.skill_error }}
+                  </div>
                 </div>
               </template>
 
@@ -381,7 +485,9 @@ import {
   updateConversation,
   confirmPermission,
   cancelPermission,
-  interruptSession
+  interruptSession,
+  getSkillTask,
+  listSkillTasks
 } from '@/apis/codeAgent'
 
 const { t } = useI18n()
@@ -729,6 +835,128 @@ const pendingToolEvents = ref<Array<{
   data: any
 }>>([])
 
+// Skill 后台任务轮询 timers：task_id -> timer id
+const skillTaskPollers: Record<string, ReturnType<typeof setInterval>> = {}
+
+// 全局所有 skill 任务列表（用于 Work Flow 面板）
+const allSkillTasks = ref<Array<{
+  task_id: string
+  skill_name: string
+  conversation_id: string
+  status: 'pending' | 'running' | 'success' | 'failed'
+  skill_progress: number
+  skill_elapsed_seconds: number | null
+  skill_error: string | null
+  created_at: string
+}>>([])
+
+// 正在运行的任务数量
+const runningTaskCount = computed(() =>
+  allSkillTasks.value.filter(t => t.status === 'pending' || t.status === 'running').length
+)
+
+// 根据 conversation_id 获取会话标题
+const getConvTitle = (conversationId: string): string => {
+  const conv = conversations.value.find(c => c.conversation_id === conversationId)
+  return conv?.title || '未命名会话'
+}
+
+// 向全局任务列表插入或更新任务
+const upsertGlobalTask = (taskId: string, patch: Partial<typeof allSkillTasks.value[0]>) => {
+  const idx = allSkillTasks.value.findIndex(t => t.task_id === taskId)
+  if (idx >= 0) {
+    Object.assign(allSkillTasks.value[idx], patch)
+  } else if (patch.task_id) {
+    allSkillTasks.value.unshift(patch as typeof allSkillTasks.value[0])
+  }
+}
+
+// 启动轮询，直到任务进入终态（success / failed）
+const startSkillTaskPoller = (taskId: string) => {
+  if (skillTaskPollers[taskId]) return  // 防止重复启动
+  skillTaskPollers[taskId] = setInterval(async () => {
+    try {
+      const res = await getSkillTask(taskId)
+      if (res.code !== 200 || !res.data) return
+      const task = res.data
+      // 更新消息气泡
+      const msg = messages.value.find(m => m.skill_task_id === taskId)
+      if (msg) {
+        msg.skill_status = task.status
+        msg.skill_progress = task.progress
+        msg.skill_started_at = task.started_at
+        msg.skill_finished_at = task.finished_at
+        msg.skill_elapsed_seconds = task.elapsed_seconds
+        msg.skill_error = task.error ?? null
+      }
+      // 更新 Work Flow 面板
+      upsertGlobalTask(taskId, {
+        status: task.status,
+        skill_progress: task.progress,
+        skill_elapsed_seconds: task.elapsed_seconds,
+        skill_error: task.error ?? null,
+      })
+      // 终态：停止轮询
+      if (task.status === 'success' || task.status === 'failed') {
+        clearInterval(skillTaskPollers[taskId])
+        delete skillTaskPollers[taskId]
+      }
+    } catch (e) {
+      console.error('[SkillPoller] 轮询失败:', e)
+    }
+  }, 3000)
+}
+
+// 进入会话时恢复该会话的 skill 后台任务气泡
+const restoreSkillTasks = async (conversationId: string) => {
+  try {
+    const res = await listSkillTasks(conversationId)
+    if (res.code !== 200 || !res.data) return
+
+    for (const task of res.data) {
+      // 同步到全局 Work Flow 面板
+      upsertGlobalTask(task.task_id, {
+        task_id: task.task_id,
+        skill_name: task.skill_name,
+        conversation_id: conversationId,
+        status: task.status,
+        skill_progress: task.progress,
+        skill_elapsed_seconds: task.elapsed_seconds,
+        skill_error: task.error ?? null,
+        created_at: task.created_at,
+      })
+
+      // 已经在消息列表里的不重复插入
+      if (messages.value.find(m => m.skill_task_id === task.task_id)) continue
+
+      messages.value.push({
+        message_id: `skill_submitted_${task.task_id}`,
+        conversation_id: conversationId,
+        role: null,
+        content: null,
+        event_type: 'skill_submitted',
+        skill_name: task.skill_name,
+        skill_task_id: task.task_id,
+        skill_status: task.status,
+        skill_progress: task.progress,
+        skill_started_at: task.started_at,
+        skill_finished_at: task.finished_at,
+        skill_elapsed_seconds: task.elapsed_seconds,
+        skill_error: task.error ?? null,
+        created_at: task.created_at,
+        loading: false
+      })
+
+      // 未完成的任务恢复轮询
+      if (task.status === 'pending' || task.status === 'running') {
+        startSkillTaskPoller(task.task_id)
+      }
+    }
+  } catch (e) {
+    console.error('[restoreSkillTasks] 恢复任务失败:', e)
+  }
+}
+
 // 处理流式事件
 const handleStreamEvent = (event: CodeEventType, capturedSessionId: string | null) => {
   const eventKind = (event as any).kind || (event as any).type
@@ -766,6 +994,40 @@ const handleStreamEvent = (event: CodeEventType, capturedSessionId: string | nul
         })
       }
       break
+    case 'skill_submitted': {
+      const submittedEvent = event as any
+      const taskId = submittedEvent.taskId
+      const skillName = submittedEvent.skillName || 'Unknown Skill'
+      const convId = selectedConversation.value!.conversation_id
+      const now = new Date().toISOString()
+      messages.value.push({
+        message_id: `skill_submitted_${taskId}`,
+        conversation_id: convId,
+        role: null,
+        content: null,
+        event_type: 'skill_submitted',
+        skill_name: skillName,
+        skill_task_id: taskId,
+        skill_status: 'pending',
+        skill_progress: 0,
+        created_at: now,
+        loading: false
+      })
+      // 同步到全局 Work Flow 面板
+      upsertGlobalTask(taskId, {
+        task_id: taskId,
+        skill_name: skillName,
+        conversation_id: convId,
+        status: 'pending',
+        skill_progress: 0,
+        skill_elapsed_seconds: null,
+        skill_error: null,
+        created_at: now,
+      })
+      nextTick(() => scrollToBottom())
+      startSkillTaskPoller(taskId)
+      break
+    }
     case 'skill_call':
       const skillEvent = event as any
       messages.value.push({
@@ -935,6 +1197,10 @@ const selectConversation = async (conversation: ConversationInfo) => {
     const response = await getConversationDetail(conversation.conversation_id, currentAbortController.signal)
     if (response.code === 200 && response.data) {
       messages.value = response.data.messages || []
+
+      // 恢复该会话的 skill 后台任务气泡（切换页面后重新进入时）
+      await restoreSkillTasks(conversation.conversation_id)
+
       // 等待消息渲染完成后再滚动到底部
       await nextTick()
       scrollToBottom()
@@ -1287,7 +1553,7 @@ onUnmounted(() => {
 
 .content-grid {
   display: grid;
-  grid-template-columns: 300px 1fr;
+  grid-template-columns: 360px 1fr;
   gap: 24px;
   flex: 1;
   min-height: 0;
@@ -1295,15 +1561,213 @@ onUnmounted(() => {
   align-items: stretch;
 }
 
-/* ==========================================
-   2. 左侧：对话列表区域
-========================================== */
-.conversation-list-section {
+/* 左侧面板：对话列表 + Work Flow 上下排列 */
+.left-panel {
   display: flex;
   flex-direction: column;
+  gap: 16px;
   height: 100%;
   min-height: 0;
-  contain: layout;
+  overflow: hidden;
+}
+
+.conversation-list-section {
+  flex: 0 0 70%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ==========================================
+   Work Flow 面板
+========================================== */
+.workflow-section {
+  flex: 0 0 calc(30% - 16px);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.workflow-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.workflow-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.3px;
+}
+
+.workflow-title-icon {
+  font-size: 14px;
+}
+
+.workflow-running-badge {
+  background: #3b82f6;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 10px;
+  padding: 1px 7px;
+  min-width: 20px;
+  text-align: center;
+  animation: pulse-badge 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-badge {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.workflow-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  opacity: 0.6;
+  text-align: center;
+}
+
+.workflow-empty-icon {
+  font-size: 22px;
+}
+
+.workflow-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.workflow-task-item {
+  border-radius: 8px;
+  padding: 9px 11px;
+  border: 1px solid transparent;
+  transition: background 0.2s;
+}
+
+.workflow-task-pending {
+  background: rgba(251, 191, 36, 0.08);
+  border-color: rgba(251, 191, 36, 0.3);
+}
+
+.workflow-task-running {
+  background: rgba(59, 130, 246, 0.08);
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+.workflow-task-success {
+  background: rgba(16, 185, 129, 0.07);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.workflow-task-failed {
+  background: rgba(239, 68, 68, 0.07);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.workflow-task-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.workflow-task-status-icon {
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.workflow-task-pending .workflow-task-status-icon { color: #fbbf24; }
+.workflow-task-running .workflow-task-status-icon { color: #3b82f6; }
+.workflow-task-success .workflow-task-status-icon { color: #10b981; }
+.workflow-task-failed  .workflow-task-status-icon { color: #ef4444; }
+
+.workflow-task-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-task-status-text {
+  font-size: 11px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.workflow-task-pending .workflow-task-status-text { color: #fbbf24; }
+.workflow-task-running .workflow-task-status-text { color: #3b82f6; }
+.workflow-task-success .workflow-task-status-text { color: #10b981; }
+.workflow-task-failed  .workflow-task-status-text { color: #ef4444; }
+
+.workflow-progress-bar {
+  margin-top: 6px;
+  height: 3px;
+  background: rgba(59, 130, 246, 0.15);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.workflow-progress-fill {
+  height: 100%;
+  background: #3b82f6;
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+.workflow-task-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 5px;
+}
+
+.workflow-task-conv {
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+}
+
+.workflow-task-elapsed {
+  font-size: 11px;
+  color: #10b981;
+  font-weight: 500;
+}
+
+.workflow-task-time {
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.6;
+}
+
+.workflow-task-error-hint {
+  font-size: 11px;
+  color: #ef4444;
+  cursor: pointer;
+  text-decoration: underline dotted;
 }
 
 .list-card {

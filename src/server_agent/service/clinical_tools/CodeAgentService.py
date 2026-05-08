@@ -136,6 +136,10 @@ class CodeAgentService:
                     # 权限请求事件，直接转发给前端
                     chunk_data["type"] = "permission_request"
                     logger.info(f"[CodeAgentService] Permission request: {chunk_data.get('toolName')}")
+                elif kind == "skill_submitted":
+                    # Skill 已提交后台，转发给前端（前端据此开始轮询）
+                    chunk_data["type"] = "skill_submitted"
+                    logger.info(f"[CodeAgentService] Skill submitted: {chunk_data.get('skillName')}, task={chunk_data.get('taskId')}")
 
                 # 统一输出格式（SSE）
                 yield f"data: {json.dumps(chunk_data, ensure_ascii=False)}\n\n"

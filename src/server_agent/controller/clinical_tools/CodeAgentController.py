@@ -348,6 +348,30 @@ class CodeAgentController(BaseController):
             except Exception as e:
                 return ResultUtils.error(500, f"中断会话失败: {str(e)}")
 
+        @self.router.get("/skill-tasks")
+        async def list_skill_tasks(
+            conversation_id: Optional[str] = Query(None, description="按会话 ID 筛选"),
+            user_vo: UserVO = Depends(self._get_current_user)
+        ) -> BaseResponse[list]:
+            """查询 Skill 后台任务列表"""
+            from src.server_agent.service.SkillTaskManager import get_skill_task_manager
+            manager = get_skill_task_manager()
+            tasks = manager.list_tasks(conversation_id=conversation_id)
+            return ResultUtils.success([t.to_dict() for t in tasks])
+
+        @self.router.get("/skill-tasks/{task_id}")
+        async def get_skill_task(
+            task_id: str,
+            user_vo: UserVO = Depends(self._get_current_user)
+        ) -> BaseResponse[dict]:
+            """查询单个 Skill 后台任务状态"""
+            from src.server_agent.service.SkillTaskManager import get_skill_task_manager
+            manager = get_skill_task_manager()
+            task = manager.get_task(task_id)
+            if not task:
+                return ResultUtils.error(404, f"任务不存在: {task_id}")
+            return ResultUtils.success(task.to_dict())
+
         @self.router.post("/conversations")
         async def create_conversation(
             request: CreateConversationRequest,

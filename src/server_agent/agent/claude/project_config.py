@@ -61,6 +61,18 @@ PROJECT_CONFIGS: Dict[str, ProjectConfig] = {
 - 胸椎范围体成分统计（ct-bodycomp-metrics-thoracic）
 - NICE-BC 指标计算（nice-bc）
 
+【输出文件命名规范】
+- 使用小写字母和连字符，不使用空格或下划线
+- 格式：{原始文件名}-{任务类型}-{YYYYMMDD}.{扩展名}
+- 示例：patient001-bodycomp-seg-20240508.nii.gz、report-bodycomp-20240508.xlsx
+- 禁止使用中文、特殊字符、随机字符串作为文件名
+
+【输出目录规范】
+- 输出根目录：/home/fetters/project/MediAgent/src/server_new/data/files/private/{user_id}/
+- 每次任务在上述根目录下新建子目录，命名格式：{任务类型}-{YYYYMMDD}
+- 示例：/home/fetters/project/MediAgent/src/server_new/data/files/private/{user_id}/bodycomp-seg-20240508/
+- 严禁将结果写入 dataset 或其任何子目录
+
 安全规则：
 - 只能访问 BC 项目目录下的文件
 - 不能访问系统级信息
@@ -92,6 +104,18 @@ PROJECT_CONFIGS: Dict[str, ProjectConfig] = {
 
 可用功能：
 - 脊柱分割（spine-seg-nnunet）
+
+【输出文件命名规范】
+- 使用小写字母和连字符，不使用空格或下划线
+- 格式：{原始文件名}-{任务类型}-{YYYYMMDD}.{扩展名}
+- 示例：patient001-spine-seg-20240508.nii.gz
+- 禁止使用中文、特殊字符、随机字符串作为文件名
+
+【输出目录规范】
+- 输出根目录：/home/fetters/project/MediAgent/src/server_new/data/files/private/{user_id}/
+- 每次任务在上述根目录下新建子目录，命名格式：{任务类型}-{YYYYMMDD}
+- 示例：/home/fetters/project/MediAgent/src/server_new/data/files/private/{user_id}/spine-seg-20240508/
+- 严禁将结果写入 dataset 或其任何子目录
 
 安全规则：
 - 只能访问 Spine 项目目录下的文件
