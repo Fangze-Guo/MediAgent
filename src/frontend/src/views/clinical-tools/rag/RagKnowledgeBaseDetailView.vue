@@ -185,7 +185,7 @@ onMounted(() => {
 .knowledge-base-detail-container {
   padding: 24px;
   min-height: 100vh;
-  background: #f5f5f5;
+  background: var(--bg-secondary);
 }
 
 .page-header {
@@ -209,13 +209,13 @@ onMounted(() => {
   margin: 0 0 8px 0;
   font-size: 28px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-primary);
 }
 
 .page-subtitle {
   margin: 0;
   font-size: 14px;
-  color: #666;
+  color: var(--text-secondary);
   line-height: 1.5;
   max-width: 600px;
 }
@@ -229,13 +229,13 @@ onMounted(() => {
 }
 
 .stat-card {
-  background: white;
+  background: var(--bg-primary);
   border-radius: 12px;
   padding: 24px;
   display: flex;
   align-items: center;
   gap: 16px;
-  border: 1px solid #e8e8e8;
+  border: 1px solid var(--border-color);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   transition: all 0.3s ease;
 }
@@ -247,7 +247,7 @@ onMounted(() => {
 
 .stat-icon {
   font-size: 32px;
-  color: #1890ff;
+  color: var(--link-color);
 }
 
 .stat-content {
@@ -259,23 +259,23 @@ onMounted(() => {
 .stat-value {
   font-size: 24px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-primary);
   line-height: 1;
 }
 
 .stat-label {
   font-size: 12px;
-  color: #666;
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 /* 文档区域 */
 .documents-section {
-  background: white;
+  background: var(--bg-primary);
   border-radius: 12px;
   padding: 24px;
-  border: 1px solid #e8e8e8;
+  border: 1px solid var(--border-color);
 }
 
 .section-header {
@@ -292,7 +292,7 @@ onMounted(() => {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-primary);
 }
 
 /* 响应式设计 */

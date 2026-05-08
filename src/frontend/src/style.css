@@ -26,17 +26,17 @@ body {
 
 /* CSS 变量 - 暗色模式 */
 [data-theme='dark'] {
-  --bg-primary: #1a1a1a;
-  --bg-secondary: #252525;
-  --bg-tertiary: #2f2f2f;
-  --text-primary: #f0f0f0;
-  --text-secondary: #d8d8d8;
-  --text-tertiary: #b0b0b0;
-  --border-color: #404040;
-  --border-color-light: #4a4a4a;
-  --hover-bg: #2f2f2f;
-  --link-color: #1890ff;
-  --link-hover: #40a9ff;
+  --bg-primary: #1e1e1e;
+  --bg-secondary: #2a2a2a;
+  --bg-tertiary: #333333;
+  --text-primary: #e8e8e8;
+  --text-secondary: #b0b0b0;
+  --text-tertiary: #808080;
+  --border-color: #3a3a3a;
+  --border-color-light: #444444;
+  --hover-bg: #303030;
+  --link-color: #4da6ff;
+  --link-hover: #69b8ff;
 }
 
 /* 全局暗色模式适配 */
@@ -115,6 +115,643 @@ body {
   background: var(--bg-primary);
 }
 
-[data-theme='dark'] .ant-table-content {
+/* ========== Modal ========== */
+[data-theme='dark'] .ant-modal-content {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme='dark'] .ant-modal-header {
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+[data-theme='dark'] .ant-modal-title {
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .ant-modal-close {
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .ant-modal-close:hover {
+  color: var(--text-primary);
+  background: var(--hover-bg);
+}
+
+[data-theme='dark'] .ant-modal-footer {
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border-color);
+}
+
+/* ========== Select / Dropdown ========== */
+[data-theme='dark'] .ant-select-selector {
+  background: var(--bg-secondary) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme='dark'] .ant-select-selection-placeholder {
+  color: var(--text-tertiary) !important;
+}
+
+[data-theme='dark'] .ant-select-arrow {
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .ant-select-dropdown {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme='dark'] .ant-select-item {
+  color: var(--text-primary);
+  background: transparent;
+}
+
+[data-theme='dark'] .ant-select-item:hover,
+[data-theme='dark'] .ant-select-item-option-active {
+  background: var(--hover-bg) !important;
+}
+
+[data-theme='dark'] .ant-select-item-option-selected {
+  background: color-mix(in srgb, var(--link-color) 15%, transparent) !important;
+  color: var(--link-color) !important;
+  font-weight: 600;
+}
+
+/* ========== Dropdown Menu ========== */
+[data-theme='dark'] .ant-dropdown-menu {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme='dark'] .ant-dropdown-menu-item {
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .ant-dropdown-menu-item:hover {
+  background: var(--hover-bg);
+}
+
+[data-theme='dark'] .ant-dropdown-menu-item-divider {
+  background: var(--border-color);
+}
+
+/* ========== Menu (Sidebar) ========== */
+[data-theme='dark'] .ant-menu {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-right: none;
+}
+
+[data-theme='dark'] .ant-menu-item {
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .ant-menu-item:hover {
+  background: var(--hover-bg) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme='dark'] .ant-menu-item-selected {
+  background: color-mix(in srgb, var(--link-color) 15%, transparent) !important;
+  color: var(--link-color) !important;
+}
+
+[data-theme='dark'] .ant-menu-item-selected::after {
+  border-right-color: var(--link-color) !important;
+}
+
+[data-theme='dark'] .ant-menu-submenu-title {
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .ant-menu-submenu-title:hover {
+  background: var(--hover-bg) !important;
+  color: var(--text-primary) !important;
+}
+
+/* ========== Form ========== */
+[data-theme='dark'] .ant-form-item-label > label {
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .ant-form-item-explain-error {
+  color: #ff6b6b;
+}
+
+[data-theme='dark'] .ant-input-number {
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .ant-input-number-input {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .ant-input-textarea textarea {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+/* ========== Tag ========== */
+[data-theme='dark'] .ant-tag {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+/* ========== Popover / Tooltip ========== */
+[data-theme='dark'] .ant-popover-inner {
+  background: var(--bg-secondary);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme='dark'] .ant-popover-title {
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+[data-theme='dark'] .ant-popover-inner-content {
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .ant-tooltip-inner {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* ========== Tabs ========== */
+[data-theme='dark'] .ant-tabs-nav {
+  background: transparent;
+}
+
+[data-theme='dark'] .ant-tabs-tab {
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .ant-tabs-tab:hover {
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--link-color) !important;
+}
+
+[data-theme='dark'] .ant-tabs-ink-bar {
+  background: var(--link-color);
+}
+
+[data-theme='dark'] .ant-tabs-nav::before {
+  border-bottom-color: var(--border-color);
+}
+
+/* ========== Statistic ========== */
+[data-theme='dark'] .ant-statistic-title {
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .ant-statistic-content {
+  color: var(--text-primary);
+}
+
+/* ========== Divider ========== */
+[data-theme='dark'] .ant-divider {
+  border-color: var(--border-color);
+}
+
+[data-theme='dark'] .ant-divider-inner-text {
+  color: var(--text-secondary);
+}
+
+/* ========== List ========== */
+[data-theme='dark'] .ant-list-item {
+  border-bottom-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+/* ========== Breadcrumb ========== */
+[data-theme='dark'] .ant-breadcrumb {
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .ant-breadcrumb a {
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .ant-breadcrumb a:hover {
+  color: var(--link-color);
+}
+
+[data-theme='dark'] .ant-breadcrumb-separator {
+  color: var(--text-tertiary);
+}
+
+/* ========== Spin / Loading ========== */
+[data-theme='dark'] .ant-spin-text {
+  color: var(--text-secondary);
+}
+
+/* ========== Empty ========== */
+[data-theme='dark'] .ant-empty-description {
+  color: var(--text-secondary);
+}
+
+/* ========== Pagination ========== */
+[data-theme='dark'] .ant-pagination-item {
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+}
+
+[data-theme='dark'] .ant-pagination-item a {
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .ant-pagination-item-active {
+  background: color-mix(in srgb, var(--link-color) 15%, transparent);
+  border-color: var(--link-color);
+}
+
+[data-theme='dark'] .ant-pagination-item-active a {
+  color: var(--link-color);
+}
+
+[data-theme='dark'] .ant-pagination-prev button,
+[data-theme='dark'] .ant-pagination-next button {
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+/* ========== Checkbox / Radio ========== */
+[data-theme='dark'] .ant-checkbox-inner {
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+}
+
+[data-theme='dark'] .ant-checkbox-wrapper {
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .ant-radio-wrapper {
+  color: var(--text-primary);
+}
+
+/* ========== Switch ========== */
+[data-theme='dark'] .ant-switch {
+  background: var(--bg-tertiary);
+}
+
+/* ========== Upload ========== */
+[data-theme='dark'] .ant-upload-drag {
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+}
+
+[data-theme='dark'] .ant-upload-drag:hover {
+  border-color: var(--link-color);
+}
+
+[data-theme='dark'] .ant-upload-text {
+  color: var(--text-primary) !important;
+}
+
+[data-theme='dark'] .ant-upload-hint {
+  color: var(--text-secondary) !important;
+}
+
+/* ========== Steps ========== */
+[data-theme='dark'] .ant-steps-item-title {
+  color: var(--text-primary) !important;
+}
+
+[data-theme='dark'] .ant-steps-item-description {
+  color: var(--text-secondary) !important;
+}
+
+[data-theme='dark'] .ant-steps-item-wait .ant-steps-item-icon {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+}
+
+[data-theme='dark'] .ant-steps-item-wait .ant-steps-item-icon .ant-steps-icon {
+  color: var(--text-secondary);
+}
+
+/* ========== Layout ========== */
+[data-theme='dark'] .ant-layout {
   background: var(--bg-primary);
 }
+
+[data-theme='dark'] .ant-layout-sider {
+  background: var(--bg-primary);
+}
+
+[data-theme='dark'] .ant-layout-header {
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+[data-theme='dark'] .ant-layout-footer {
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-color);
+}
+
+/* ========== Table row selection ========== */
+[data-theme='dark'] .ant-table-tbody > tr.ant-table-row-selected > td {
+  background: color-mix(in srgb, var(--link-color) 10%, transparent) !important;
+}
+
+[data-theme='dark'] .ant-table-column-sorter {
+  color: var(--text-tertiary);
+}
+
+[data-theme='dark'] .ant-table-filter-trigger {
+  color: var(--text-tertiary);
+}
+
+/* ========== Dataset / Task 页面全局暗黑覆盖 ========== */
+
+/* 页面背景 */
+[data-theme='dark'] .dataset-manage,
+[data-theme='dark'] .task-manage-container,
+[data-theme='dark'] .document-detail-container {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+/* 卡片/白色容器 */
+[data-theme='dark'] .dataset-card,
+[data-theme='dark'] .data-card,
+[data-theme='dark'] .modal-content,
+[data-theme='dark'] .stat-card,
+[data-theme='dark'] .task-list-section,
+[data-theme='dark'] .step-item,
+[data-theme='dark'] .progress-detail {
+  background: var(--bg-primary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+/* 标题文字 */
+[data-theme='dark'] .page-title,
+[data-theme='dark'] .section-title,
+[data-theme='dark'] .section-title-detail,
+[data-theme='dark'] .modal-header h2,
+[data-theme='dark'] .card-title,
+[data-theme='dark'] .step-tool,
+[data-theme='dark'] .task-name-cell,
+[data-theme='dark'] .detail-section .section-title {
+  color: var(--text-primary);
+}
+
+/* 次要文字 */
+[data-theme='dark'] .dataset-count,
+[data-theme='dark'] .desc-label,
+[data-theme='dark'] .info-label,
+[data-theme='dark'] .stat-title,
+[data-theme='dark'] .stat-label,
+[data-theme='dark'] .task-id-cell,
+[data-theme='dark'] .task-code-cell,
+[data-theme='dark'] .time-cell,
+[data-theme='dark'] .step-source,
+[data-theme='dark'] .step-relative,
+[data-theme='dark'] .loading-container p,
+[data-theme='dark'] .empty-state,
+[data-theme='dark'] .loading-state {
+  color: var(--text-secondary);
+}
+
+/* 正文文字 */
+[data-theme='dark'] .dataset-name,
+[data-theme='dark'] .desc-text,
+[data-theme='dark'] .info-value,
+[data-theme='dark'] .stat-value,
+[data-theme='dark'] .data-card-content {
+  color: var(--text-primary);
+}
+
+/* 边框线 */
+[data-theme='dark'] .modal-header,
+[data-theme='dark'] .modal-footer,
+[data-theme='dark'] .section-title,
+[data-theme='dark'] .section-title-detail,
+[data-theme='dark'] .detail-actions,
+[data-theme='dark'] .detail-section .section-title {
+  border-color: var(--border-color);
+}
+
+/* 关闭按钮 */
+[data-theme='dark'] .btn-close {
+  color: var(--text-secondary);
+}
+[data-theme='dark'] .btn-close:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+/* 次要按钮 */
+[data-theme='dark'] .btn-secondary {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+[data-theme='dark'] .btn-secondary:hover {
+  background: var(--hover-bg);
+}
+
+/* 图标按钮 */
+[data-theme='dark'] .btn-icon {
+  color: var(--text-secondary);
+}
+[data-theme='dark'] .btn-icon:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+/* 表单输入 */
+[data-theme='dark'] .form-group input,
+[data-theme='dark'] .form-group textarea {
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+[data-theme='dark'] .form-group input:focus,
+[data-theme='dark'] .form-group textarea:focus {
+  border-color: var(--link-color);
+}
+[data-theme='dark'] .form-group input:disabled {
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+}
+[data-theme='dark'] .form-group label {
+  color: var(--text-primary);
+}
+[data-theme='dark'] .help-text {
+  color: var(--text-secondary);
+}
+
+/* 上传区域 */
+[data-theme='dark'] .upload-area {
+  border-color: var(--border-color);
+  background: var(--bg-primary);
+}
+[data-theme='dark'] .upload-area:hover,
+[data-theme='dark'] .upload-area.drag-over {
+  border-color: var(--link-color);
+  background: color-mix(in srgb, var(--link-color) 8%, transparent);
+}
+[data-theme='dark'] .upload-text {
+  color: var(--text-primary);
+}
+[data-theme='dark'] .upload-icon {
+  color: var(--text-tertiary);
+}
+
+/* 备注区域 */
+[data-theme='dark'] .dataset-notes {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+
+/* spinner */
+[data-theme='dark'] .spinner {
+  border-color: var(--border-color);
+  border-top-color: var(--link-color);
+}
+
+/* 步骤时间线 */
+[data-theme='dark'] .steps-timeline::before {
+  background: var(--border-color);
+}
+[data-theme='dark'] .step-item {
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+}
+[data-theme='dark'] .step-item::before {
+  background: var(--border-color);
+  border-color: var(--bg-primary);
+  box-shadow: 0 0 0 2px var(--border-color);
+}
+[data-theme='dark'] .step-pending {
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+}
+[data-theme='dark'] .step-completed {
+  background: color-mix(in srgb, #52c41a 10%, transparent);
+  border-color: #52c41a;
+}
+[data-theme='dark'] .step-running {
+  background: color-mix(in srgb, var(--link-color) 10%, transparent);
+  border-color: var(--link-color);
+}
+[data-theme='dark'] .step-failed {
+  background: color-mix(in srgb, #ff4d4f 10%, transparent);
+  border-color: #ff4d4f;
+}
+[data-theme='dark'] .step-number {
+  background: var(--bg-primary);
+  border-color: var(--border-color);
+  color: var(--text-secondary);
+}
+
+/* 代码块 */
+[data-theme='dark'] .request-json,
+[data-theme='dark'] .step-source .value,
+[data-theme='dark'] .step-relative .value {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* stat-icon 背景（TaskManage 统计卡片） */
+[data-theme='dark'] .stat-card-total .stat-icon {
+  background: color-mix(in srgb, #1890ff 15%, transparent);
+}
+[data-theme='dark'] .stat-card-queued .stat-icon {
+  background: color-mix(in srgb, #faad14 15%, transparent);
+}
+[data-theme='dark'] .stat-card-running .stat-icon {
+  background: color-mix(in srgb, #1890ff 15%, transparent);
+}
+[data-theme='dark'] .stat-card-succeeded .stat-icon {
+  background: color-mix(in srgb, #52c41a 15%, transparent);
+}
+[data-theme='dark'] .stat-card-failed .stat-icon {
+  background: color-mix(in srgb, #ff4d4f 15%, transparent);
+}
+
+/* stat-item（进度详情） */
+[data-theme='dark'] .stat-item {
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+}
+
+/* 状态标签 */
+[data-theme='dark'] .status-success {
+  background: color-mix(in srgb, #52c41a 15%, transparent);
+  color: #52c41a;
+  border-color: #52c41a;
+}
+[data-theme='dark'] .status-warning {
+  background: color-mix(in srgb, #faad14 15%, transparent);
+  color: #faad14;
+  border-color: #faad14;
+}
+
+/* 数据类型标签 */
+[data-theme='dark'] .data-tag.clinical  { background: color-mix(in srgb, #3b82f6 12%, transparent); color: #60a5fa; border-color: #3b82f6; }
+[data-theme='dark'] .data-tag.text      { background: color-mix(in srgb, #22c55e 12%, transparent); color: #4ade80; border-color: #22c55e; }
+[data-theme='dark'] .data-tag.imaging   { background: color-mix(in srgb, #f59e0b 12%, transparent); color: #fbbf24; border-color: #f59e0b; }
+[data-theme='dark'] .data-tag.pathology { background: color-mix(in srgb, #e11d48 12%, transparent); color: #fb7185; border-color: #e11d48; }
+[data-theme='dark'] .data-tag.genomics  { background: color-mix(in srgb, #a855f7 12%, transparent); color: #c084fc; border-color: #a855f7; }
+[data-theme='dark'] .data-tag.annotation{ background: color-mix(in srgb, #06b6d4 12%, transparent); color: #22d3ee; border-color: #06b6d4; }
+
+/* 数据卡片类型色 */
+[data-theme='dark'] .data-card.clinical  .data-card-icon { background: color-mix(in srgb, #3b82f6 12%, transparent); color: #60a5fa; }
+[data-theme='dark'] .data-card.clinical  .data-card-header h4 { color: #60a5fa; }
+[data-theme='dark'] .data-card.text      .data-card-icon { background: color-mix(in srgb, #22c55e 12%, transparent); color: #4ade80; }
+[data-theme='dark'] .data-card.text      .data-card-header h4 { color: #4ade80; }
+[data-theme='dark'] .data-card.imaging   .data-card-icon { background: color-mix(in srgb, #f59e0b 12%, transparent); color: #fbbf24; }
+[data-theme='dark'] .data-card.imaging   .data-card-header h4 { color: #fbbf24; }
+[data-theme='dark'] .data-card.pathology .data-card-icon { background: color-mix(in srgb, #e11d48 12%, transparent); color: #fb7185; }
+[data-theme='dark'] .data-card.pathology .data-card-header h4 { color: #fb7185; }
+[data-theme='dark'] .data-card.genomics  .data-card-icon { background: color-mix(in srgb, #a855f7 12%, transparent); color: #c084fc; }
+[data-theme='dark'] .data-card.genomics  .data-card-header h4 { color: #c084fc; }
+[data-theme='dark'] .data-card.annotation .data-card-icon { background: color-mix(in srgb, #06b6d4 12%, transparent); color: #22d3ee; }
+[data-theme='dark'] .data-card.annotation .data-card-header h4 { color: #22d3ee; }
+[data-theme='dark'] .data-card.notes    .data-card-icon { background: color-mix(in srgb, #facc15 12%, transparent); color: #fde047; }
+[data-theme='dark'] .data-card.notes    .data-card-header h4 { color: #fde047; }
+
+/* dataset-icon */
+[data-theme='dark'] .dataset-icon {
+  background: color-mix(in srgb, var(--link-color) 12%, transparent);
+  color: var(--link-color);
+}
+
+/* 表格覆盖（task-table scoped deep） */
+[data-theme='dark'] .task-table .ant-table,
+[data-theme='dark'] .task-table .ant-table-wrapper {
+  background: var(--bg-primary);
+}
+[data-theme='dark'] .task-table .ant-table-thead > tr > th {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-bottom-color: var(--border-color);
+}
+[data-theme='dark'] .task-table .ant-table-tbody > tr > td {
+  border-bottom-color: var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+[data-theme='dark'] .task-table .ant-table-tbody > tr:hover > td {
+  background: var(--hover-bg) !important;
+}
+

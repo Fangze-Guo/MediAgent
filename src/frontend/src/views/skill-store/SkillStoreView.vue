@@ -407,8 +407,8 @@ const goToSkillDetail = (id: string) => {
 
 .skill-category-badge {
   font-size: 11px;
-  color: #1a73e8;
-  background: #e8f0fe;
+  color: var(--link-color, #1a73e8);
+  background: var(--bg-secondary);
   padding: 4px 10px;
   border-radius: 12px;
   font-weight: 500;

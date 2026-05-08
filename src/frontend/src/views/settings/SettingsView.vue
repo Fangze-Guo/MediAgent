@@ -65,7 +65,7 @@ const { t } = useI18n()
   padding: 40px;
   max-width: 800px;
   margin: 0 auto;
-  background: white;
+  background: var(--bg-primary);
   min-height: 100vh;
 }
 
@@ -75,12 +75,12 @@ const { t } = useI18n()
 }
 
 .settings-header h1 {
-  color: #333;
+  color: var(--text-primary);
   margin-bottom: 10px;
 }
 
 .settings-header p {
-  color: #666;
+  color: var(--text-secondary);
   margin: 0;
 }
 
@@ -91,13 +91,14 @@ const { t } = useI18n()
 }
 
 .settings-section {
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--border-color);
   border-radius: 12px;
   padding: 24px;
+  background: var(--bg-primary);
 }
 
 .settings-section h2 {
-  color: #333;
+  color: var(--text-primary);
   margin: 0 0 20px 0;
   font-size: 18px;
 }
@@ -107,7 +108,7 @@ const { t } = useI18n()
   justify-content: space-between;
   align-items: center;
   padding: 16px 0;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .setting-item:last-child {
@@ -115,7 +116,7 @@ const { t } = useI18n()
 }
 
 .setting-item label {
-  color: #555;
+  color: var(--text-primary);
   font-weight: 500;
 }
 
@@ -126,10 +127,10 @@ const { t } = useI18n()
 
 .setting-item select {
   padding: 8px 12px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--border-color);
   border-radius: 6px;
-  background: white;
-  color: #333;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
 .btn-secondary {
@@ -160,12 +161,11 @@ const { t } = useI18n()
   background: #c82333;
 }
 
-/* 响应式设计 */
 @media (max-width: 768px) {
   .settings-page {
     padding: 20px;
   }
-  
+
   .setting-item {
     flex-direction: column;
     align-items: flex-start;
@@ -173,3 +173,4 @@ const { t } = useI18n()
   }
 }
 </style>
+

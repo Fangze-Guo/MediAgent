@@ -263,10 +263,10 @@ const formatNumber = (num: number) => {
 
 <style scoped>
 .model-card {
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--border-color);
   border-radius: 12px;
   padding: 20px;
-  background: white;
+  background: var(--bg-primary);
   transition: all 0.3s ease;
   height: 100%;
   display: flex;
@@ -274,14 +274,14 @@ const formatNumber = (num: number) => {
 }
 
 .model-card:hover {
-  border-color: #1890ff;
+  border-color: var(--link-color);
   box-shadow: 0 4px 12px rgba(24, 144, 255, 0.15);
   transform: translateY(-2px);
 }
 
 .model-card.disabled {
   opacity: 0.6;
-  background: #fafafa;
+  background: var(--bg-secondary);
 }
 
 .model-header {
@@ -311,7 +311,7 @@ const formatNumber = (num: number) => {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: #262626;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -320,7 +320,7 @@ const formatNumber = (num: number) => {
 .model-description {
   margin: 0;
   font-size: 13px;
-  color: #8c8c8c;
+  color: var(--text-secondary);
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -359,7 +359,7 @@ const formatNumber = (num: number) => {
   justify-content: space-between;
   align-items: center;
   padding: 6px 0;
-  border-bottom: 1px solid #f5f5f5;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .spec-item:last-child {
@@ -368,19 +368,19 @@ const formatNumber = (num: number) => {
 
 .spec-label {
   font-size: 12px;
-  color: #8c8c8c;
+  color: var(--text-secondary);
 }
 
 .spec-value {
   font-size: 12px;
-  color: #262626;
+  color: var(--text-primary);
   font-weight: 500;
 }
 
 .model-footer {
   margin-top: auto;
   padding-top: 12px;
-  border-top: 1px solid #f5f5f5;
+  border-top: 1px solid var(--border-color);
 }
 
 .provider-info {
@@ -391,7 +391,7 @@ const formatNumber = (num: number) => {
 
 .provider-name {
   font-size: 12px;
-  color: #595959;
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
@@ -429,7 +429,7 @@ const formatNumber = (num: number) => {
 }
 
 .provider-link:hover {
-  color: #40a9ff;
+  color: var(--link-hover);
   text-decoration: underline;
 }
 
@@ -446,13 +446,13 @@ const formatNumber = (num: number) => {
   display: inline-block;
 }
 
-.tag-blue { background: #e3f2fd; color: #1976d2; }
-.tag-green { background: #e8f5e9; color: #388e3c; }
-.tag-orange { background: #fff3e0; color: #f57c00; }
-.tag-red { background: #ffebee; color: #c62828; }
-.tag-cyan { background: #e0f7fa; color: #00acc1; }
-.tag-magenta { background: #fce4ec; color: #c2185b; }
-.tag-default { background: #f5f5f5; color: #666; }
+.tag-blue    { background: color-mix(in srgb, #1976d2 15%, transparent); color: #4da6ff; }
+.tag-green   { background: color-mix(in srgb, #388e3c 15%, transparent); color: #52c41a; }
+.tag-orange  { background: color-mix(in srgb, #f57c00 15%, transparent); color: #fa8c16; }
+.tag-red     { background: color-mix(in srgb, #c62828 15%, transparent); color: #ff6b6b; }
+.tag-cyan    { background: color-mix(in srgb, #00acc1 15%, transparent); color: #36cfc9; }
+.tag-magenta { background: color-mix(in srgb, #c2185b 15%, transparent); color: #f759ab; }
+.tag-default { background: var(--bg-secondary); color: var(--text-secondary); }
 
 /* 响应式 */
 @media (max-width: 768px) {

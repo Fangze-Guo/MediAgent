@@ -472,21 +472,21 @@ const handleProcess = async () => {
   border: 2px solid;
   transition: all 0.2s ease;
   z-index: 2;
-  background-color: #ffffff;
+  background-color: var(--bg-primary);
 }
 .step-circle.active {
-  background-color: #0f172a; /* Tailwind bg-primary */
-  border-color: #0f172a;
+  background-color: var(--link-color);
+  border-color: var(--link-color);
   color: #ffffff;
 }
 .step-circle.completed {
-  background-color: #f1f5f9; /* Tailwind bg-primary/20 的近似色 */
-  border-color: #e2e8f0;
-  color: #0f172a;
+  background-color: var(--bg-secondary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
 }
 .step-circle.pending {
-  border-color: #e2e8f0; /* Tailwind border-input */
-  color: #64748b;
+  border-color: var(--border-color);
+  color: var(--text-tertiary);
 }
 .step-icon {
   font-size: 24px;
@@ -495,7 +495,7 @@ const handleProcess = async () => {
   margin-top: 0.5rem;
   font-size: 0.875rem;
   font-weight: 500;
-  color: #0f172a;
+  color: var(--text-primary);
 }
 .step-connector {
   position: absolute;
@@ -503,11 +503,11 @@ const handleProcess = async () => {
   left: 50%;
   width: 100%;
   height: 2px;
-  background-color: #e2e8f0;
+  background-color: var(--border-color);
   z-index: 1;
 }
 .step-connector.completed {
-  background-color: #cbd5e1; /* completed 状态稍微深一点 */
+  background-color: var(--border-color-light);
 }
 
 /* --- 2. 卡片与布局 --- */
@@ -516,8 +516,8 @@ const handleProcess = async () => {
 }
 .step-card {
   border-radius: 0.5rem;
-  border: 1px solid #e2e8f0;
-  background-color: #ffffff;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-primary);
   box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
 }
 .card-body {
@@ -549,9 +549,9 @@ const handleProcess = async () => {
   align-items: center;
   justify-content: space-between;
   padding: 1rem;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-color);
   border-radius: 0.5rem;
-  background-color: #ffffff;
+  background-color: var(--bg-primary);
 }
 .file-info-left {
   display: flex;
@@ -562,8 +562,8 @@ const handleProcess = async () => {
   display: flex;
   flex-direction: column;
 }
-.file-name { margin: 0; font-size: 0.875rem; font-weight: 500; color: #0f172a; }
-.file-size, .task-status-text { margin: 0; font-size: 0.75rem; color: #64748b; }
+.file-name { margin: 0; font-size: 0.875rem; font-weight: 500; color: var(--text-primary); }
+.file-size, .task-status-text { margin: 0; font-size: 0.75rem; color: var(--text-secondary); }
 .file-actions-right {
   display: flex;
   align-items: center;
@@ -582,11 +582,11 @@ const handleProcess = async () => {
   border-radius: 9999px;
   border: none;
   background: transparent;
-  color: #64748b;
+  color: var(--text-secondary);
   cursor: pointer;
   transition: background-color 0.2s;
 }
-.icon-button:hover { background-color: #f1f5f9; color: #0f172a; }
+.icon-button:hover { background-color: var(--hover-bg); color: var(--text-primary); }
 
 /* --- 4. 真实质感文件图标 --- */
 .file-icon-wrapper {
@@ -619,54 +619,54 @@ const handleProcess = async () => {
 .icon-default { background: linear-gradient(135deg, #cbd5e1, #64748b); }
 
 /* --- 5. 表单与按钮复刻 (覆盖 Ant Design) --- */
-.shadcn-title { font-size: 1.125rem; font-weight: 500; margin: 0; color: #0f172a; }
+.shadcn-title { font-size: 1.125rem; font-weight: 500; margin: 0; color: var(--text-primary); }
 .settings-grid { display: grid; gap: 1rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.setting-item label { display: block; font-size: 0.875rem; font-weight: 500; margin-bottom: 0.5rem; color: #0f172a;}
+.setting-item label { display: block; font-size: 0.875rem; font-weight: 500; margin-bottom: 0.5rem; color: var(--text-primary); }
 
 /* 覆盖 AntD 默认样式以匹配 Shadcn */
 :deep(.shadcn-btn-primary) {
-  background-color: #0f172a;
-  border-color: #0f172a;
+  background-color: var(--link-color);
+  border-color: var(--link-color);
   border-radius: 0.375rem;
   font-weight: 500;
 }
-:deep(.shadcn-btn-primary:hover) { background-color: #1e293b; border-color: #1e293b; }
-:deep(.shadcn-btn-primary[disabled]) { background-color: #f1f5f9; border-color: #e2e8f0; color: #94a3b8; }
+:deep(.shadcn-btn-primary:hover) { background-color: var(--link-hover); border-color: var(--link-hover); }
+:deep(.shadcn-btn-primary[disabled]) { background-color: var(--bg-secondary); border-color: var(--border-color); color: var(--text-tertiary); }
 
 :deep(.shadcn-btn-secondary) {
-  background-color: #f1f5f9;
+  background-color: var(--bg-secondary);
   border-color: transparent;
-  color: #0f172a;
+  color: var(--text-primary);
   border-radius: 0.375rem;
   font-weight: 500;
 }
-:deep(.shadcn-btn-secondary:hover) { background-color: #e2e8f0; }
+:deep(.shadcn-btn-secondary:hover) { background-color: var(--hover-bg); }
 
 :deep(.shadcn-btn-outline) {
   background-color: transparent;
-  border-color: #e2e8f0;
-  color: #0f172a;
+  border-color: var(--border-color);
+  color: var(--text-primary);
   border-radius: 0.375rem;
   font-weight: 500;
 }
-:deep(.shadcn-btn-outline:hover) { background-color: #f1f5f9; }
+:deep(.shadcn-btn-outline:hover) { background-color: var(--hover-bg); }
 
 :deep(.shadcn-select .ant-select-selector),
 :deep(.shadcn-input) {
   border-radius: 0.375rem;
-  border-color: #e2e8f0;
+  border-color: var(--border-color);
 }
 :deep(.shadcn-collapse) { background: transparent; }
-:deep(.shadcn-panel) { border-bottom: none; border-top: 1px solid #e2e8f0; }
+:deep(.shadcn-panel) { border-bottom: none; border-top: 1px solid var(--border-color); }
 :deep(.shadcn-progress .ant-progress-bg) { height: 0.5rem !important; border-radius: 9999px; }
 
 /* --- 6. Preview 容器样式 --- */
 .preview-container { margin-top: 1rem; }
 .preview-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-.chunks-list { height: 400px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 0.5rem; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
-.chunk-item { padding: 1rem; background-color: #f1f5f9; border-radius: 0.5rem; }
-.chunk-label { font-size: 0.875rem; color: #64748b; margin-bottom: 0.5rem; }
-.chunk-content { margin: 0; white-space: pre-wrap; font-size: 0.875rem; color: #0f172a; font-family: inherit; }
+.chunks-list { height: 400px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 0.5rem; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.chunk-item { padding: 1rem; background-color: var(--bg-secondary); border-radius: 0.5rem; }
+.chunk-label { font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem; }
+.chunk-content { margin: 0; white-space: pre-wrap; font-size: 0.875rem; color: var(--text-primary); font-family: inherit; }
 
 /* 简单淡入动画 */
 .fade-in { animation: fadeIn 0.3s ease-in-out; }

@@ -1019,12 +1019,13 @@ const getAssistantAvatarStyle = () => {
   outline: none;
   resize: none;
   font-size: 16px;
-  min-height: 60px; /* 增加最小高度 */
-  max-height: 150px; /* 增加最大高度 */
+  min-height: 60px;
+  max-height: 150px;
   width: 100%;
   color: var(--text-primary);
-  padding: 12px 16px; /* 增加内边距 */
-  line-height: 1.6; /* 增加行高，让换行更明显 */
+  background: var(--bg-primary);
+  padding: 12px 16px;
+  line-height: 1.6;
 }
 
 .message-input::placeholder {

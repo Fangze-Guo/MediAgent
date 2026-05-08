@@ -426,8 +426,8 @@ watch(() => props.model, (newModel) => {
   margin: 24px 0 16px 0;
   font-size: 16px;
   font-weight: 600;
-  color: #262626;
-  border-bottom: 1px solid #f0f0f0;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-color);
   padding-bottom: 8px;
 }
 

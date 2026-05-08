@@ -633,20 +633,20 @@ onUnmounted(() => {
 }
 
 .model-card {
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 16px;
   transition: all 0.3s;
 }
 
 .model-card:hover {
-  border-color: #1890ff;
+  border-color: var(--link-color);
   box-shadow: 0 2px 8px rgba(24, 144, 255, 0.2);
 }
 
 .model-card.current {
-  border-color: #1890ff;
-  background-color: #f0f8ff;
+  border-color: var(--link-color);
+  background-color: color-mix(in srgb, var(--link-color) 8%, transparent);
 }
 
 .model-card.selectable {
@@ -655,7 +655,7 @@ onUnmounted(() => {
 
 .model-card.selected {
   border-color: #52c41a;
-  background-color: #f6ffed;
+  background-color: color-mix(in srgb, #52c41a 8%, transparent);
 }
 
 .model-card.disabled {
@@ -683,7 +683,7 @@ onUnmounted(() => {
 
 .model-info p {
   margin: 0 0 8px 0;
-  color: #666;
+  color: var(--text-secondary);
   font-size: 14px;
 }
 
@@ -724,7 +724,7 @@ onUnmounted(() => {
 .model-filters {
   margin-bottom: 24px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .available-models-grid {
@@ -739,7 +739,7 @@ onUnmounted(() => {
 .modal-actions {
   text-align: right;
   padding-top: 16px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--border-color);
 }
 
 /* 提供商链接样式 */
@@ -762,13 +762,13 @@ onUnmounted(() => {
   display: inline-block;
 }
 
-.tag-blue { background: #e3f2fd; color: #1976d2; }
-.tag-green { background: #e8f5e9; color: #388e3c; }
-.tag-orange { background: #fff3e0; color: #f57c00; }
-.tag-red { background: #ffebee; color: #c62828; }
-.tag-cyan { background: #e0f7fa; color: #00acc1; }
-.tag-magenta { background: #fce4ec; color: #c2185b; }
-.tag-default { background: #f5f5f5; color: #666; }
+.tag-blue    { background: color-mix(in srgb, #1976d2 15%, transparent); color: #4da6ff; }
+.tag-green   { background: color-mix(in srgb, #388e3c 15%, transparent); color: #52c41a; }
+.tag-orange  { background: color-mix(in srgb, #f57c00 15%, transparent); color: #fa8c16; }
+.tag-red     { background: color-mix(in srgb, #c62828 15%, transparent); color: #ff6b6b; }
+.tag-cyan    { background: color-mix(in srgb, #00acc1 15%, transparent); color: #36cfc9; }
+.tag-magenta { background: color-mix(in srgb, #c2185b 15%, transparent); color: #f759ab; }
+.tag-default { background: var(--bg-secondary); color: var(--text-secondary); }
 
 .provider-link {
   font-size: 12px;
@@ -780,7 +780,7 @@ onUnmounted(() => {
 }
 
 .provider-link:hover {
-  color: #40a9ff;
+  color: var(--link-hover);
   text-decoration: underline;
 }
 </style>

@@ -297,7 +297,7 @@ onMounted(() => {
 <style scoped>
 .document-list {
   width: 100%;
-  background: #ffffff;
+  background: var(--bg-primary);
   border-radius: 8px;
 }
 
@@ -310,7 +310,7 @@ onMounted(() => {
   padding: 64px;
   gap: 16px;
 }
-.loading-text { color: #64748b; font-size: 14px; margin: 0; }
+.loading-text { color: var(--text-secondary); font-size: 14px; margin: 0; }
 .error-state { padding: 24px; }
 
 /* 深度复刻 Shadcn UI 空状态 */
@@ -327,20 +327,20 @@ onMounted(() => {
   width: 72px;
   height: 72px;
   border-radius: 50%;
-  background-color: #f1f5f9;
+  background-color: var(--bg-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 24px;
 }
-.empty-icon { font-size: 32px; color: #94a3b8; }
-.empty-title { font-size: 20px; font-weight: 600; color: #0f172a; margin-bottom: 8px; }
-.empty-description { color: #64748b; font-size: 14px; max-width: 400px; margin: 0; }
+.empty-icon { font-size: 32px; color: var(--text-tertiary); }
+.empty-title { font-size: 20px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px; }
+.empty-description { color: var(--text-secondary); font-size: 14px; max-width: 400px; margin: 0; }
 
 /* 列表内元素样式 */
 .document-name { display: flex; align-items: center; gap: 12px; }
-.font-medium { font-weight: 500; color: #0f172a; }
-.text-gray-600 { color: #475569; }
+.font-medium { font-weight: 500; color: var(--text-primary); }
+.text-gray-600 { color: var(--text-secondary); }
 .status-tag { border-radius: 4px; font-weight: 500; font-size: 12px; }
 
 /* 纯 CSS 拟真文件图标 (核心复刻) */
@@ -383,12 +383,12 @@ onMounted(() => {
 
 /* 优化 Ant Design Table 的默认边框和背景 */
 :deep(.ant-table-thead > tr > th) {
-  background: #f8fafc;
-  color: #64748b;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
   font-weight: 500;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--border-color);
 }
 :deep(.ant-table-tbody > tr > td) {
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--border-color);
 }
 </style>

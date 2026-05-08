@@ -617,11 +617,36 @@ onUnmounted(() => {
   padding: 16px;
 }
 
+/* 路径导航：使用 CSS 变量，暗黑模式自动适配 */
 .path-navigation {
-  margin-bottom: 16px;
-  padding: 12px;
-  background: #f5f5f5;
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 8px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
+  min-height: 38px;
+}
+
+/* 面包屑链接颜色跟随主题 */
+.path-navigation :deep(.ant-breadcrumb a) {
+  color: var(--text-secondary);
+  transition: color 0.2s;
+}
+
+.path-navigation :deep(.ant-breadcrumb a:hover) {
+  color: var(--primary-color, #1890ff);
+}
+
+.path-navigation :deep(.ant-breadcrumb-separator) {
+  color: var(--text-tertiary);
+}
+
+.path-navigation :deep(.ant-breadcrumb li:last-child a),
+.path-navigation :deep(.ant-breadcrumb li:last-child span) {
+  color: var(--text-primary);
+  font-weight: 500;
 }
 
 .toolbar {
@@ -629,14 +654,16 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
-  padding: 12px;
-  background: #fafafa;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
 }
 
 .toolbar-left {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .toolbar-right {
@@ -647,18 +674,19 @@ onUnmounted(() => {
 
 .file-count {
   font-size: 14px;
-  color: #666;
+  color: var(--text-secondary);
 }
 
 .file-list {
-  background: white;
+  background: var(--bg-primary);
   border-radius: 6px;
+  border: 1px solid var(--border-color);
   transition: all 0.3s ease;
   position: relative;
 }
 
 .file-list.drag-over {
-  background: #f0f9ff;
+  background: var(--bg-secondary);
   border: 2px dashed #1890ff;
   box-shadow: 0 0 10px rgba(24, 144, 255, 0.3);
 }
@@ -674,7 +702,8 @@ onUnmounted(() => {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--bg-primary);
+  opacity: 0.95;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -697,11 +726,41 @@ onUnmounted(() => {
 
 .upload-progress-text {
   font-size: 14px;
-  color: #666;
+  color: var(--text-secondary);
 }
 
+/* 表格暗黑适配 */
 .file-table {
-  border: 1px solid #f0f0f0;
+  border: none;
+}
+
+:deep(.ant-table) {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+:deep(.ant-table-thead > tr > th) {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+:deep(.ant-table-tbody > tr > td) {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+:deep(.ant-table-tbody > tr:hover > td) {
+  background: var(--hover-bg, var(--bg-secondary)) !important;
+}
+
+:deep(.ant-table-wrapper) {
+  background: var(--bg-primary);
+}
+
+:deep(.ant-table-row-selected > td) {
+  background: var(--bg-secondary) !important;
 }
 
 .file-name-cell {
@@ -713,11 +772,12 @@ onUnmounted(() => {
 .file-icon {
   font-size: 16px;
   color: #1890ff;
+  flex-shrink: 0;
 }
 
 .file-name {
   font-weight: 500;
-  color: #333;
+  color: var(--text-primary);
   max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -750,25 +810,25 @@ onUnmounted(() => {
 
 .file-info h3 {
   margin: 0;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .file-info p {
   margin: 0;
-  color: #666;
+  color: var(--text-secondary);
   font-size: 14px;
 }
 
 .file-name-cell.clickable {
   cursor: pointer;
   transition: background-color 0.2s;
+  border-radius: 4px;
+  padding: 2px 4px;
+  margin: -2px -4px;
 }
 
 .file-name-cell.clickable:hover {
-  background-color: #f5f5f5;
-  border-radius: 4px;
-  padding: 4px 8px;
-  margin: -4px -8px;
+  background-color: var(--hover-bg, var(--bg-secondary));
 }
 
 .directory-icon {

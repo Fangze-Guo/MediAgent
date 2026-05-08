@@ -665,12 +665,20 @@ const getConversationAvatarStyle = (conversation: any) => {
 }
 
 /* 历史区域标题：间距、字号与颜色 */
-.history-section h4 {
-  margin: 0 0 16px 0;
-  color: var(--text-secondary);
-  font-size: 14px;
-  font-weight: 500;
+.history-section {
+  margin-top: 8px;
 }
+
+.history-section h4 {
+  margin: 0 0 12px 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* 对话列表容器：纵向间距 */
 
 /* 对话列表容器：纵向间距 */
 .chat-list {
@@ -699,10 +707,14 @@ const getConversationAvatarStyle = (conversation: any) => {
   border-color: var(--border-color-light);
 }
 
-/* 激活中的对话项：浅蓝背景与主色边框 */
+/* 激活中的对话项：主色调半透明背景，暗黑模式自动适配 */
 .chat-item.active {
-  background: #e3f2fd;
-  border-color: #2196f3;
+  background: color-mix(in srgb, var(--link-color, #1890ff) 12%, transparent);
+  border-color: var(--link-color, #1890ff);
+}
+
+.chat-item.active .chat-title {
+  color: var(--link-color, #1890ff);
 }
 
 /* 对话标题：加粗、字号与颜色 */
@@ -744,7 +756,7 @@ const getConversationAvatarStyle = (conversation: any) => {
 
 /* 删除按钮悬停效果 */
 .delete-btn:hover {
-  background-color: #fff1f0;
+  background-color: color-mix(in srgb, #ff4d4f 12%, transparent);
 }
 
 /* 会话头像样式 */
@@ -874,9 +886,9 @@ const getConversationAvatarStyle = (conversation: any) => {
 }
 
 .edit-btn:hover {
-  background: #f0f9ff;
-  border-color: #1890ff;
-  color: #1890ff;
+  background: color-mix(in srgb, var(--link-color, #1890ff) 10%, transparent);
+  border-color: var(--link-color, #1890ff);
+  color: var(--link-color, #1890ff);
 }
 
 .logout-btn {
@@ -887,7 +899,7 @@ const getConversationAvatarStyle = (conversation: any) => {
 }
 
 .logout-btn:hover {
-  background: #fff2f0;
+  background: color-mix(in srgb, #ff4d4f 10%, transparent);
   border-color: #ff4d4f;
 }
 

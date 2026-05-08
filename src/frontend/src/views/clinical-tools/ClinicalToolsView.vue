@@ -54,7 +54,7 @@
 
         <!-- 空状态 -->
         <div v-else-if="filteredProjects.length === 0" class="empty-state">
-          <InboxOutlined style="font-size: 64px; color: #dadce0" />
+          <InboxOutlined :style="{ fontSize: '64px', color: 'var(--border-color)' }" />
           <p class="empty-text">{{ t('views_ClinicalToolsView.emptyText') }}</p>
           <p class="empty-hint">{{ t('views_ClinicalToolsView.emptyHint') }}</p>
         </div>
@@ -446,7 +446,7 @@ const navigateTo = (path: string) => {
 .project-icon-wrapper {
   width: 56px;
   height: 56px;
-  background: #eff6ff;
+  background: color-mix(in srgb, var(--link-color) 12%, transparent);
   border-radius: 12px;
   display: flex;
   align-items: center;
@@ -456,7 +456,7 @@ const navigateTo = (path: string) => {
 
 .project-icon {
   font-size: 32px;
-  color: #1890ff;
+  color: var(--link-color);
 }
 
 .project-info {

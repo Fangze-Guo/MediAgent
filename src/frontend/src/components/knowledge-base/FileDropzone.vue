@@ -97,23 +97,23 @@ const filterFiles = (files: File[]): File[] => {
 
 <style scoped>
 .dropzone {
-  border: 2px dashed #e2e8f0;
+  border: 2px dashed var(--border-color);
   border-radius: 0.5rem;
   padding: 3rem 2rem;
   text-align: center;
   cursor: pointer;
   transition: all 0.2s ease;
-  background: #ffffff;
+  background: var(--bg-primary);
 }
 
 .dropzone:hover {
-  border-color: #cbd5e1;
-  background: #f8fafc;
+  border-color: var(--border-color-light);
+  background: var(--hover-bg);
 }
 
 .dropzone.drag-active {
-  border-color: #3b82f6;
-  background: #eff6ff;
+  border-color: var(--link-color);
+  background: color-mix(in srgb, var(--link-color) 8%, transparent);
 }
 
 .dropzone-content {
@@ -125,19 +125,19 @@ const filterFiles = (files: File[]): File[] => {
 
 .dropzone-icon {
   font-size: 3rem;
-  color: #94a3b8;
+  color: var(--text-tertiary);
 }
 
 .dropzone-text {
   margin: 0;
   font-size: 0.875rem;
   font-weight: 500;
-  color: #0f172a;
+  color: var(--text-primary);
 }
 
 .dropzone-hint {
   margin: 0;
   font-size: 0.75rem;
-  color: #64748b;
+  color: var(--text-secondary);
 }
 </style>

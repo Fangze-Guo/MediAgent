@@ -191,13 +191,13 @@ onMounted(() => {
 /* 页面布局 */
 .skill-detail-page {
   min-height: 100vh;
-  background: #fff;
+  background: var(--bg-primary);
 }
 
 /* 顶部导航 */
 .detail-header {
-  background: #fff;
-  border-bottom: 1px solid #e8eaed;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
   position: sticky;
   top: 0;
   z-index: 100;
@@ -211,11 +211,11 @@ onMounted(() => {
 
 .back-btn {
   font-size: 14px;
-  color: #5f6368;
+  color: var(--text-secondary);
 }
 
 .back-btn:hover {
-  color: #1a73e8;
+  color: var(--link-color, #1a73e8);
 }
 
 /* 加载和错误状态 */
@@ -230,13 +230,13 @@ onMounted(() => {
 }
 
 .loading-container p {
-  color: #5f6368;
+  color: var(--text-secondary);
   font-size: 16px;
 }
 
 .error-text {
   font-size: 20px;
-  color: #5f6368;
+  color: var(--text-secondary);
   margin: 0;
 }
 
@@ -264,7 +264,7 @@ onMounted(() => {
   gap: 24px;
   margin-bottom: 32px;
   padding-bottom: 24px;
-  border-bottom: 1px solid #e8eaed;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .skill-icon-large {
@@ -281,12 +281,12 @@ onMounted(() => {
   font-size: 32px;
   font-weight: 500;
   margin: 0 0 8px 0;
-  color: #202124;
+  color: var(--text-primary);
 }
 
 .skill-provider {
   font-size: 14px;
-  color: #5f6368;
+  color: var(--text-secondary);
   margin-bottom: 16px;
 }
 
@@ -300,9 +300,9 @@ onMounted(() => {
   align-items: center;
   gap: 6px;
   font-size: 13px;
-  color: #5f6368;
+  color: var(--text-secondary);
   padding: 4px 12px;
-  background: #f1f3f4;
+  background: var(--bg-secondary);
   border-radius: 12px;
 }
 
@@ -314,7 +314,7 @@ onMounted(() => {
 .section-title {
   font-size: 20px;
   font-weight: 500;
-  color: #202124;
+  color: var(--text-primary);
   margin: 0 0 16px 0;
   display: flex;
   align-items: center;
@@ -322,8 +322,8 @@ onMounted(() => {
 
 /* Markdown 内容 */
 .markdown-section {
-  background: #fff;
-  border: 1px solid #e8eaed;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 24px;
 }
@@ -331,17 +331,17 @@ onMounted(() => {
 .markdown-section .section-title {
   margin-bottom: 16px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #e8eaed;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .markdown-content {
-  color: #202124;
+  color: var(--text-primary);
   line-height: 1.6;
 }
 
 /* 文件浏览器 */
 .files-section {
-  background: #fff;
+  background: var(--bg-primary);
 }
 
 .files-content {
@@ -355,8 +355,8 @@ onMounted(() => {
 }
 
 .info-card {
-  background: #fff;
-  border: 1px solid #e8eaed;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 20px;
   margin-bottom: 16px;
@@ -365,7 +365,7 @@ onMounted(() => {
 .card-title {
   font-size: 16px;
   font-weight: 500;
-  color: #202124;
+  color: var(--text-primary);
   margin: 0 0 16px 0;
 }
 
@@ -383,13 +383,13 @@ onMounted(() => {
 
 .info-label {
   font-size: 13px;
-  color: #5f6368;
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
 .info-value {
   font-size: 13px;
-  color: #202124;
+  color: var(--text-primary);
   text-align: right;
 }
 
@@ -411,7 +411,7 @@ onMounted(() => {
 }
 
 .related-skill-item:hover {
-  background: #f1f3f4;
+  background: var(--hover-bg, var(--bg-secondary));
 }
 
 .related-icon {
@@ -421,7 +421,7 @@ onMounted(() => {
 
 .related-name {
   font-size: 13px;
-  color: #202124;
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

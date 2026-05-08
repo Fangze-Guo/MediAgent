@@ -125,7 +125,7 @@ const renderedMarkdown = computed(() => {
 <style scoped>
 .markdown-content {
   line-height: 1.6;
-  color: #333;
+  color: var(--text-primary);
   word-break: break-word;
   overflow-wrap: break-word;
 }
@@ -148,17 +148,11 @@ const renderedMarkdown = computed(() => {
 }
 
 @keyframes cursor-blink {
-  0%, 49% {
-    opacity: 1;
-    background-color: #1890ff;
-  }
-  50%, 100% {
-    opacity: 0;
-    background-color: transparent;
-  }
+  0%, 49% { opacity: 1; background-color: #1890ff; }
+  50%, 100% { opacity: 0; background-color: transparent; }
 }
 
-/* 标题样式 */
+/* 标题 */
 .markdown-content :deep(h1),
 .markdown-content :deep(h2),
 .markdown-content :deep(h3),
@@ -167,21 +161,21 @@ const renderedMarkdown = computed(() => {
 .markdown-content :deep(h6) {
   margin: 16px 0 8px 0;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-primary);
   animation: fadeIn 0.3s ease-out;
 }
 
-.markdown-content :deep(h1) { font-size: 1.5em; border-bottom: 1px solid #eaecef; padding-bottom: 8px; }
+.markdown-content :deep(h1) { font-size: 1.5em; border-bottom: 1px solid var(--border-color); padding-bottom: 8px; }
 .markdown-content :deep(h2) { font-size: 1.3em; }
 .markdown-content :deep(h3) { font-size: 1.1em; }
 
-/* 段落样式 */
+/* 段落 */
 .markdown-content :deep(p) {
   margin: 8px 0;
   animation: fadeIn 0.3s ease-out;
 }
 
-/* 列表样式 */
+/* 列表 */
 .markdown-content :deep(ul),
 .markdown-content :deep(ol) {
   margin: 8px 0;
@@ -194,10 +188,10 @@ const renderedMarkdown = computed(() => {
   animation: slideIn 0.3s ease-out;
 }
 
-/* 代码块样式 - 增强高亮效果 */
+/* 代码块 */
 .markdown-content :deep(pre) {
-  background: #f6f8fa;
-  border: 1px solid #e1e4e8;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   padding: 16px;
   margin: 12px 0;
@@ -210,12 +204,17 @@ const renderedMarkdown = computed(() => {
 }
 
 .markdown-content :deep(code) {
-  background: #f6f8fa;
+  background: var(--bg-secondary);
   border-radius: 3px;
   padding: 2px 4px;
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
   font-size: 0.9em;
   color: #d73a49;
+}
+
+/* 暗黑模式下行内代码颜色调亮 */
+[data-theme='dark'] .markdown-content :deep(code) {
+  color: #f97583;
 }
 
 .markdown-content :deep(pre code) {
@@ -225,21 +224,43 @@ const renderedMarkdown = computed(() => {
   color: inherit;
 }
 
-/* 引用样式 */
+/* 暗黑模式下覆盖 highlight.js github.css 的亮色背景 */
+[data-theme='dark'] .markdown-content :deep(.hljs) {
+  background: var(--bg-secondary);
+  color: #abb2bf;
+}
+
+[data-theme='dark'] .markdown-content :deep(.hljs-keyword),
+[data-theme='dark'] .markdown-content :deep(.hljs-selector-tag),
+[data-theme='dark'] .markdown-content :deep(.hljs-built_in) { color: #c678dd; }
+
+[data-theme='dark'] .markdown-content :deep(.hljs-string),
+[data-theme='dark'] .markdown-content :deep(.hljs-attr) { color: #98c379; }
+
+[data-theme='dark'] .markdown-content :deep(.hljs-number),
+[data-theme='dark'] .markdown-content :deep(.hljs-literal) { color: #d19a66; }
+
+[data-theme='dark'] .markdown-content :deep(.hljs-comment) { color: #5c6370; font-style: italic; }
+
+[data-theme='dark'] .markdown-content :deep(.hljs-title),
+[data-theme='dark'] .markdown-content :deep(.hljs-function) { color: #61afef; }
+
+[data-theme='dark'] .markdown-content :deep(.hljs-variable),
+[data-theme='dark'] .markdown-content :deep(.hljs-params) { color: #e06c75; }
+
+/* 引用 */
 .markdown-content :deep(blockquote) {
-  border-left: 4px solid #dfe2e5;
-  padding-left: 16px;
+  border-left: 4px solid var(--border-color);
+  padding: 8px 16px;
   margin: 12px 0;
-  color: #6a737d;
+  color: var(--text-secondary);
   font-style: italic;
   animation: slideIn 0.3s ease-out;
-  background: #f8f9fa;
-  padding-top: 8px;
-  padding-bottom: 8px;
+  background: var(--bg-secondary);
   border-radius: 0 4px 4px 0;
 }
 
-/* 表格样式 */
+/* 表格 */
 .markdown-content :deep(table) {
   border-collapse: collapse;
   margin: 12px 0;
@@ -249,71 +270,65 @@ const renderedMarkdown = computed(() => {
 
 .markdown-content :deep(th),
 .markdown-content :deep(td) {
-  border: 1px solid #dfe2e5;
+  border: 1px solid var(--border-color);
   padding: 8px 12px;
   text-align: left;
+  color: var(--text-primary);
 }
 
 .markdown-content :deep(th) {
-  background: #f6f8fa;
+  background: var(--bg-secondary);
   font-weight: 600;
 }
 
-/* 链接样式 */
+.markdown-content :deep(tbody tr:hover td) {
+  background: var(--hover-bg, var(--bg-secondary));
+}
+
+/* 链接 */
 .markdown-content :deep(a) {
-  color: #0366d6;
+  color: var(--link-color, #0366d6);
   text-decoration: none;
   transition: all 0.2s ease;
 }
 
 .markdown-content :deep(a:hover) {
   text-decoration: underline;
-  color: #0256c7;
 }
 
-/* 分割线样式 */
+/* 分割线 */
 .markdown-content :deep(hr) {
   border: none;
-  border-top: 1px solid #eaecef;
+  border-top: 1px solid var(--border-color);
   margin: 16px 0;
   animation: fadeIn 0.3s ease-out;
 }
 
-/* 强调样式 */
+/* 强调 */
 .markdown-content :deep(strong) {
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-primary);
 }
 
 .markdown-content :deep(em) {
   font-style: italic;
-  color: #555;
+  color: var(--text-secondary);
 }
 
-/* 删除线样式 */
+/* 删除线 */
 .markdown-content :deep(del) {
   text-decoration: line-through;
-  color: #6a737d;
+  color: var(--text-secondary);
 }
 
-/* 动画效果 */
+/* 动画 */
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 </style>

@@ -436,7 +436,7 @@ onMounted(() => {
 .document-detail-container {
   padding: 24px;
   min-height: 100vh;
-  background: #f5f5f5;
+  background: var(--bg-secondary);
 }
 
 .page-header {
@@ -460,13 +460,13 @@ onMounted(() => {
   margin: 0 0 8px 0;
   font-size: 28px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-primary);
 }
 
 .page-subtitle {
   margin: 0;
   font-size: 14px;
-  color: #666;
+  color: var(--text-secondary);
   line-height: 1.5;
 }
 
@@ -483,7 +483,7 @@ onMounted(() => {
 
 .loading-text {
   font-size: 14px;
-  color: #666;
+  color: var(--text-secondary);
   margin: 0;
 }
 
@@ -503,10 +503,10 @@ onMounted(() => {
 .info-card,
 .preview-card,
 .tasks-card {
-  background: white;
+  background: var(--bg-primary);
   border-radius: 12px;
   padding: 24px;
-  border: 1px solid #e8e8e8;
+  border: 1px solid var(--border-color);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
@@ -514,7 +514,7 @@ onMounted(() => {
   margin: 0 0 20px 0;
   font-size: 18px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-primary);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -535,14 +535,14 @@ onMounted(() => {
 
 .info-label {
   font-size: 12px;
-  color: #666;
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .info-value {
   font-size: 14px;
-  color: #1a1a1a;
+  color: var(--text-primary);
   font-weight: 500;
 }
 
@@ -560,7 +560,7 @@ onMounted(() => {
 }
 
 .pdf-preview {
-  border: 2px dashed #d9d9d9;
+  border: 2px dashed var(--border-color);
   border-radius: 8px;
   padding: 48px;
   text-align: center;
@@ -581,13 +581,13 @@ onMounted(() => {
 .pdf-text {
   font-size: 18px;
   font-weight: 500;
-  color: #1a1a1a;
+  color: var(--text-primary);
   margin: 0;
 }
 
 .pdf-hint {
   font-size: 14px;
-  color: #666;
+  color: var(--text-secondary);
   margin: 0;
 }
 
@@ -603,7 +603,7 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding-bottom: 16px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .chunk-stats {
@@ -616,7 +616,7 @@ onMounted(() => {
   align-items: center;
   gap: 4px;
   font-size: 14px;
-  color: #666;
+  color: var(--text-secondary);
 }
 
 .chunks-container {
@@ -628,22 +628,22 @@ onMounted(() => {
 }
 
 .chunk-card {
-  border: 1px solid #e8e8e8;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 16px;
   cursor: pointer;
   transition: all 0.2s ease;
-  background: #fafafa;
+  background: var(--bg-secondary);
 }
 
 .chunk-card:hover {
-  border-color: #1890ff;
+  border-color: var(--link-color);
   box-shadow: 0 2px 8px rgba(24, 144, 255, 0.1);
 }
 
 .chunk-card.active {
-  border-color: #1890ff;
-  background: #f0f7ff;
+  border-color: var(--link-color);
+  background: color-mix(in srgb, var(--link-color) 8%, transparent);
 }
 
 .chunk-header {
@@ -661,19 +661,19 @@ onMounted(() => {
 
 .chunk-number {
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-primary);
 }
 
 .chunk-tokens {
   font-size: 12px;
-  color: #666;
-  background: #f0f0f0;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
   padding: 2px 8px;
   border-radius: 4px;
 }
 
 .chunk-content {
-  background: white;
+  background: var(--bg-primary);
   border-radius: 4px;
   padding: 12px;
   max-height: 300px;
@@ -685,7 +685,7 @@ onMounted(() => {
   white-space: pre-wrap;
   word-wrap: break-word;
   font-size: 14px;
-  color: #333;
+  color: var(--text-primary);
   line-height: 1.6;
 }
 
@@ -697,7 +697,7 @@ onMounted(() => {
 }
 
 .task-item {
-  border: 1px solid #e8e8e8;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 16px;
   display: flex;
@@ -725,7 +725,7 @@ onMounted(() => {
 
 .task-id {
   font-weight: 500;
-  color: #1a1a1a;
+  color: var(--text-primary);
 }
 
 .task-time {
@@ -733,7 +733,7 @@ onMounted(() => {
   align-items: center;
   gap: 4px;
   font-size: 12px;
-  color: #666;
+  color: var(--text-secondary);
 }
 
 .task-error {
@@ -743,7 +743,7 @@ onMounted(() => {
   color: #ff4d4f;
   font-size: 14px;
   padding: 8px;
-  background: #fff2f0;
+  background: color-mix(in srgb, #ff4d4f 10%, transparent);
   border-radius: 4px;
 }
 

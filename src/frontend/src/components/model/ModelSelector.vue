@@ -455,9 +455,10 @@ defineExpose({
 }
 
 .model-dropdown {
-  background: white;
+  background: var(--bg-secondary);
   border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   overflow: hidden;
   min-width: 320px;
   max-width: 480px;
@@ -468,13 +469,13 @@ defineExpose({
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  background: #f8f9fa;
-  border-bottom: 1px solid #e9ecef;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .header-text {
   font-weight: 600;
-  color: #343a40;
+  color: var(--text-primary);
   font-size: 14px;
 }
 
@@ -484,7 +485,7 @@ defineExpose({
 }
 
 .model-group {
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .model-group:last-child {
@@ -496,17 +497,17 @@ defineExpose({
   align-items: center;
   justify-content: space-between;
   padding: 12px 20px 8px;
-  background: #fafbfc;
+  background: var(--bg-tertiary);
 }
 
 .provider-name {
   font-weight: 500;
-  color: #495057;
+  color: var(--text-secondary);
   font-size: 13px;
 }
 
 .provider-count {
-  color: #6c757d;
+  color: var(--text-tertiary);
   font-size: 11px;
 }
 
@@ -522,12 +523,12 @@ defineExpose({
 }
 
 .model-option:hover {
-  background: #f8f9ff;
+  background: var(--hover-bg);
 }
 
 .model-option.selected {
-  background: #e6f3ff;
-  border: 1px solid #1890ff;
+  background: color-mix(in srgb, var(--link-color) 12%, transparent);
+  border: 1px solid var(--link-color);
 }
 
 .model-option-content {
@@ -546,14 +547,14 @@ defineExpose({
 }
 
 .model-details .model-name {
-  color: #343a40;
+  color: var(--text-primary);
   font-weight: 500;
   font-size: 14px;
   margin-bottom: 2px;
 }
 
 .model-description {
-  color: #6c757d;
+  color: var(--text-secondary);
   font-size: 12px;
   margin-bottom: 6px;
 }
@@ -573,14 +574,14 @@ defineExpose({
   letter-spacing: 0.5px;
 }
 
-.tag-blue { background: #e3f2fd; color: #1976d2; }
-.tag-green { background: #e8f5e9; color: #388e3c; }
-.tag-purple { background: #f3e5f5; color: #7b1fa2; }
-.tag-orange { background: #fff3e0; color: #f57c00; }
-.tag-red { background: #ffebee; color: #c62828; }
-.tag-cyan { background: #e0f7fa; color: #00acc1; }
-.tag-magenta { background: #fce4ec; color: #c2185b; }
-.tag-default { background: #f5f5f5; color: #666; }
+.tag-blue    { background: color-mix(in srgb, #1976d2 15%, transparent); color: #4da6ff; }
+.tag-green   { background: color-mix(in srgb, #388e3c 15%, transparent); color: #52c41a; }
+.tag-purple  { background: color-mix(in srgb, #7b1fa2 15%, transparent); color: #b37feb; }
+.tag-orange  { background: color-mix(in srgb, #f57c00 15%, transparent); color: #fa8c16; }
+.tag-red     { background: color-mix(in srgb, #c62828 15%, transparent); color: #ff6b6b; }
+.tag-cyan    { background: color-mix(in srgb, #00acc1 15%, transparent); color: #36cfc9; }
+.tag-magenta { background: color-mix(in srgb, #c2185b 15%, transparent); color: #f759ab; }
+.tag-default { background: var(--bg-tertiary); color: var(--text-secondary); }
 
 .model-status {
   display: flex;
@@ -600,7 +601,7 @@ defineExpose({
 
 .status-text {
   font-size: 11px;
-  color: #6c757d;
+  color: var(--text-secondary);
 }
 
 /* 滚动条样式 */
@@ -609,16 +610,16 @@ defineExpose({
 }
 
 .model-groups::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: var(--bg-secondary);
 }
 
 .model-groups::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
+  background: var(--border-color);
   border-radius: 3px;
 }
 
 .model-groups::-webkit-scrollbar-thumb:hover {
-  background: #a1a1a1;
+  background: var(--text-tertiary);
 }
 
 /* 响应式 */

@@ -295,7 +295,7 @@ const handleCancel = () => {
   align-items: center;
   gap: 20px;
   padding: 20px 0;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-color);
   margin-bottom: 24px;
 }
 
@@ -304,11 +304,11 @@ const handleCancel = () => {
   height: 80px;
   border-radius: 50%;
   overflow: hidden;
-  border: 2px solid #e8e8e8;
+  border: 2px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fafafa;
+  background: var(--bg-secondary);
 }
 
 .avatar-placeholder {
@@ -344,8 +344,8 @@ const handleCancel = () => {
 
 /* 上传提示 */
 .upload-tips {
-  background: #f6f8fa;
-  border: 1px solid #e1e4e8;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   padding: 16px;
   margin-top: 16px;
@@ -355,7 +355,7 @@ const handleCancel = () => {
   margin: 0 0 12px 0;
   font-size: 14px;
   font-weight: 600;
-  color: #24292e;
+  color: var(--text-primary);
 }
 
 .upload-tips ul {
@@ -365,7 +365,7 @@ const handleCancel = () => {
 
 .upload-tips li {
   font-size: 13px;
-  color: #586069;
+  color: var(--text-secondary);
   line-height: 1.6;
   margin-bottom: 4px;
 }

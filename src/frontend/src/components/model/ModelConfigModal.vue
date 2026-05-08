@@ -472,12 +472,12 @@ defineExpose({
   gap: 8px;
   font-size: 16px;
   font-weight: 600;
-  color: #333;
+  color: var(--text-primary);
   margin-bottom: 16px;
 }
 
 .section-title .anticon {
-  color: #1890ff;
+  color: var(--link-color);
 }
 
 .section-header {
@@ -568,23 +568,23 @@ defineExpose({
 }
 
 .model-card {
-  border: 2px solid #f0f0f0;
+  border: 2px solid var(--border-color);
   border-radius: 12px;
   padding: 16px;
   cursor: pointer;
   transition: all 0.3s ease;
-  background: white;
+  background: var(--bg-primary);
 }
 
 .model-card:hover {
-  border-color: #1890ff;
+  border-color: var(--link-color);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(24, 144, 255, 0.15);
 }
 
 .model-card.active {
-  border-color: #1890ff;
-  background: #f6ffed;
+  border-color: var(--link-color);
+  background: color-mix(in srgb, #52c41a 8%, transparent);
 }
 
 .model-card-header {
@@ -596,17 +596,17 @@ defineExpose({
 
 .model-card-header .model-name {
   font-weight: 600;
-  color: #333;
+  color: var(--text-primary);
   font-size: 14px;
 }
 
 .model-card-header .model-provider {
   font-size: 12px;
-  color: #666;
+  color: var(--text-secondary);
 }
 
 .model-card .model-description {
-  color: #666;
+  color: var(--text-secondary);
   font-size: 12px;
   margin-bottom: 12px;
   line-height: 1.4;
@@ -620,7 +620,7 @@ defineExpose({
 
 .model-card-footer .model-status {
   font-size: 12px;
-  color: #666;
+  color: var(--text-secondary);
 }
 
 .model-actions {

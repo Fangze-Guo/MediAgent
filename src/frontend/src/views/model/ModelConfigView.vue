@@ -592,7 +592,7 @@ onMounted(() => {
 <style scoped>
 .model-config-container {
   padding: 24px;
-  background: #f5f5f5;
+  background: var(--bg-secondary);
   min-height: 100vh;
 }
 
@@ -604,9 +604,10 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  background: white;
+  background: var(--bg-primary);
   padding: 24px;
   border-radius: 8px;
+  border: 1px solid var(--border-color);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
@@ -614,7 +615,7 @@ onMounted(() => {
   margin: 0 0 8px 0;
   font-size: 28px;
   font-weight: 600;
-  color: #262626;
+  color: var(--text-primary);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -626,7 +627,7 @@ onMounted(() => {
 
 .subtitle {
   margin: 0;
-  color: #8c8c8c;
+  color: var(--text-secondary);
   font-size: 16px;
 }
 
@@ -664,17 +665,17 @@ onMounted(() => {
 
 .model-title {
   font-weight: 500;
-  color: #262626;
+  color: var(--text-primary);
 }
 
 .model-id {
   font-size: 12px;
-  color: #8c8c8c;
+  color: var(--text-secondary);
 }
 
 .cost-info {
   font-size: 12px;
-  color: #666;
+  color: var(--text-secondary);
 }
 
 .cost-info > div {
@@ -682,8 +683,10 @@ onMounted(() => {
 }
 
 :deep(.ant-table-thead > tr > th) {
-  background: #fafafa;
+  background: var(--bg-secondary);
   font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-color);
 }
 
 :deep(.ant-card-head-title) {

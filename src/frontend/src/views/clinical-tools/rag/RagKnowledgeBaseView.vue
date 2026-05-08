@@ -377,7 +377,7 @@ onMounted(() => {
 .rag-knowledge-base-container {
   padding: 24px;
   min-height: 100vh;
-  background: #f5f5f5;
+  background: var(--bg-secondary);
 }
 
 .page-header {
@@ -395,13 +395,13 @@ onMounted(() => {
   margin: 0 0 8px 0;
   font-size: 28px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-primary);
 }
 
 .page-subtitle {
   margin: 0;
   font-size: 14px;
-  color: #666;
+  color: var(--text-secondary);
   line-height: 1.5;
 }
 
@@ -420,12 +420,12 @@ onMounted(() => {
 .loading-text {
   margin-top: 16px;
   font-size: 14px;
-  color: #666;
+  color: var(--text-secondary);
 }
 
 .empty-icon {
   font-size: 64px;
-  color: #d9d9d9;
+  color: var(--border-color);
   margin-bottom: 16px;
 }
 
@@ -433,13 +433,13 @@ onMounted(() => {
   margin: 0 0 8px 0;
   font-size: 20px;
   font-weight: 500;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .empty-description {
   margin: 0;
   font-size: 14px;
-  color: #666;
+  color: var(--text-secondary);
   max-width: 400px;
   line-height: 1.5;
 }
@@ -454,10 +454,10 @@ onMounted(() => {
 
 /* 知识库卡片 */
 .knowledge-base-card {
-  background: white;
+  background: var(--bg-primary);
   border-radius: 12px;
   padding: 24px;
-  border: 1px solid #e8e8e8;
+  border: 1px solid var(--border-color);
   transition: all 0.3s ease;
   display: flex;
   flex-direction: column;
@@ -466,7 +466,7 @@ onMounted(() => {
 
 .knowledge-base-card:hover {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  border-color: #1890ff;
+  border-color: var(--link-color);
   transform: translateY(-2px);
 }
 
@@ -486,7 +486,7 @@ onMounted(() => {
   margin: 0 0 8px 0;
   font-size: 18px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -495,7 +495,7 @@ onMounted(() => {
 .card-description {
   margin: 0;
   font-size: 14px;
-  color: #666;
+  color: var(--text-secondary);
   line-height: 1.5;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -515,8 +515,8 @@ onMounted(() => {
   display: flex;
   gap: 24px;
   padding: 16px 0;
-  border-top: 1px solid #f0f0f0;
-  border-bottom: 1px solid #f0f0f0;
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .stat-item {
@@ -527,7 +527,7 @@ onMounted(() => {
 
 .stat-icon {
   font-size: 20px;
-  color: #1890ff;
+  color: var(--link-color);
 }
 
 .stat-content {
@@ -539,13 +539,13 @@ onMounted(() => {
 .stat-value {
   font-size: 18px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-primary);
   line-height: 1;
 }
 
 .stat-label {
   font-size: 12px;
-  color: #666;
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -561,7 +561,7 @@ onMounted(() => {
   margin: 0;
   font-size: 14px;
   font-weight: 500;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .documents-grid {
@@ -577,36 +577,36 @@ onMounted(() => {
   justify-content: center;
   gap: 8px;
   padding: 16px 8px;
-  border: 1px solid #e8e8e8;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
-  background: #fafafa;
+  background: var(--bg-secondary);
   cursor: pointer;
   transition: all 0.2s ease;
   min-height: 100px;
 }
 
 .document-item:hover {
-  background: #f0f7ff;
-  border-color: #1890ff;
+  background: color-mix(in srgb, var(--link-color) 10%, transparent);
+  border-color: var(--link-color);
 }
 
 .document-item.view-all {
-  background: #e6f7ff;
-  border-color: #1890ff;
+  background: color-mix(in srgb, var(--link-color) 12%, transparent);
+  border-color: var(--link-color);
 }
 
 .document-item.view-all:hover {
-  background: #bae7ff;
+  background: color-mix(in srgb, var(--link-color) 20%, transparent);
 }
 
 .document-icon {
   font-size: 24px;
-  color: #1890ff;
+  color: var(--link-color);
 }
 
 .document-name {
   font-size: 12px;
-  color: #333;
+  color: var(--text-primary);
   text-align: center;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -617,7 +617,7 @@ onMounted(() => {
 
 .document-count {
   font-size: 10px;
-  color: #666;
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
