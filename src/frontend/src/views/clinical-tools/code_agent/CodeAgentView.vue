@@ -90,8 +90,8 @@
             <!-- 任务头部 -->
             <div class="workflow-task-header">
               <span class="workflow-task-status-icon">
-                <span v-if="task.status === 'pending'">⏳</span>
-                <span v-else-if="task.status === 'running'" class="spin">⟳</span>
+                <span v-if="task.status === 'pending'" class="workflow-spin">⟳</span>
+                <span v-else-if="task.status === 'running'" class="workflow-spin">⟳</span>
                 <span v-else-if="task.status === 'success'">✓</span>
                 <span v-else-if="task.status === 'failed'">✕</span>
               </span>
@@ -102,14 +102,6 @@
                 <span v-else-if="task.status === 'success'">已完成</span>
                 <span v-else-if="task.status === 'failed'">失败</span>
               </span>
-            </div>
-
-            <!-- 进度条（running 时） -->
-            <div v-if="task.status === 'running'" class="workflow-progress-bar">
-              <div
-                class="workflow-progress-fill"
-                :style="{ width: `${task.skill_progress || 0}%` }"
-              ></div>
             </div>
 
             <!-- 底部元信息 -->
@@ -144,12 +136,19 @@
               <span class="event-message">{{ eventDisplay.message }}</span>
             </div>
 
-            <div
+            <template
               v-for="message in messages"
               :key="message.message_id"
-              class="message-item"
-              :class="message.event_type === 'todo' ? 'message-todo' : (message.event_type === 'skill_call' ? 'message-skill' : (message.role === 'user' ? 'message-user' : 'message-ai'))"
             >
+              <!-- skill_submitted 消息不渲染任何气泡 -->
+              <template v-if="message.event_type === 'skill_submitted'" />
+
+              <!-- 其他消息正常渲染 -->
+              <div
+                v-else
+                class="message-item"
+                :class="message.event_type === 'todo' ? 'message-todo' : (message.event_type === 'skill_call' ? 'message-skill' : (message.role === 'user' ? 'message-user' : 'message-ai'))"
+              >
               <!-- Skill Call 事件：橙色气泡（历史记录中的旧格式） -->
               <template v-if="message.event_type === 'skill_call'">
                 <div class="message-bubble bubble-skill">
@@ -157,43 +156,6 @@
                   <span class="skill-name">{{ message.skill_name }}</span>
                   <span class="skill-label">skill call</span>
                   <span class="skill-time">{{ formatTime(message.created_at) }}</span>
-                </div>
-              </template>
-
-              <!-- Skill 后台任务气泡：带状态的动态气泡 -->
-              <template v-else-if="message.event_type === 'skill_submitted'">
-                <div class="bubble-skill-task" :class="`skill-task-${message.skill_status || 'pending'}`">
-                  <div class="skill-task-header">
-                    <span class="skill-task-icon">
-                      <span v-if="message.skill_status === 'pending'">⏳</span>
-                      <span v-else-if="message.skill_status === 'running'" class="spin">⟳</span>
-                      <span v-else-if="message.skill_status === 'success'">✓</span>
-                      <span v-else-if="message.skill_status === 'failed'">✕</span>
-                    </span>
-                    <span class="skill-task-name">{{ message.skill_name }}</span>
-                    <span class="skill-task-badge">
-                      <span v-if="message.skill_status === 'pending'">正在提交...</span>
-                      <span v-else-if="message.skill_status === 'running'">执行中</span>
-                      <span v-else-if="message.skill_status === 'success'">执行完成</span>
-                      <span v-else-if="message.skill_status === 'failed'">执行失败</span>
-                    </span>
-                    <span class="skill-task-time">{{ formatTime(message.created_at) }}</span>
-                  </div>
-                  <!-- 进度条（running 时显示） -->
-                  <div v-if="message.skill_status === 'running'" class="skill-task-progress-bar">
-                    <div
-                      class="skill-task-progress-fill"
-                      :style="{ width: `${message.skill_progress || 0}%` }"
-                    ></div>
-                  </div>
-                  <!-- 耗时（成功时显示） -->
-                  <div v-if="message.skill_status === 'success' && message.skill_elapsed_seconds != null" class="skill-task-meta">
-                    耗时 {{ message.skill_elapsed_seconds.toFixed(1) }} 秒
-                  </div>
-                  <!-- 错误信息（失败时显示） -->
-                  <div v-if="message.skill_status === 'failed' && message.skill_error" class="skill-task-error">
-                    {{ message.skill_error }}
-                  </div>
                 </div>
               </template>
 
@@ -260,6 +222,7 @@
                 </div>
               </template>
             </div>
+            </template>
 
             <!-- Plan 确认卡片 -->
             <div v-if="pendingPlan" class="plan-card">
@@ -1572,7 +1535,7 @@ onUnmounted(() => {
 }
 
 .conversation-list-section {
-  flex: 0 0 70%;
+  flex: 0 0 60%;
   min-height: 0;
   overflow: hidden;
 }
@@ -1581,7 +1544,7 @@ onUnmounted(() => {
    Work Flow 面板
 ========================================== */
 .workflow-section {
-  flex: 0 0 calc(30% - 16px);
+  flex: 0 0 calc(40% - 16px);
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: 10px;
@@ -1689,8 +1652,10 @@ onUnmounted(() => {
 
 .workflow-task-status-icon {
   font-size: 14px;
-  line-height: 1;
+  line-height: 1.4;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
 }
 
 .workflow-task-pending .workflow-task-status-icon { color: #fbbf24; }
@@ -1706,6 +1671,8 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.5;
+  padding-bottom: 1px;
 }
 
 .workflow-task-status-text {
@@ -1719,19 +1686,15 @@ onUnmounted(() => {
 .workflow-task-success .workflow-task-status-text { color: #10b981; }
 .workflow-task-failed  .workflow-task-status-text { color: #ef4444; }
 
-.workflow-progress-bar {
-  margin-top: 6px;
-  height: 3px;
-  background: rgba(59, 130, 246, 0.15);
-  border-radius: 2px;
-  overflow: hidden;
+.workflow-spin {
+  display: inline-block;
+  animation: workflow-spin 1s linear infinite;
+  font-style: normal;
 }
 
-.workflow-progress-fill {
-  height: 100%;
-  background: #3b82f6;
-  border-radius: 2px;
-  transition: width 0.4s ease;
+@keyframes workflow-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
 
 .workflow-task-meta {
