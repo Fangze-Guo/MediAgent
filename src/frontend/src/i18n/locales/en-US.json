@@ -471,7 +471,20 @@
         "typeText": "Text",
         "typeOthers": "Others",
         "preview": "Preview",
+        "rename": "Rename",
         "delete": "Delete"
+      },
+      "renameModal": {
+        "title": "Rename",
+        "label": "New Name",
+        "placeholder": "Please enter new name",
+        "confirm": "Confirm",
+        "cancel": "Cancel"
+      },
+      "renameRules": {
+        "required": "Please enter new name",
+        "length": "Name length must be 1-100 characters",
+        "pattern": "Name cannot contain special characters (/ \\ : * ? \" < > |)"
       },
       "previewModal": {
         "title": "File Preview",
@@ -494,7 +507,9 @@
       "messages": {
         "loadFailed": "Failed to get file list",
         "createSuccess": "Folder created successfully",
-        "createFailed": "Failed to create folder"
+        "createFailed": "Failed to create folder",
+        "renameSuccess": "Renamed successfully",
+        "renameFailed": "Rename failed"
       },
       "deleteFile": {
         "confirmTitle": "Confirm Delete",

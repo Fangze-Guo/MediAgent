@@ -295,6 +295,23 @@ export async function createFolder(folderName: string, currentPath: string = '.'
 }
 
 /**
+ * 重命名文件或文件夹
+ * @param fileId 文件ID（相对路径）
+ * @param newName 新名称（不能包含路径分隔符）
+ * @returns Promise<BaseResponse<FileInfo>> 重命名后的文件信息
+ * @throws {Error} 当请求失败时抛出错误
+ */
+export async function renameFile(fileId: string, newName: string): Promise<BaseResponse<FileInfo>> {
+    try {
+        const response = await post<BaseResponse<FileInfo>>('/files/rename', {fileId, newName})
+        return response.data
+    } catch (error) {
+        console.error('重命名文件失败:', error)
+        throw new Error('重命名文件失败，请稍后再试')
+    }
+}
+
+/**
  * 格式化文件大小
  * @param bytes 文件大小（字节）
  * @returns 格式化后的文件大小字符串

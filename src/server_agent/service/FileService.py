@@ -407,6 +407,103 @@ class FileService:
         new_folder_path.mkdir(parents=True, exist_ok=False)
         logger.info(f"文件夹创建成功: {new_folder_path}")
 
+    # ==================== 重命名文件 ====================
+
+    @handle_service_exception
+    async def renameUploadFileById(self, file_id: str, new_name: str, user_id: int = None, role: str = 'user') -> FileInfo:
+        """
+        根据ID重命名文件或文件夹
+
+        Args:
+            file_id: 文件ID（相对路径）
+            new_name: 新名称（不能包含路径分隔符）
+            user_id: 当前用户ID
+            role: 用户角色（'user' 或 'admin'）
+
+        Returns:
+            重命名后的文件信息
+        """
+        # 校验新名称
+        if not new_name or not new_name.strip():
+            raise ValidationError(
+                detail="新名称不能为空",
+                context={"newName": new_name}
+            )
+        new_name = new_name.strip()
+
+        invalid_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*']
+        if any(char in new_name for char in invalid_chars):
+            raise ValidationError(
+                detail="名称包含非法字符",
+                context={"newName": new_name, "invalidChars": invalid_chars}
+            )
+
+        if new_name in ('.', '..'):
+            raise ValidationError(
+                detail="名称不能为 '.' 或 '..'",
+                context={"newName": new_name}
+            )
+
+        # 定位源文件
+        dataset_root = pathlib.Path(DATASET_PATH)
+        relative_path = self._get_file_path_by_id(file_id, dataset_root)
+        if relative_path is None:
+            raise NotFoundError(
+                resource_type="file",
+                resource_id=file_id,
+                detail="文件不存在"
+            )
+
+        target_path = self._get_safe_path(dataset_root, relative_path)
+
+        # 权限检查：能删除即能重命名（同样位于自己的 private 目录下）
+        self._check_delete_permission(target_path, dataset_root, user_id, role)
+
+        # 计算新路径（保持在同一父目录下）
+        new_path = target_path.parent / new_name
+
+        # 名称未发生变化
+        if new_path == target_path:
+            raise ValidationError(
+                detail="新名称与原名称相同",
+                context={"newName": new_name}
+            )
+
+        # 目标已存在
+        if new_path.exists():
+            raise ValidationError(
+                detail="目标名称已存在",
+                context={"newName": new_name, "path": str(new_path)}
+            )
+
+        # 执行重命名
+        try:
+            target_path.rename(new_path)
+            logger.info(f"成功重命名: {target_path} -> {new_path}")
+        except Exception as e:
+            logger.error(f"重命名失败 {target_path} -> {new_path}: {e}")
+            raise ServiceError(
+                detail="重命名失败",
+                service_name="file_service",
+                context={"old_path": str(target_path), "new_path": str(new_path), "error": str(e)}
+            )
+
+        # 构造新的 FileInfo
+        is_directory = new_path.is_dir()
+        stat = new_path.stat()
+        new_relative_path = str(new_path.relative_to(dataset_root)).replace('\\', '/')
+        file_type = "directory" if is_directory else self._get_content_type(new_path.name)
+
+        return FileInfo(
+            id=new_relative_path,
+            name=new_name,
+            size=stat.st_size if not is_directory else 0,
+            type=file_type,
+            path=new_relative_path,
+            modifiedTime=datetime.fromtimestamp(stat.st_mtime).isoformat(),
+            isDirectory=is_directory
+        )
+
     # ==================== 🛠️工具方法 ====================
 
     @staticmethod

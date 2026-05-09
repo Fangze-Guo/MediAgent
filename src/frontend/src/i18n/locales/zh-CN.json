@@ -414,7 +414,20 @@
         "typeText": "文本",
         "typeOthers": "其他",
         "preview": "预览",
+        "rename": "重命名",
         "delete": "删除"
+      },
+      "renameModal": {
+        "title": "重命名",
+        "label": "新名称",
+        "placeholder": "请输入新名称",
+        "confirm": "确认",
+        "cancel": "取消"
+      },
+      "renameRules": {
+        "required": "请输入新名称",
+        "length": "名称长度必须为 1-100 个字符",
+        "pattern": "名称不能包含特殊字符（/ \\ : * ? \" < > |）"
       },
       "previewModal": {
         "title": "文件预览",
@@ -437,7 +450,9 @@
       "messages": {
         "loadFailed": "获取文件列表失败",
         "createSuccess": "文件夹创建成功",
-        "createFailed": "创建文件夹失败"
+        "createFailed": "创建文件夹失败",
+        "renameSuccess": "重命名成功",
+        "renameFailed": "重命名失败"
       },
       "deleteFile": {
         "confirmTitle": "确认删除",

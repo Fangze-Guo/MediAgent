@@ -6,6 +6,7 @@ from .dto.dataset import CreateDatasetRequest, UpdateDatasetRequest
 from .dto.file.BatchDeleteFilesRequest import BatchDeleteFilesRequest
 from .dto.file.CreateFolderRequest import CreateFolderRequest
 from .dto.file.DeleteFileRequest import DeleteFileRequest
+from .dto.file.RenameFileRequest import RenameFileRequest
 from .dto.user.UserLoginRequest import UserLoginRequest
 from .dto.user.UserRegisterRequest import UserRegisterRequest
 from .entity.ChatInfo import ChatInfo
@@ -29,6 +30,7 @@ __all__ = [
     'BatchDeleteFilesRequest',
     'CreateFolderRequest',
     'DeleteFileRequest',
+    'RenameFileRequest',
     'UserLoginRequest',
     'UserRegisterRequest',
     'ChatInfo',

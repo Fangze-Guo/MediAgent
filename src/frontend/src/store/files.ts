@@ -4,7 +4,7 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { getDataSetFiles, deleteFile, batchDeleteFiles, createFolder, type FileListResponse, type FileInfo } from '@/apis/files'
+import { getDataSetFiles, deleteFile, batchDeleteFiles, createFolder, renameFile, type FileListResponse, type FileInfo } from '@/apis/files'
 
 // 文件信息类型已从 @/apis/files 导入
 
@@ -232,6 +232,34 @@ export const useFileStore = defineStore('files', () => {
     }
   }
 
+  // 重命名文件或文件夹
+  const renameFileAction = async (fileId: string, newName: string) => {
+    try {
+      setLoading(true)
+      setError(null)
+      const result = await renameFile(fileId, newName)
+      if (result.code === 200) {
+        // 刷新当前目录文件列表，确保 ID/路径同步
+        await fetchFileList(currentPath.value)
+        // 清除可能残留的旧 ID 选择
+        const idx = selectedFileIds.value.indexOf(fileId)
+        if (idx > -1) {
+          selectedFileIds.value.splice(idx, 1)
+        }
+        return { success: true, file: result.data }
+      } else {
+        setError(result.message || '重命名失败')
+        return { success: false, message: result.message || '重命名失败' }
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : '重命名失败'
+      setError(errorMessage)
+      return { success: false, message: errorMessage }
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // 重置状态
   const reset = () => {
     fileList.value = []
@@ -271,6 +299,7 @@ export const useFileStore = defineStore('files', () => {
     updateFile,
     getFileById,
     createFolder: createFolderAction,
+    renameFileAction,
     reset,
     currentPath,
     parentPath

@@ -96,6 +96,10 @@
                 :title="t('components_DatasetFileBrowser.fileList.preview')" @click="previewFileHandler(record)">
                 <EyeOutlined />
               </a-button>
+              <a-button v-if="canRenameFile(record)" type="text" size="small"
+                :title="t('components_DatasetFileBrowser.fileList.rename')" @click="showRenameModal(record)">
+                <EditOutlined />
+              </a-button>
               <a-button v-if="canDeleteFile(record)" type="text" size="small"
                 :title="t('components_DatasetFileBrowser.fileList.delete')" danger
                 @click="deleteFileHandler(record)">
@@ -140,6 +144,24 @@
         </a-form-item>
       </a-form>
     </a-modal>
+
+    <!-- 重命名模态框 -->
+    <a-modal v-model:open="renameVisible"
+      :title="t('components_DatasetFileBrowser.renameModal.title')"
+      :okText="t('components_DatasetFileBrowser.renameModal.confirm')"
+      :cancelText="t('components_DatasetFileBrowser.renameModal.cancel')"
+      @ok="handleRename"
+      :confirm-loading="renameLoading">
+      <a-form :model="renameForm" :rules="renameRules" ref="renameFormRef">
+        <a-form-item :label="t('components_DatasetFileBrowser.renameModal.label')" name="newName">
+          <a-input
+            v-model:value="renameForm.newName"
+            :placeholder="t('components_DatasetFileBrowser.renameModal.placeholder')"
+            @pressEnter="handleRename"
+          />
+        </a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
@@ -149,6 +171,7 @@ import { message, Modal } from 'ant-design-vue'
 import {
   ArrowUpOutlined,
   DeleteOutlined,
+  EditOutlined,
   EyeOutlined,
   FileExcelOutlined,
   FileOutlined,
@@ -190,6 +213,20 @@ const createFolderRules = {
     { required: true, message: t('components_DatasetFileBrowser.createFolderRules.required'), trigger: 'blur' },
     { min: 1, max: 50, message: t('components_DatasetFileBrowser.createFolderRules.length'), trigger: 'blur' },
     { pattern: /^[^<>:"/\\|?*]+$/, message: t('components_DatasetFileBrowser.createFolderRules.pattern'), trigger: 'blur' }
+  ]
+}
+
+// 重命名相关状态
+const renameVisible = ref(false)
+const renameLoading = ref(false)
+const renameTargetFile = ref<any>(null)
+const renameForm = ref({ newName: '' })
+const renameFormRef = ref()
+const renameRules = {
+  newName: [
+    { required: true, message: t('components_DatasetFileBrowser.renameRules.required'), trigger: 'blur' },
+    { min: 1, max: 100, message: t('components_DatasetFileBrowser.renameRules.length'), trigger: 'blur' },
+    { pattern: /^[^/\\:*?"<>|]+$/, message: t('components_DatasetFileBrowser.renameRules.pattern'), trigger: 'blur' }
   ]
 }
 
@@ -328,6 +365,59 @@ const canDeleteFile = (file: any) => {
   }
 
   return true
+}
+
+// 判断单个文件是否可重命名（与写权限一致）
+const canRenameFile = (file: any) => {
+  const user = authStore.currentUser
+  if (!user) return false
+
+  // 管理员可以重命名（除了 private/public 根目录本身）
+  if (user.role === 'admin') {
+    if (file.path === 'private' || file.path === 'public') return false
+    return true
+  }
+
+  // 普通用户：必须在自己的 private 子目录下
+  if (!canWrite.value) return false
+  if (file.path === 'private' || file.path === 'public') return false
+  return true
+}
+
+// 显示重命名对话框
+const showRenameModal = (file: any) => {
+  renameTargetFile.value = file
+  renameForm.value.newName = file.name
+  renameVisible.value = true
+  // 等 DOM 更新后全选输入框内容，方便直接修改
+  setTimeout(() => {
+    const input = renameFormRef.value?.$el?.querySelector('input')
+    input?.select()
+  }, 100)
+}
+
+// 执行重命名
+const handleRename = async () => {
+  try {
+    await renameFormRef.value?.validate()
+    const newName = renameForm.value.newName.trim()
+    if (newName === renameTargetFile.value?.name) {
+      renameVisible.value = false
+      return
+    }
+    renameLoading.value = true
+    const result = await fileStore.renameFileAction(renameTargetFile.value.id, newName)
+    if (result.success) {
+      message.success(t('components_DatasetFileBrowser.messages.renameSuccess'))
+      renameVisible.value = false
+    } else {
+      message.error(result.message || t('components_DatasetFileBrowser.messages.renameFailed'))
+    }
+  } catch {
+    // 表单校验失败，不关闭弹窗
+  } finally {
+    renameLoading.value = false
+  }
 }
 
 const getPathUpTo = (index: number) => {

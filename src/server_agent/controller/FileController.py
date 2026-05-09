@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 
 from src.server_agent.common import BaseResponse
 from src.server_agent.common.ResultUtils import ResultUtils
-from src.server_agent.model import DeleteFileRequest, CreateFolderRequest, BatchDeleteFilesRequest, FileInfo, FileListVO, UserVO
+from src.server_agent.model import DeleteFileRequest, CreateFolderRequest, BatchDeleteFilesRequest, RenameFileRequest, FileInfo, FileListVO, UserVO
 from src.server_agent.service import FileService, UserService
 from src.server_agent.exceptions import AuthenticationError
 from src.server_agent.constants.CommonConstants import DATASET_PATH
@@ -146,6 +146,23 @@ class FileController(BaseController):
             """创建文件夹"""
             await self.fileService.createFolder(request.folderName, request.currentPath)
             return ResultUtils.success(None)
+
+        @self.router.post("/rename")
+        async def renameFile(
+            request: RenameFileRequest,
+            userVO: UserVO = Depends(self._get_current_user)
+        ) -> BaseResponse[FileInfo]:
+            """重命名文件或文件夹"""
+            try:
+                fileInfo: FileInfo = await self.fileService.renameUploadFileById(
+                    request.fileId, request.newName, userVO.uid, userVO.role
+                )
+                return ResultUtils.success(fileInfo)
+            except Exception as e:
+                error_message = str(e)
+                if hasattr(e, 'detail'):
+                    error_message = e.detail
+                return ResultUtils.error(400, f"重命名失败: {error_message}")
 
     # ==================== 工具方法 ====================
 
