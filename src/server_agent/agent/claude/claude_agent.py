@@ -63,17 +63,7 @@ SYSTEM_PROMPT_TEMPLATE = """
 【输出文件命名规范】
 6. 所有输出结果文件必须严格遵守以下命名规范：
 
-   基本格式：{{原始文件名}}-{{期相}}-{{任务类型}}-{{YYYYMMDD}}-{{HHMMSS}}.{{扩展名}}
-
-   期相后缀（CT 多期相必须标注，单期相可省略）：
-   - 平扫期：pre
-   - 增强期（动脉期/静脉期/延迟期等）：post
-   - 示例：patient001-pre-bodycomp-seg-20240508-143022.nii.gz
-           patient001-post-bodycomp-seg-20240508-143025.nii.gz
-
-   时间戳要求：
-   - 必须精确到秒（HHMMSS），确保同一任务的多个输出文件不会互相覆盖
-   - 时间戳取任务开始执行时的本地时间
+   基本格式：{{原始文件名}}-{{任务类型}}-{{YYYYMMDD}}.{{扩展名}}
 
    其他规则：
    - 全部使用小写字母和连字符，禁止空格、下划线、中文、特殊字符
@@ -84,7 +74,13 @@ SYSTEM_PROMPT_TEMPLATE = """
 7. 所有任务的输出结果必须保存到用户专属目录下，按任务类型新建子目录，禁止写入 dataset 目录：
    - 输出根目录：/home/fetters/project/MediAgent/src/server_new/data/files/private/{user_id}/
    - 每次任务在上述根目录下新建子目录，命名格式：{{任务类型}}-{{YYYYMMDD}}
-   - 示例：/home/fetters/project/MediAgent/src/server_new/data/files/private/{user_id}/bodycomp-seg-20240508/
+   - 示例（单时间点）：
+     .../private/{user_id}/lung-crop-20260509/patient001-lung-crop-20260509.nii.gz
+   - 当任务同时处理治疗前（pre）和治疗后（post）的文件时，必须在任务目录下分别建立 pre/ 和 post/ 子目录，
+     将对应输出分开存放：
+     .../private/{user_id}/lung-crop-20260509/pre/patient001-lung-crop-20260509.nii.gz
+     .../private/{user_id}/lung-crop-20260509/post/patient001-lung-crop-20260509.nii.gz
+   - 只要输入文件涉及 pre/post 区分，输出就必须建 pre/ 和 post/ 子目录，不得混放
    - 严禁将结果写入 dataset 或其任何子目录
 """.strip()
 
@@ -242,6 +238,9 @@ class ClaudeAgent:
         # ClaudeSDKClient 实例（每个会话一个）
         self._clients: dict[str, ClaudeSDKClient] = {}  # session_id -> client
 
+        # sdk_session_id -> conversation_id 映射，供 hook 提取 conversation_id
+        self._session_conversation_map: dict[str, str] = {}
+
         # Skill 后台任务：用于在 hook 和 stream_chat 之间传递 task_id
         self._last_skill_task_id: Optional[str] = None
         self._last_skill_name: Optional[str] = None
@@ -269,15 +268,14 @@ class ClaudeAgent:
         logger.info(f"[PERMISSION] Input data: {input_data}")
         logger.info(f"[PERMISSION] Context: {context}")
 
-        # ===== Skill 工具：提交后台任务，立即返回 Deny（伪造 tool_result）=====
+        # ===== Skill 工具：提交后台任务，等待完成后把结果返回给 ClaudeCode =====
         if tool_name == "Skill":
             skill_name = input_data.get("skill", "unknown") if isinstance(input_data, dict) else "unknown"
-            # 从 context 中提取 conversation_id（由 stream_chat 注入）
-            conversation_id = ""
-            if isinstance(context, dict):
-                conversation_id = context.get("conversation_id", "")
-            elif hasattr(context, "conversation_id"):
-                conversation_id = getattr(context, "conversation_id", "")
+            # 从映射表取 conversation_id
+            hook_session_id = getattr(context, "session_id", None) or (
+                context.get("session_id") if isinstance(context, dict) else None
+            ) or self._last_session_id or ""
+            conversation_id = self._session_conversation_map.get(hook_session_id, "")
 
             from src.server_agent.service.SkillTaskManager import get_skill_task_manager
             task_manager = get_skill_task_manager()
@@ -287,31 +285,75 @@ class ClaudeAgent:
                 params=params,
                 conversation_id=conversation_id,
             )
-            # 将 task_id 暂存到实例，供 stream_chat 读取并推送给前端
-            self._last_skill_task_id = task_id
-            self._last_skill_name = skill_name
             logger.info(f"[PERMISSION] Skill '{skill_name}' submitted as background task {task_id}")
-            return PermissionResultDeny(
-                message=f"Skill '{skill_name}' 已提交后台执行，任务ID: {task_id}。"
-                        f"请直接告知用户：任务正在后台运行，完成后可在界面查看结果。"
-            )
+
+            # 通知前端 Work Flow 面板
+            await self._permission_queue.put({
+                "kind": "skill_submitted",
+                "taskId": task_id,
+                "skillName": skill_name,
+                "status": "pending",
+                "provider": "claude",
+                "done": False,
+                "_is_skill_submitted": True,
+            })
+
+            # 等待任务完成，期间定期推进度给前端
+            async def _push_progress_skill():
+                last_progress = -1
+                while True:
+                    task = task_manager.get_task(task_id)
+                    if not task or task.status in ("success", "failed"):
+                        break
+                    if task.progress != last_progress:
+                        last_progress = task.progress
+                        await self._permission_queue.put({
+                            "kind": "skill_submitted",
+                            "taskId": task_id,
+                            "skillName": skill_name,
+                            "status": task.status,
+                            "progress": task.progress,
+                            "provider": "claude",
+                            "done": False,
+                            "_is_skill_submitted": True,
+                        })
+                    await asyncio.sleep(2.0)
+
+            progress_task = asyncio.create_task(_push_progress_skill())
+            finished_task = await task_manager.wait_for_task(task_id)
+            progress_task.cancel()
+
+            if finished_task and finished_task.status == "success":
+                result_msg = (
+                    f"任务 '{skill_name}' 已成功完成（task_id={task_id}）。"
+                    f"耗时：{finished_task.elapsed_seconds():.1f}s。"
+                    f"输出目录已按规范写入，请继续后续步骤。"
+                )
+                logger.info(f"[PERMISSION] Skill '{skill_name}' finished successfully, task={task_id}")
+            else:
+                error = finished_task.error if finished_task else "任务不存在"
+                result_msg = (
+                    f"任务 '{skill_name}' 执行失败（task_id={task_id}）。"
+                    f"错误：{error}。请检查输入参数或日志后重试。"
+                )
+                logger.warning(f"[PERMISSION] Skill '{skill_name}' failed, task={task_id}, error={error}")
+            return PermissionResultDeny(message=result_msg)
 
         # ===== Bash 工具调用 Skill 脚本：也提交后台任务 =====
         if tool_name == "Bash":
             command = input_data.get("command", "") if isinstance(input_data, dict) else ""
-            # 仅当命令是"真正执行 skill 的 run.sh"时才视为后台 skill 任务。
-            # 否则像 cat / ls / grep ~/.claude/skills/... 这类只读命令会被错误地
-            # 当成 skill 提交，并在 Work Flow 面板里产生大量 0s 的幽灵成功任务。
-            #
-            # 判定规则：把整条命令按 shell 分隔符（;  &&  ||  |  换行）拆成子命令，
-            # 检查任意子命令的"第一个 token"是否是：
-            #   1) bash/sh，且第二个 token 是 .../run.sh
-            #   2) 直接以 / ~/ ./ 开头并以 .../run.sh 结尾的可执行路径
+            run_in_background = input_data.get("run_in_background", False) if isinstance(input_data, dict) else False
+            # 判定规则（优先级从高到低）：
+            #   1) run_in_background=True：Claude 明确要求后台执行，从命令中提取 skill 名
+            #   2) bash/sh .../run.sh 或直接执行 .../run.sh
+            # 排除 cat / ls / grep 等只读命令误判为 skill 任务
             import re
             import shlex
 
+            # 从命令中提取 .claude/skills/<name> 路径里的 skill 名
+            _skills_pattern = re.compile(r'[/~][^\s]*?/\.claude/skills/([^/\s]+)')
+
             def _detect_skill_run(cmd: str):
-                # 简单地按 shell 控制符切分；正则保留分隔符不重要，只要能拿到子命令片段
                 sub_cmds = re.split(r'(?:;|&&|\|\||\||\n)', cmd)
                 run_sh_pattern = re.compile(r'/\.claude/skills/([^/\s]+)/run\.sh$')
                 for sub in sub_cmds:
@@ -321,7 +363,6 @@ class ClaudeAgent:
                     try:
                         tokens = shlex.split(sub, posix=True)
                     except ValueError:
-                        # 命令含未闭合引号等，跳过该子命令
                         continue
                     if not tokens:
                         continue
@@ -338,16 +379,50 @@ class ClaudeAgent:
                             return m.group(1)
                 return None
 
-            detected_skill = _detect_skill_run(command)
+            def _extract_skill_name_from_cmd(cmd: str):
+                """从命令中提取 .claude/skills/<name> 里的 skill 名（用于 run_in_background 场景）"""
+                # 先尝试 cd .../skills/<name> 模式
+                cd_pattern = re.compile(r'cd\s+[^\s]*?/\.claude/skills/([^/\s]+)')
+                m = cd_pattern.search(cmd)
+                if m:
+                    return m.group(1)
+                # 再尝试命令中任意 .claude/skills/<name> 路径
+                m = _skills_pattern.search(cmd)
+                if m:
+                    return m.group(1)
+                return None
+
+            # 优先级1：run_in_background=True，从命令中提取 skill 名
+            if run_in_background:
+                detected_skill = _extract_skill_name_from_cmd(command)
+                if not detected_skill:
+                    # 兜底：用 description 字段或 "background-task"
+                    desc = input_data.get("description", "") if isinstance(input_data, dict) else ""
+                    detected_skill = desc.strip() or "background-task"
+                logger.info(f"[PERMISSION] run_in_background=True, skill='{detected_skill}'")
+            else:
+                # 优先级2：run.sh 模式
+                detected_skill = _detect_skill_run(command)
+
+            # 优先级3：cd .../skills/<name> && python/bash/sh ... 模式
+            # 不依赖 run_in_background 标志，只要命令进入了 skills 目录并执行脚本就挂后台
+            if not detected_skill:
+                skill_from_cd = _extract_skill_name_from_cmd(command)
+                if skill_from_cd:
+                    # 确认命令里有实际执行动作（排除 cat/ls/grep 等只读操作）
+                    exec_pattern = re.compile(r'\b(python[0-9.]*|bash|sh|perl|ruby|node)\b|\.py\b|\.sh\b')
+                    if exec_pattern.search(command):
+                        detected_skill = skill_from_cd
+                        logger.info(f"[PERMISSION] cd+exec pattern detected, skill='{detected_skill}'")
+
             if detected_skill:
                 skill_name = detected_skill
 
-                # 提取 conversation_id
-                conversation_id = ""
-                if isinstance(context, dict):
-                    conversation_id = context.get("conversation_id", "")
-                elif hasattr(context, "conversation_id"):
-                    conversation_id = getattr(context, "conversation_id", "")
+                # 从映射表取 conversation_id
+                hook_session_id = getattr(context, "session_id", None) or (
+                    context.get("session_id") if isinstance(context, dict) else None
+                ) or self._last_session_id or ""
+                conversation_id = self._session_conversation_map.get(hook_session_id, "")
 
                 from src.server_agent.service.SkillTaskManager import get_skill_task_manager
                 task_manager = get_skill_task_manager()
@@ -359,9 +434,7 @@ class ClaudeAgent:
                 )
                 logger.info(f"[PERMISSION] Bash skill '{skill_name}' submitted as background task {task_id}")
 
-                # 直接把 skill_submitted 事件注入 permission_queue，
-                # 由 stream_chat 的 permission_listener 转发给前端
-                # 这样不依赖 TOOL_USE 消息的时序
+                # 通知前端 Work Flow 面板
                 skill_submitted_event = {
                     "kind": "skill_submitted",
                     "taskId": task_id,
@@ -369,14 +442,53 @@ class ClaudeAgent:
                     "status": "pending",
                     "provider": "claude",
                     "done": False,
-                    "_is_skill_submitted": True,  # 标记，区别于权限请求
+                    "_is_skill_submitted": True,
                 }
                 await self._permission_queue.put(skill_submitted_event)
 
-                return PermissionResultDeny(
-                    message=f"Skill '{skill_name}' 已提交后台执行，任务ID: {task_id}。"
-                            f"请直接告知用户：任务正在后台运行，完成后可在界面查看结果。"
-                )
+                # 等待任务完成，期间定期推进度给前端
+                async def _push_progress():
+                    last_progress = -1
+                    while True:
+                        task = task_manager.get_task(task_id)
+                        if not task:
+                            break
+                        if task.progress != last_progress:
+                            last_progress = task.progress
+                            await self._permission_queue.put({
+                                "kind": "skill_submitted",
+                                "taskId": task_id,
+                                "skillName": skill_name,
+                                "status": task.status,
+                                "progress": task.progress,
+                                "provider": "claude",
+                                "done": False,
+                                "_is_skill_submitted": True,
+                            })
+                        if task.status in ("success", "failed"):
+                            break
+                        await asyncio.sleep(2.0)
+
+                progress_task = asyncio.create_task(_push_progress())
+                finished_task = await task_manager.wait_for_task(task_id)
+                progress_task.cancel()
+
+                if finished_task and finished_task.status == "success":
+                    result_msg = (
+                        f"任务 '{skill_name}' 已成功完成（task_id={task_id}）。"
+                        f"耗时：{finished_task.elapsed_seconds():.1f}s。"
+                        f"输出目录已按规范写入，请继续后续步骤。"
+                    )
+                    logger.info(f"[PERMISSION] Skill '{skill_name}' finished successfully, task={task_id}")
+                    return PermissionResultDeny(message=result_msg)
+                else:
+                    error = finished_task.error if finished_task else "任务不存在"
+                    result_msg = (
+                        f"任务 '{skill_name}' 执行失败（task_id={task_id}）。"
+                        f"错误：{error}。请检查输入参数或日志后重试。"
+                    )
+                    logger.warning(f"[PERMISSION] Skill '{skill_name}' failed, task={task_id}, error={error}")
+                    return PermissionResultDeny(message=result_msg)
 
         # ===== MVP-2: 工具白名单 + 路径校验 =====
         if self._tool_policy:
@@ -750,6 +862,7 @@ class ClaudeAgent:
         is_file: bool = False,
         use_stream_json: bool = True,
         user_id: Optional[int] = None,
+        conversation_id: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         """
         流式对话 - 输出与参考项目一致的格式
@@ -885,7 +998,11 @@ class ClaudeAgent:
                         pass
 
                     elif msg.kind == MessageKind.SESSION_CREATED:
-                        self._last_session_id = msg.session_id or msg.new_session_id
+                        real_sid = msg.session_id or msg.new_session_id
+                        self._last_session_id = real_sid
+                        # 建立 sdk_session_id -> conversation_id 映射，供 hook 使用
+                        if real_sid and conversation_id:
+                            self._session_conversation_map[real_sid] = conversation_id
                         data = msg.to_dict()
                         data["done"] = False
                         yield json.dumps(data, ensure_ascii=False)

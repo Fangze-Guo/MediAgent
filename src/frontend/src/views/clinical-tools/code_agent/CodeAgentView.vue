@@ -895,6 +895,18 @@ const handleCancelTask = async (taskId: string) => {
     const res = await cancelSkillTask(taskId)
     if (res.code === 200) {
       message.success('已请求中断任务')
+      // 立即更新前端状态，不等下次轮询
+      upsertGlobalTask(taskId, { status: 'failed', skill_error: '已取消' })
+      const msg = messages.value.find(m => m.skill_task_id === taskId)
+      if (msg) {
+        msg.skill_status = 'failed'
+        msg.skill_error = '已取消'
+      }
+      // 停止轮询
+      if (skillTaskPollers[taskId]) {
+        clearInterval(skillTaskPollers[taskId])
+        delete skillTaskPollers[taskId]
+      }
     } else {
       message.error(res.message || '中断任务失败')
     }
@@ -1264,6 +1276,8 @@ const loadConversations = async () => {
     const response = await getConversations(50, 0, currentProjectId.value)
     if (response.code === 200 && response.data) {
       conversations.value = response.data
+      // 会话列表加载完后再加载 Work Flow，确保 filteredSkillTasks 过滤正确
+      await loadAllSkillTasks()
     } else {
       message.error(response.message || '加载对话列表失败')
     }
@@ -1350,10 +1364,9 @@ const startNewConversation = async () => {
   try {
     const response = await createConversation({ project_id: currentProjectId.value })
     if (response.code === 200 && response.data) {
-      // 选中新创建的会话
-      await selectConversation(response.data)
-      // 新建对话后立即刷新列表
+      // 先刷新列表（含 loadAllSkillTasks），再选中新会话，避免并发竞争
       await loadConversations()
+      await selectConversation(response.data)
       message.success('创建会话成功')
     } else {
       message.error(response.message || '创建会话失败')
@@ -1376,6 +1389,17 @@ const handleDeleteConversation = async (conversationId: string) => {
         selectedConversation.value = null
         messages.value = []
       }
+      // 清理该会话的 Work Flow 任务和轮询
+      const taskIds = allSkillTasks.value
+        .filter(t => t.conversation_id === conversationId)
+        .map(t => t.task_id)
+      for (const tid of taskIds) {
+        if (skillTaskPollers[tid]) {
+          clearInterval(skillTaskPollers[tid])
+          delete skillTaskPollers[tid]
+        }
+      }
+      allSkillTasks.value = allSkillTasks.value.filter(t => t.conversation_id !== conversationId)
       // 重新加载对话列表
       await loadConversations()
     } else {
@@ -1468,11 +1492,15 @@ const handleSendMessage = async () => {
   })
   scrollToBottom()
 
+  // 发送时锁定当前会话 ID，防止流式响应期间切换会话导致消息串入其他会话
+  const streamingConversationId = selectedConversation.value!.conversation_id
+
   try {
     const stream = await streamChat({
-      conversation_id: selectedConversation.value?.conversation_id,
+      conversation_id: streamingConversationId,
       messages: historyMessages,
-      message: userMessage
+      message: userMessage,
+      project_id: currentProjectId.value
     })
 
     if (!stream) {
@@ -1487,6 +1515,8 @@ const handleSendMessage = async () => {
 
     // 定义事件处理器
     const handleEvent = (event: CodeEventType) => {
+      // 如果用户已切换到其他会话，丢弃该事件
+      if (selectedConversationId.value !== streamingConversationId) return
       const newSessionId = handleStreamEvent(event, capturedSessionId)
       if (newSessionId && !capturedSessionId) {
         capturedSessionId = newSessionId
@@ -1495,8 +1525,16 @@ const handleSendMessage = async () => {
 
     await parseStreamResponse(
       reader,
-      async (data, type) => handleStreamChunk(data, type, activeStepRef, capturedSessionId),
-      handleStreamComplete,
+      async (data, type) => {
+        // 如果用户已切换到其他会话，丢弃 chunk
+        if (selectedConversationId.value !== streamingConversationId) return
+        handleStreamChunk(data, type, activeStepRef, capturedSessionId)
+      },
+      (finalContent) => {
+        // 如果用户已切换到其他会话，丢弃 complete 回调
+        if (selectedConversationId.value !== streamingConversationId) return
+        handleStreamComplete(finalContent)
+      },
       handleStreamError,
       handleEvent
     )
@@ -1593,9 +1631,7 @@ const handleKeyDown = (event: KeyboardEvent) => {
 
 // 组件挂载时加载对话列表
 onMounted(() => {
-  loadConversations()
-  // 刷新页面后恢复 Work Flow 面板内的所有 skill 任务
-  loadAllSkillTasks()
+  loadConversations()  // loadAllSkillTasks 在 loadConversations 完成后自动调用
   messagesContainer.value?.addEventListener('scroll', handleScroll, { passive: true })
   setupResizeObserver()
 })

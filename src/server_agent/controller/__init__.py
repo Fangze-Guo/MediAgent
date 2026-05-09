@@ -98,6 +98,11 @@ async def lifespan(app: FastAPI):
     code_agent_mapper = CodeAgentMapper()
     await code_agent_mapper.init()
     app.state.code_agent_mapper = code_agent_mapper
+    # 从 DB 恢复 skill 任务（刷新页面后 Work Flow 面板不丢失）
+    from src.server_agent.service.SkillTaskManager import get_skill_task_manager
+    skill_task_manager = get_skill_task_manager()
+    skill_task_manager._mapper = code_agent_mapper  # 复用已初始化的 mapper
+    await skill_task_manager.restore_from_db()
     # 配置提供者与运行态注册器
     provider = ConfigProvider()
     app.state.config_provider = provider

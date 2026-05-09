@@ -113,6 +113,28 @@ class CodeAgentMapper:
                 ON medical_conversations(user_id)
             """)
 
+            # skill_tasks 持久化表
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS skill_tasks (
+                    task_id     VARCHAR(64) PRIMARY KEY,
+                    skill_name  VARCHAR(255) NOT NULL,
+                    params      TEXT NOT NULL DEFAULT '{}',
+                    conversation_id VARCHAR(64) NOT NULL,
+                    status      VARCHAR(20) NOT NULL DEFAULT 'pending',
+                    progress    INT NOT NULL DEFAULT 0,
+                    created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    started_at  TIMESTAMP,
+                    finished_at TIMESTAMP,
+                    error       TEXT,
+                    output      TEXT,
+                    cancelled   BOOLEAN NOT NULL DEFAULT FALSE
+                )
+            """)
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_skill_tasks_conversation_id
+                ON skill_tasks(conversation_id)
+            """)
+
     def _generate_conversation_id(self) -> str:
         """生成会话ID（UUID格式）"""
         return str(uuid.uuid4())
@@ -380,6 +402,75 @@ class CodeAgentMapper:
             result = await conn.execute(query, *params)
             rows_updated = int(result.split()[-1])
             return rows_updated > 0
+
+    # ------------------------------------------------------------------ #
+    #  skill_tasks 持久化 CRUD
+    # ------------------------------------------------------------------ #
+
+    async def upsert_skill_task(self, task: dict) -> None:
+        """插入或更新一条 skill_task 记录（以 task_id 为主键）"""
+        import json as _json
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO skill_tasks
+                    (task_id, skill_name, params, conversation_id, status,
+                     progress, created_at, started_at, finished_at,
+                     error, output, cancelled)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+                ON CONFLICT (task_id) DO UPDATE SET
+                    status      = EXCLUDED.status,
+                    progress    = EXCLUDED.progress,
+                    started_at  = EXCLUDED.started_at,
+                    finished_at = EXCLUDED.finished_at,
+                    error       = EXCLUDED.error,
+                    output      = EXCLUDED.output,
+                    cancelled   = EXCLUDED.cancelled
+            """,
+                task["task_id"],
+                task["skill_name"],
+                _json.dumps(task.get("params", {}), ensure_ascii=False),
+                task["conversation_id"],
+                task["status"],
+                task.get("progress", 0),
+                task["created_at"],
+                task.get("started_at"),
+                task.get("finished_at"),
+                task.get("error"),
+                _json.dumps(task.get("output"), ensure_ascii=False) if task.get("output") is not None else None,
+                task.get("cancelled", False),
+            )
+
+    async def delete_skill_task(self, task_id: str) -> bool:
+        """删除单条 skill_task 记录"""
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute(
+                "DELETE FROM skill_tasks WHERE task_id = $1", task_id
+            )
+            return int(result.split()[-1]) > 0
+
+    async def list_skill_tasks(self, conversation_id: Optional[str] = None) -> list:
+        """查询 skill_task 列表，可按 conversation_id 过滤"""
+        import json as _json
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            if conversation_id:
+                rows = await conn.fetch(
+                    "SELECT * FROM skill_tasks WHERE conversation_id = $1 ORDER BY created_at DESC",
+                    conversation_id,
+                )
+            else:
+                rows = await conn.fetch(
+                    "SELECT * FROM skill_tasks ORDER BY created_at DESC"
+                )
+        result = []
+        for row in rows:
+            d = dict(row)
+            d["params"] = _json.loads(d["params"]) if d["params"] else {}
+            d["output"] = _json.loads(d["output"]) if d["output"] else None
+            result.append(d)
+        return result
 
     async def close(self) -> None:
         """关闭连接池"""
