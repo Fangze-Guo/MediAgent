@@ -286,11 +286,48 @@ class ClaudeAgent:
         # ===== Bash 工具调用 Skill 脚本：也提交后台任务 =====
         if tool_name == "Bash":
             command = input_data.get("command", "") if isinstance(input_data, dict) else ""
-            # 检测是否是 skill 脚本调用（路径包含 /.claude/skills/）
-            if "/.claude/skills/" in command:
-                import re
-                match = re.search(r'/\.claude/skills/([^/\s]+)', command)
-                skill_name = match.group(1) if match else "unknown-skill"
+            # 仅当命令是"真正执行 skill 的 run.sh"时才视为后台 skill 任务。
+            # 否则像 cat / ls / grep ~/.claude/skills/... 这类只读命令会被错误地
+            # 当成 skill 提交，并在 Work Flow 面板里产生大量 0s 的幽灵成功任务。
+            #
+            # 判定规则：把整条命令按 shell 分隔符（;  &&  ||  |  换行）拆成子命令，
+            # 检查任意子命令的"第一个 token"是否是：
+            #   1) bash/sh，且第二个 token 是 .../run.sh
+            #   2) 直接以 / ~/ ./ 开头并以 .../run.sh 结尾的可执行路径
+            import re
+            import shlex
+
+            def _detect_skill_run(cmd: str):
+                # 简单地按 shell 控制符切分；正则保留分隔符不重要，只要能拿到子命令片段
+                sub_cmds = re.split(r'(?:;|&&|\|\||\||\n)', cmd)
+                run_sh_pattern = re.compile(r'/\.claude/skills/([^/\s]+)/run\.sh$')
+                for sub in sub_cmds:
+                    sub = sub.strip()
+                    if not sub:
+                        continue
+                    try:
+                        tokens = shlex.split(sub, posix=True)
+                    except ValueError:
+                        # 命令含未闭合引号等，跳过该子命令
+                        continue
+                    if not tokens:
+                        continue
+                    first, second = tokens[0], tokens[1] if len(tokens) > 1 else ""
+                    # case 1: bash/sh <path>/run.sh
+                    if first in ("bash", "sh") and second:
+                        m = run_sh_pattern.search(second)
+                        if m:
+                            return m.group(1)
+                    # case 2: 直接执行 run.sh
+                    if first.startswith(("/", "~/", "./")):
+                        m = run_sh_pattern.search(first)
+                        if m:
+                            return m.group(1)
+                return None
+
+            detected_skill = _detect_skill_run(command)
+            if detected_skill:
+                skill_name = detected_skill
 
                 # 提取 conversation_id
                 conversation_id = ""

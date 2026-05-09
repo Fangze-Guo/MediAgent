@@ -372,6 +372,44 @@ class CodeAgentController(BaseController):
                 return ResultUtils.error(404, f"任务不存在: {task_id}")
             return ResultUtils.success(task.to_dict())
 
+        @self.router.post("/skill-tasks/{task_id}/cancel")
+        async def cancel_skill_task(
+            task_id: str,
+            user_vo: UserVO = Depends(self._get_current_user)
+        ) -> BaseResponse[bool]:
+            """中断指定的 Skill 后台任务"""
+            from src.server_agent.service.SkillTaskManager import get_skill_task_manager
+            manager = get_skill_task_manager()
+            ok = manager.cancel(task_id)
+            if not ok:
+                return ResultUtils.error(400, f"任务不存在或已结束: {task_id}")
+            return ResultUtils.success(True)
+
+        @self.router.delete("/skill-tasks/{task_id}")
+        async def delete_skill_task(
+            task_id: str,
+            user_vo: UserVO = Depends(self._get_current_user)
+        ) -> BaseResponse[bool]:
+            """删除单个 Skill 后台任务（运行中会先取消）"""
+            from src.server_agent.service.SkillTaskManager import get_skill_task_manager
+            manager = get_skill_task_manager()
+            ok = manager.delete(task_id)
+            if not ok:
+                return ResultUtils.error(404, f"任务不存在: {task_id}")
+            return ResultUtils.success(True)
+
+        @self.router.delete("/skill-tasks")
+        async def clear_skill_tasks(
+            conversation_id: Optional[str] = Query(None, description="仅清理指定会话的任务"),
+            only_finished: bool = Query(True, description="True 仅清理已完成/失败任务；False 同时取消并清理运行中任务"),
+            user_vo: UserVO = Depends(self._get_current_user)
+        ) -> BaseResponse[int]:
+            """批量清理 Skill 后台任务，返回清理的数量"""
+            from src.server_agent.service.SkillTaskManager import get_skill_task_manager
+            manager = get_skill_task_manager()
+            removed = manager.clear(conversation_id=conversation_id, only_finished=only_finished)
+            return ResultUtils.success(removed)
+
         @self.router.post("/conversations")
         async def create_conversation(
             request: CreateConversationRequest,

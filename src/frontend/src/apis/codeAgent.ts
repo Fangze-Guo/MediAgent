@@ -570,3 +570,35 @@ export async function listSkillTasks(conversation_id?: string): Promise<BaseResp
   const response = await get<BaseResponse<SkillTaskInfo[]>>(url)
   return response.data
 }
+
+/**
+ * 中断指定的 Skill 后台任务
+ */
+export async function cancelSkillTask(task_id: string): Promise<BaseResponse<boolean>> {
+  const response = await post<BaseResponse<boolean>>(`/code-agent/skill-tasks/${task_id}/cancel`, {})
+  return response.data
+}
+
+/**
+ * 删除单个 Skill 后台任务（运行中会先取消）
+ */
+export async function deleteSkillTask(task_id: string): Promise<BaseResponse<boolean>> {
+  const response = await del<BaseResponse<boolean>>(`/code-agent/skill-tasks/${task_id}`)
+  return response.data
+}
+
+/**
+ * 批量清理 Skill 后台任务
+ * @param conversation_id 仅清理指定会话的任务
+ * @param only_finished true 仅清理已完成/失败任务；false 同时取消并清理运行中任务
+ */
+export async function clearSkillTasks(
+  conversation_id?: string,
+  only_finished: boolean = true
+): Promise<BaseResponse<number>> {
+  const params = new URLSearchParams()
+  if (conversation_id) params.append('conversation_id', conversation_id)
+  params.append('only_finished', String(only_finished))
+  const response = await del<BaseResponse<number>>(`/code-agent/skill-tasks?${params.toString()}`)
+  return response.data
+}

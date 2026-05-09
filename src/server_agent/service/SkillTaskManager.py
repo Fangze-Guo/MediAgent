@@ -34,6 +34,8 @@ class SkillTask:
     progress: int = 0          # 0~100，从日志中解析（可选）
     output: Optional[dict] = None   # 成功后的输出信息
     error: Optional[str] = None     # 失败原因
+    proc: Optional[asyncio.subprocess.Process] = None  # 运行中子进程句柄（不参与序列化）
+    cancelled: bool = False         # 是否被用户主动取消
 
     def elapsed_seconds(self) -> Optional[float]:
         if self.started_at and self.finished_at:
@@ -98,6 +100,65 @@ class SkillTaskManager:
             tasks = [t for t in tasks if t.conversation_id == conversation_id]
         return sorted(tasks, key=lambda t: t.created_at, reverse=True)
 
+    def cancel(self, task_id: str) -> bool:
+        """中断正在运行 / 等待中的任务。已完成或失败的任务不做处理。"""
+        task = self._tasks.get(task_id)
+        if not task:
+            return False
+        if task.status not in ("pending", "running"):
+            return False
+        task.cancelled = True
+        if task.proc is not None and task.proc.returncode is None:
+            try:
+                task.proc.terminate()
+            except ProcessLookupError:
+                pass
+            except Exception as e:
+                logger.warning(f"[SkillTaskManager] terminate proc failed: {e}")
+        else:
+            # 还没起子进程（pending），直接置为失败
+            task.status = "failed"
+            task.error = "已取消"
+            task.finished_at = datetime.now()
+        logger.info(f"[SkillTaskManager] Cancel requested for task {task_id}")
+        return True
+
+    def delete(self, task_id: str) -> bool:
+        """从任务表中移除单个任务（运行中的会先取消）。"""
+        task = self._tasks.get(task_id)
+        if not task:
+            return False
+        if task.status in ("pending", "running"):
+            self.cancel(task_id)
+        self._tasks.pop(task_id, None)
+        return True
+
+    def clear(self, conversation_id: Optional[str] = None, only_finished: bool = True) -> int:
+        """批量清理任务。
+
+        Args:
+            conversation_id: 仅清理指定会话的任务；None 表示全部会话。
+            only_finished: True 仅清理已完成 / 失败任务（保留运行中）；
+                           False 同时取消并清理运行中任务。
+
+        Returns:
+            被清理的任务数量。
+        """
+        removed = 0
+        for tid in list(self._tasks.keys()):
+            task = self._tasks[tid]
+            if conversation_id and task.conversation_id != conversation_id:
+                continue
+            is_finished = task.status in ("success", "failed")
+            if only_finished and not is_finished:
+                continue
+            if not is_finished:
+                self.cancel(tid)
+            self._tasks.pop(tid, None)
+            removed += 1
+        logger.info(f"[SkillTaskManager] Cleared {removed} tasks (conv={conversation_id}, only_finished={only_finished})")
+        return removed
+
     def _append_log(self, task: SkillTask, line: str):
         task.logs.append(line)
         if len(task.logs) > MAX_LOG_LINES:
@@ -125,6 +186,7 @@ class SkillTaskManager:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.STDOUT,
                 )
+                task.proc = proc
             else:
                 # 标准 Skill 格式：执行 run.sh
                 skill_dir = Path.home() / ".claude" / "skills" / task.skill_name
@@ -148,6 +210,7 @@ class SkillTaskManager:
                     cwd=str(skill_dir),
                     env=env,
                 )
+                task.proc = proc
 
             # 实时读取输出
             async for raw_line in proc.stdout:
@@ -157,7 +220,11 @@ class SkillTaskManager:
 
             await proc.wait()
 
-            if proc.returncode == 0:
+            if task.cancelled:
+                task.status = "failed"
+                task.error = "已取消"
+                logger.info(f"[SkillTaskManager] Task {task_id} cancelled by user")
+            elif proc.returncode == 0:
                 task.status = "success"
                 task.progress = 100
                 task.output = {"return_code": 0}

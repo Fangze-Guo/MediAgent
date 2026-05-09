@@ -72,20 +72,33 @@
             <span class="workflow-title-icon">⚡</span>
             Work Flow
           </span>
-          <span v-if="runningTaskCount > 0" class="workflow-running-badge">{{ runningTaskCount }}</span>
+          <div class="workflow-header-actions">
+            <span v-if="runningTaskCount > 0" class="workflow-running-badge">{{ runningTaskCount }}</span>
+            <a-popconfirm
+              v-if="filteredSkillTasks.length > 0"
+              title="确认要清空所有已完成/失败的任务吗？运行中的任务不会被清理。"
+              ok-text="清空"
+              cancel-text="取消"
+              @confirm="handleClearFinishedTasks"
+            >
+              <button class="workflow-clear-btn" :disabled="finishedTaskCount === 0" :title="finishedTaskCount === 0 ? '没有可清理的任务' : '清空已完成/失败任务'">
+                清空
+              </button>
+            </a-popconfirm>
+          </div>
         </div>
 
-        <div v-if="allSkillTasks.length === 0" class="workflow-empty">
+        <div v-if="filteredSkillTasks.length === 0" class="workflow-empty">
           <span class="workflow-empty-icon">🗂️</span>
           <span>暂无后台任务</span>
         </div>
 
         <div v-else class="workflow-task-list">
           <div
-            v-for="task in allSkillTasks"
+            v-for="task in filteredSkillTasks"
             :key="task.task_id"
             class="workflow-task-item"
-            :class="`workflow-task-${task.status}`"
+            :class="[`workflow-task-${task.status}`, { 'workflow-task-active': task.conversation_id === selectedConversationId }]"
           >
             <!-- 任务头部 -->
             <div class="workflow-task-header">
@@ -95,23 +108,46 @@
                 <span v-else-if="task.status === 'success'">✓</span>
                 <span v-else-if="task.status === 'failed'">✕</span>
               </span>
-              <span class="workflow-task-name">{{ task.skill_name }}</span>
+              <span class="workflow-task-name" :title="task.skill_name">{{ task.skill_name }}</span>
               <span class="workflow-task-status-text">
                 <span v-if="task.status === 'pending'">等待中</span>
                 <span v-else-if="task.status === 'running'">执行中</span>
                 <span v-else-if="task.status === 'success'">已完成</span>
                 <span v-else-if="task.status === 'failed'">失败</span>
               </span>
+              <!-- 操作按钮 -->
+              <div class="workflow-task-actions">
+                <a-popconfirm
+                  v-if="task.status === 'pending' || task.status === 'running'"
+                  title="确认要中断这个任务吗？"
+                  ok-text="中断"
+                  cancel-text="取消"
+                  @confirm="handleCancelTask(task.task_id)"
+                >
+                  <button class="workflow-task-action-btn workflow-task-cancel-btn" title="中断任务">中断</button>
+                </a-popconfirm>
+                <button
+                  v-else
+                  class="workflow-task-action-btn workflow-task-delete-btn"
+                  title="删除任务"
+                  @click="handleDeleteTask(task.task_id)"
+                >×</button>
+              </div>
             </div>
 
             <!-- 底部元信息 -->
             <div class="workflow-task-meta">
-              <span class="workflow-task-conv">{{ getConvTitle(task.conversation_id) }}</span>
+              <span
+                class="workflow-task-conv"
+                :class="{ 'workflow-task-conv-clickable': canJumpToConv(task.conversation_id) }"
+                :title="canJumpToConv(task.conversation_id) ? '跳转到该会话' : '该会话不在当前列表'"
+                @click="jumpToConversation(task.conversation_id)"
+              >💬 {{ getConvTitle(task.conversation_id) }}</span>
               <span v-if="task.status === 'success' && task.skill_elapsed_seconds != null" class="workflow-task-elapsed">
                 {{ task.skill_elapsed_seconds.toFixed(1) }}s
               </span>
               <span v-else-if="task.status === 'failed'" class="workflow-task-error-hint" :title="task.skill_error || ''">
-                查看错误
+                {{ task.skill_error || '查看错误' }}
               </span>
               <span v-else class="workflow-task-time">{{ formatTime(task.created_at) }}</span>
             </div>
@@ -450,7 +486,9 @@ import {
   cancelPermission,
   interruptSession,
   getSkillTask,
-  listSkillTasks
+  listSkillTasks,
+  cancelSkillTask,
+  deleteSkillTask
 } from '@/apis/codeAgent'
 
 const { t } = useI18n()
@@ -813,15 +851,132 @@ const allSkillTasks = ref<Array<{
   created_at: string
 }>>([])
 
-// 正在运行的任务数量
+// 当前项目下的会话 ID 集合（用于按项目过滤 Work Flow）
+const currentConvIdSet = computed(() => new Set(conversations.value.map(c => c.conversation_id)))
+
+// 仅展示当前项目下的任务
+const filteredSkillTasks = computed(() =>
+  allSkillTasks.value.filter(t => currentConvIdSet.value.has(t.conversation_id))
+)
+
+// 正在运行的任务数量（仅当前项目）
 const runningTaskCount = computed(() =>
-  allSkillTasks.value.filter(t => t.status === 'pending' || t.status === 'running').length
+  filteredSkillTasks.value.filter(t => t.status === 'pending' || t.status === 'running').length
+)
+
+// 已完成 / 失败的任务数量（仅当前项目）
+const finishedTaskCount = computed(() =>
+  filteredSkillTasks.value.filter(t => t.status === 'success' || t.status === 'failed').length
 )
 
 // 根据 conversation_id 获取会话标题
 const getConvTitle = (conversationId: string): string => {
   const conv = conversations.value.find(c => c.conversation_id === conversationId)
   return conv?.title || '未命名会话'
+}
+
+// 是否可以跳转到该会话
+const canJumpToConv = (conversationId: string): boolean => {
+  return currentConvIdSet.value.has(conversationId)
+}
+
+// 跳转到任务对应的会话
+const jumpToConversation = (conversationId: string) => {
+  if (!canJumpToConv(conversationId)) return
+  const conv = conversations.value.find(c => c.conversation_id === conversationId)
+  if (conv) {
+    selectConversation(conv)
+  }
+}
+
+// 中断任务
+const handleCancelTask = async (taskId: string) => {
+  try {
+    const res = await cancelSkillTask(taskId)
+    if (res.code === 200) {
+      message.success('已请求中断任务')
+    } else {
+      message.error(res.message || '中断任务失败')
+    }
+  } catch (e) {
+    console.error('[handleCancelTask] 失败:', e)
+    message.error('中断任务失败')
+  }
+}
+
+// 删除单个任务
+const handleDeleteTask = async (taskId: string) => {
+  try {
+    const res = await deleteSkillTask(taskId)
+    if (res.code === 200) {
+      // 停止轮询
+      if (skillTaskPollers[taskId]) {
+        clearInterval(skillTaskPollers[taskId])
+        delete skillTaskPollers[taskId]
+      }
+      // 从前端列表移除
+      const idx = allSkillTasks.value.findIndex(t => t.task_id === taskId)
+      if (idx >= 0) allSkillTasks.value.splice(idx, 1)
+    } else {
+      message.error(res.message || '删除任务失败')
+    }
+  } catch (e) {
+    console.error('[handleDeleteTask] 失败:', e)
+    message.error('删除任务失败')
+  }
+}
+
+// 清空已完成 / 失败的任务（仅当前项目）
+const handleClearFinishedTasks = async () => {
+  try {
+    // 先收集需要清理的任务 id（仅当前项目下、已完成/失败）
+    const toRemove = filteredSkillTasks.value
+      .filter(t => t.status === 'success' || t.status === 'failed')
+      .map(t => t.task_id)
+    if (toRemove.length === 0) return
+
+    // 后端只支持按 conversation_id 或全局清理，这里逐个删除以保证仅清理当前项目
+    await Promise.all(toRemove.map(id => deleteSkillTask(id).catch(() => null)))
+
+    // 同步清理本地状态
+    for (const id of toRemove) {
+      if (skillTaskPollers[id]) {
+        clearInterval(skillTaskPollers[id])
+        delete skillTaskPollers[id]
+      }
+    }
+    allSkillTasks.value = allSkillTasks.value.filter(t => !toRemove.includes(t.task_id))
+    message.success(`已清空 ${toRemove.length} 个任务`)
+  } catch (e) {
+    console.error('[handleClearFinishedTasks] 失败:', e)
+    message.error('清空任务失败')
+  }
+}
+
+// 加载全部 Skill 任务（用于刷新页面后恢复 Work Flow 面板）
+const loadAllSkillTasks = async () => {
+  try {
+    const res = await listSkillTasks()
+    if (res.code !== 200 || !res.data) return
+    for (const task of res.data) {
+      upsertGlobalTask(task.task_id, {
+        task_id: task.task_id,
+        skill_name: task.skill_name,
+        conversation_id: task.conversation_id,
+        status: task.status,
+        skill_progress: task.progress,
+        skill_elapsed_seconds: task.elapsed_seconds,
+        skill_error: task.error ?? null,
+        created_at: task.created_at,
+      })
+      // 对未结束的任务恢复轮询
+      if (task.status === 'pending' || task.status === 'running') {
+        startSkillTaskPoller(task.task_id)
+      }
+    }
+  } catch (e) {
+    console.error('[loadAllSkillTasks] 加载任务列表失败:', e)
+  }
 }
 
 // 向全局任务列表插入或更新任务
@@ -1439,6 +1594,8 @@ const handleKeyDown = (event: KeyboardEvent) => {
 // 组件挂载时加载对话列表
 onMounted(() => {
   loadConversations()
+  // 刷新页面后恢复 Work Flow 面板内的所有 skill 任务
+  loadAllSkillTasks()
   messagesContainer.value?.addEventListener('scroll', handleScroll, { passive: true })
   setupResizeObserver()
 })
@@ -1731,6 +1888,93 @@ onUnmounted(() => {
   color: #ef4444;
   cursor: pointer;
   text-decoration: underline dotted;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workflow-clear-btn {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+.workflow-clear-btn:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.workflow-clear-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.workflow-task-active {
+  outline: 1.5px solid rgba(59, 130, 246, 0.5);
+  outline-offset: -1px;
+}
+
+.workflow-task-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.workflow-task-action-btn {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.workflow-task-cancel-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.workflow-task-delete-btn {
+  font-size: 14px;
+  padding: 0 6px;
+  height: 18px;
+  line-height: 16px;
+}
+
+.workflow-task-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.workflow-task-conv-clickable {
+  cursor: pointer;
+  text-decoration: underline dotted transparent;
+  transition: color 0.15s, text-decoration-color 0.15s;
+}
+
+.workflow-task-conv-clickable:hover {
+  color: #3b82f6;
+  text-decoration-color: #3b82f6;
+  opacity: 1;
 }
 
 .list-card {
