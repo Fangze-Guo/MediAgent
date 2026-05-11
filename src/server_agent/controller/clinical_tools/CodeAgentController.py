@@ -36,6 +36,7 @@ class UpdateConversationRequest(BaseModel):
 
 class PermissionRequest(BaseModel):
     session_id: str = Field(..., description="会话ID")
+    request_id: Optional[str] = Field(None, description="权限请求ID，用于精确定位并发工具调用")
 
 
 class ConversationInfoResponse(BaseModel):
@@ -139,6 +140,11 @@ class CodeAgentController(BaseController):
 
             # 跳过 type=user 且 isMeta=true 的条目（这些是 skill 内部的用户输入，不对外展示）
             if entry_role == "user" and is_meta:
+                continue
+
+            # 跳过 Monitor 工具注入的 task-notification 消息（进度通知，不是用户说的话）
+            origin = entry.get("origin", {})
+            if isinstance(origin, dict) and origin.get("kind") == "task-notification":
                 continue
 
             # 跳过已被 skill call 收集的条目
@@ -319,7 +325,7 @@ class CodeAgentController(BaseController):
         ) -> BaseResponse[str]:
             """确认权限请求"""
             try:
-                await self.service.confirm_permission(request.session_id)
+                await self.service.confirm_permission(request.session_id, request.request_id)
                 return ResultUtils.success("权限已确认")
             except Exception as e:
                 return ResultUtils.error(500, f"确认权限失败: {str(e)}")
@@ -331,7 +337,7 @@ class CodeAgentController(BaseController):
         ) -> BaseResponse[str]:
             """取消权限请求"""
             try:
-                await self.service.cancel_permission(request.session_id)
+                await self.service.cancel_permission(request.session_id, request.request_id)
                 return ResultUtils.success("权限已取消")
             except Exception as e:
                 return ResultUtils.error(500, f"取消权限失败: {str(e)}")

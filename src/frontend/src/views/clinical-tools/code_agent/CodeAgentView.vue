@@ -70,7 +70,7 @@
         <div class="workflow-header">
           <span class="workflow-title">
             <span class="workflow-title-icon">⚡</span>
-            Work Flow
+            Task Manager
           </span>
           <div class="workflow-header-actions">
             <span v-if="runningTaskCount > 0" class="workflow-running-badge">{{ runningTaskCount }}</span>

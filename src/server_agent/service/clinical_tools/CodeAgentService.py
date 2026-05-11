@@ -8,6 +8,7 @@ import logging
 from typing import AsyncGenerator, List, Optional
 
 from src.server_agent.agent.claude import get_code_agent, get_agent_type, MessageKind
+from src.server_agent.agent.claude.claude_agent import find_agent_by_session
 from src.server_agent.agent.claude.project_config import get_project_config
 from src.server_agent.exceptions import (
     ValidationError, NotFoundError, handle_service_exception
@@ -175,15 +176,15 @@ class CodeAgentService:
                 pass
         return full_content
 
-    async def confirm_permission(self, session_id: str):
-        """确认权限请求 — 转发到默认 Agent（权限队列是全局的）"""
-        agent = get_code_agent()
-        await agent.confirm_permission(session_id)
+    async def confirm_permission(self, session_id: str, request_id: Optional[str] = None):
+        """确认权限请求 — 通过 session_id 找到持有该 session 的 Agent"""
+        agent = find_agent_by_session(session_id) or get_code_agent()
+        await agent.confirm_permission(session_id, request_id)
 
-    async def cancel_permission(self, session_id: str):
-        """取消权限请求"""
-        agent = get_code_agent()
-        await agent.cancel_permission(session_id)
+    async def cancel_permission(self, session_id: str, request_id: Optional[str] = None):
+        """取消权限请求 — 通过 session_id 找到持有该 session 的 Agent"""
+        agent = find_agent_by_session(session_id) or get_code_agent()
+        await agent.cancel_permission(session_id, request_id)
 
     async def interrupt_session(self, session_id: str) -> bool:
         """中断会话"""
