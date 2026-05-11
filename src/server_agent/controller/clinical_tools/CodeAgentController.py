@@ -378,19 +378,6 @@ class CodeAgentController(BaseController):
                 return ResultUtils.error(404, f"任务不存在: {task_id}")
             return ResultUtils.success(task.to_dict())
 
-        @self.router.post("/skill-tasks/{task_id}/cancel")
-        async def cancel_skill_task(
-            task_id: str,
-            user_vo: UserVO = Depends(self._get_current_user)
-        ) -> BaseResponse[bool]:
-            """中断指定的 Skill 后台任务"""
-            from src.server_agent.service.SkillTaskManager import get_skill_task_manager
-            manager = get_skill_task_manager()
-            ok = manager.cancel(task_id)
-            if not ok:
-                return ResultUtils.error(400, f"任务不存在或已结束: {task_id}")
-            return ResultUtils.success(True)
-
         @self.router.delete("/skill-tasks/{task_id}")
         async def delete_skill_task(
             task_id: str,

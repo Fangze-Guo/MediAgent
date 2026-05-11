@@ -337,6 +337,15 @@ class ClaudeAgent:
         # sdk_session_id -> conversation_id 映射，供 hook 提取 conversation_id
         self._session_conversation_map: dict[str, str] = {}
 
+        # tool_use_id -> task_id 映射：Bash 执行前（_can_use_tool_hook）存入，
+        # 执行后（_post_tool_use_hook）弹出并精确调用 mark_finished。
+        # fallback key 格式："{session_id}|{command[:200]}"
+        self._tool_task_map: dict[str, str] = {}
+
+        # task_id -> asyncio.Task 映射，追踪后台 PID 监控协程，
+        # 会话取消/异常时可撤销，防止僵尸 watcher 改写已终态的任务
+        self._bg_watchers: dict[str, asyncio.Task] = {}
+
     async def _dummy_hook(self, input_data: Any, tool_use_id: Any, context: Any):
         """
         Dummy hook - 官方文档要求的 Python workaround：保持流打开，才能触发 can_use_tool
@@ -347,61 +356,113 @@ class ClaudeAgent:
     async def _post_tool_use_hook(self, input_data: PostToolUseHookInput, tool_use_id: Any, context: Any):
         """
         PostToolUse hook - Bash 工具执行完成后触发，用于更新 Skill 任务终态。
-        这是判断任务完成的最准确时机：Bash 一返回结果就立即更新，
-        不依赖 ResultMessage（会被 Monitor 轮次误触发），不依赖前端轮询。
+        通过 _tool_task_map[tool_use_id] 精确定位对应任务，不扫描全部 running 任务，
+        避免误标、卡死等问题。
         """
         tool_name = input_data.get("tool_name") if isinstance(input_data, dict) else getattr(input_data, "tool_name", None)
         if tool_name != "Bash":
             return {"continue_": True}  # type: ignore
 
         tool_input = input_data.get("tool_input", {}) if isinstance(input_data, dict) else getattr(input_data, "tool_input", {})
+        if not isinstance(tool_input, dict):
+            tool_input = {}
+
+        # 1. 用 tool_use_id 直接查找对应的 task_id（最可靠路径）
+        task_id: str | None = None
+        if tool_use_id:
+            task_id = self._tool_task_map.pop(str(tool_use_id), None)
+
+        # 2. fallback：用 session_id + command[:200] 组成的 key 查找
+        if not task_id:
+            command = tool_input.get("command", "")
+            if command:
+                hook_session_id = self._last_session_id or ""
+                fallback_key = f"{hook_session_id}|{command[:200]}"
+                task_id = self._tool_task_map.pop(fallback_key, None)
+
+        if not task_id:
+            # 此 Bash 命令不对应任何 Skill 任务，直接放行
+            return {"continue_": True}  # type: ignore
+
+        # 3. 判断成功/失败
+        run_in_background = tool_input.get("run_in_background", False)
         tool_response = input_data.get("tool_response") if isinstance(input_data, dict) else getattr(input_data, "tool_response", None)
-        command = tool_input.get("command", "") if isinstance(tool_input, dict) else ""
-
-        # 只处理 skill 脚本执行的 Bash 命令
-        import re
-        if not re.search(r'/\.claude/skills/', command):
-            return {"continue_": True}  # type: ignore
-
-        # 从 context 取 session_id，再找 conversation_id
-        hook_session_id = (
-            input_data.get("session_id") if isinstance(input_data, dict)
-            else getattr(input_data, "session_id", None)
-        ) or self._last_session_id or ""
-        conversation_id = self._session_conversation_map.get(hook_session_id, "")
-        if not conversation_id:
-            return {"continue_": True}  # type: ignore
-
-        # 判断成功/失败：tool_response 是字符串时检查是否含错误标记
-        success = True
-        error_msg = None
+        is_error = False
+        response_text = ""
         if isinstance(tool_response, dict):
             is_error = tool_response.get("is_error", False)
             response_text = tool_response.get("content", "") or ""
-            success = not is_error
-            if not success:
-                error_msg = str(response_text)[:200]
-        elif isinstance(tool_response, str):
-            # 部分 SDK 版本直接返回字符串
-            success = True
-            response_text = tool_response
-        else:
-            success = True
 
-        try:
-            from src.server_agent.service.SkillTaskManager import get_skill_task_manager
-            task_manager = get_skill_task_manager()
-            for task in task_manager.list_tasks(conversation_id=conversation_id):
-                if task.status == "running":
-                    task_manager.mark_finished(task.task_id, success=success, error=error_msg)
-                    logger.info(
-                        f"[POST_TOOL_USE] Skill task {task.task_id} marked "
-                        f"{'success' if success else 'failed'} via PostToolUse hook"
-                    )
-        except Exception as e:
-            logger.warning(f"[POST_TOOL_USE] Failed to update skill task: {e}")
+        from src.server_agent.service.SkillTaskManager import get_skill_task_manager
+        task_manager = get_skill_task_manager()
+
+        if run_in_background and not is_error:
+            # 4a. 后台任务：从 stdout 提取 PID，启动监控协程而非立即标记终态
+            import re as _re
+            pid: Optional[int] = None
+            m = _re.search(r'\[?\d+\]?\s+(\d+)', response_text)
+            if m:
+                pid = int(m.group(1))
+            else:
+                m2 = _re.match(r'^\s*(\d+)\s*$', response_text.strip())
+                if m2:
+                    pid = int(m2.group(1))
+
+            if pid:
+                watcher = asyncio.create_task(self._watch_background_task(task_id, pid))
+                self._bg_watchers[task_id] = watcher
+                logger.info(f"[POST_TOOL_USE] BG task {task_id} pid={pid}, watcher started")
+            else:
+                # 提取不到 PID，保守地直接标记 success
+                task_manager.mark_finished(task_id, success=True)
+                logger.warning(f"[POST_TOOL_USE] BG task {task_id}: no PID found in stdout, marked success conservatively")
+        else:
+            # 4b. 前台任务：命令已实际完成，直接用 is_error 判断终态
+            success = not is_error
+            error_msg = str(response_text)[:200] if not success else None
+            task_manager.mark_finished(task_id, success=success, error=error_msg)
+            logger.info(f"[POST_TOOL_USE] FG task {task_id} marked {'success' if success else 'failed'}")
 
         return {"continue_": True}  # type: ignore
+
+    async def _watch_background_task(self, task_id: str, pid: int):
+        """
+        后台任务 PID 监控协程。
+        每 30s 检查一次 psutil.pid_exists(pid)，
+        进程消失后标记 success；超过 4h 未结束则标记 failed。
+        """
+        try:
+            import psutil
+        except ImportError:
+            logger.warning("[BG_WATCH] psutil not installed, falling back to immediate success")
+            from src.server_agent.service.SkillTaskManager import get_skill_task_manager
+            get_skill_task_manager().mark_finished(task_id, success=True)
+            return
+
+        MAX_WAIT_SECS = 4 * 3600
+        POLL_INTERVAL = 30
+        elapsed = 0
+        logger.info(f"[BG_WATCH] Watching task {task_id} pid={pid}")
+        try:
+            while elapsed < MAX_WAIT_SECS:
+                await asyncio.sleep(POLL_INTERVAL)
+                elapsed += POLL_INTERVAL
+                if not psutil.pid_exists(pid):
+                    from src.server_agent.service.SkillTaskManager import get_skill_task_manager
+                    get_skill_task_manager().mark_finished(task_id, success=True)
+                    logger.info(f"[BG_WATCH] task {task_id} pid={pid} exited after {elapsed}s, marked success")
+                    return
+            # 超时
+            from src.server_agent.service.SkillTaskManager import get_skill_task_manager
+            get_skill_task_manager().mark_finished(task_id, success=False, error="后台任务超时（4h）")
+            logger.warning(f"[BG_WATCH] task {task_id} pid={pid} timed out after 4h")
+        except asyncio.CancelledError:
+            logger.info(f"[BG_WATCH] task {task_id} watcher cancelled")
+            raise
+        except Exception as e:
+            logger.warning(f"[BG_WATCH] task {task_id} watcher error: {e}")
+        finally:
+            self._bg_watchers.pop(task_id, None)
 
     async def _can_use_tool_hook(self, tool_name: str, input_data: Any, context: Any):
         """
@@ -419,115 +480,31 @@ class ClaudeAgent:
         logger.info(f"[PERMISSION] Input data: {input_data}")
         logger.info(f"[PERMISSION] Context: {context}")
 
-        # ===== Skill 工具：提交后台任务，等待完成后把结果返回给 ClaudeCode =====
-        if tool_name == "Skill":
-            skill_name = input_data.get("skill", "unknown") if isinstance(input_data, dict) else "unknown"
-
-            # 从映射表取 conversation_id
-            hook_session_id = getattr(context, "session_id", None) or (
-                context.get("session_id") if isinstance(context, dict) else None
-            ) or self._last_session_id or ""
-            conversation_id = self._session_conversation_map.get(hook_session_id, "")
-
-            # 创建任务记录
-            from src.server_agent.service.SkillTaskManager import get_skill_task_manager
-            task_manager = get_skill_task_manager()
-            params = dict(input_data) if isinstance(input_data, dict) else {}
-            task_id = task_manager.submit(
-                skill_name=skill_name,
-                params=params,
-                conversation_id=conversation_id,
-            )
-            logger.info(f"[PERMISSION] Skill '{skill_name}' submitted as task {task_id}")
-
-            # 通知前端 Work Flow 面板
-            await self._permission_queue.put({
-                "kind": "skill_submitted",
-                "taskId": task_id,
-                "skillName": skill_name,
-                "status": "pending",
-                "provider": "claude",
-                "done": False,
-                "_is_skill_submitted": True,
-            })
-
-            # 放行，SDK 原生处理 Skill 工具（注入 "Launching skill" + SKILL.md）
-            return PermissionResultAllow()
-        # ===== Bash 工具调用 Skill 脚本：也提交后台任务 =====
+        # ===== Bash 工具调用 Skill 脚本：检测并创建后台任务 =====
         if tool_name == "Bash":
             command = input_data.get("command", "") if isinstance(input_data, dict) else ""
             run_in_background = input_data.get("run_in_background", False) if isinstance(input_data, dict) else False
-            # 判定规则（优先级从高到低）：
-            #   1) run_in_background=True：Claude 明确要求后台执行，从命令中提取 skill 名
-            #   2) bash/sh .../run.sh 或直接执行 .../run.sh
-            # 排除 cat / ls / grep 等只读命令误判为 skill 任务
+
             import re
-            import shlex
-
-            # 从命令中提取 .claude/skills/<name> 路径里的 skill 名
             _skills_pattern = re.compile(r'[/~][^\s]*?/\.claude/skills/([^/\s]+)')
-
-            def _detect_skill_run(cmd: str):
-                sub_cmds = re.split(r'(?:;|&&|\|\||\||\n)', cmd)
-                run_sh_pattern = re.compile(r'/\.claude/skills/([^/\s]+)/run\.sh$')
-                for sub in sub_cmds:
-                    sub = sub.strip()
-                    if not sub:
-                        continue
-                    try:
-                        tokens = shlex.split(sub, posix=True)
-                    except ValueError:
-                        continue
-                    if not tokens:
-                        continue
-                    first, second = tokens[0], tokens[1] if len(tokens) > 1 else ""
-                    # case 1: bash/sh <path>/run.sh
-                    if first in ("bash", "sh") and second:
-                        m = run_sh_pattern.search(second)
-                        if m:
-                            return m.group(1)
-                    # case 2: 直接执行 run.sh
-                    if first.startswith(("/", "~/", "./")):
-                        m = run_sh_pattern.search(first)
-                        if m:
-                            return m.group(1)
-                return None
+            _cd_pattern = re.compile(r'cd\s+[^\s]*?/\.claude/skills/([^/\s]+)')
+            _exec_pattern = re.compile(r'\b(python[0-9.]*|bash|sh|perl|ruby|node)\b|\.py\b|\.sh\b')
 
             def _extract_skill_name_from_cmd(cmd: str):
-                """从命令中提取 .claude/skills/<name> 里的 skill 名（用于 run_in_background 场景）"""
-                # 先尝试 cd .../skills/<name> 模式
-                cd_pattern = re.compile(r'cd\s+[^\s]*?/\.claude/skills/([^/\s]+)')
-                m = cd_pattern.search(cmd)
+                """从命令中提取 ~/.claude/skills/<name>/ 路径里的 skill 名"""
+                m = _cd_pattern.search(cmd)
                 if m:
                     return m.group(1)
-                # 再尝试命令中任意 .claude/skills/<name> 路径
                 m = _skills_pattern.search(cmd)
                 if m:
                     return m.group(1)
                 return None
 
-            # 优先级1：run_in_background=True，从命令中提取 skill 名
-            if run_in_background:
-                detected_skill = _extract_skill_name_from_cmd(command)
-                if not detected_skill:
-                    # 兜底：用 description 字段或 "background-task"
-                    desc = input_data.get("description", "") if isinstance(input_data, dict) else ""
-                    detected_skill = desc.strip() or "background-task"
-                logger.info(f"[PERMISSION] run_in_background=True, skill='{detected_skill}'")
-            else:
-                # 优先级2：run.sh 模式
-                detected_skill = _detect_skill_run(command)
-
-            # 优先级3：cd .../skills/<name> && python/bash/sh ... 模式
-            # 不依赖 run_in_background 标志，只要命令进入了 skills 目录并执行脚本就挂后台
-            if not detected_skill:
-                skill_from_cd = _extract_skill_name_from_cmd(command)
-                if skill_from_cd:
-                    # 确认命令里有实际执行动作（排除 cat/ls/grep 等只读操作）
-                    exec_pattern = re.compile(r'\b(python[0-9.]*|bash|sh|perl|ruby|node)\b|\.py\b|\.sh\b')
-                    if exec_pattern.search(command):
-                        detected_skill = skill_from_cd
-                        logger.info(f"[PERMISSION] cd+exec pattern detected, skill='{detected_skill}'")
+            detected_skill = None
+            skill_candidate = _extract_skill_name_from_cmd(command)
+            if skill_candidate and _exec_pattern.search(command):
+                detected_skill = skill_candidate
+                logger.info(f"[PERMISSION] Skill detected: '{detected_skill}' (background={run_in_background})")
 
             if detected_skill:
                 skill_name = detected_skill
@@ -541,22 +518,28 @@ class ClaudeAgent:
                 from src.server_agent.service.SkillTaskManager import get_skill_task_manager
                 task_manager = get_skill_task_manager()
 
-                # 优先关联 Skill 工具已创建的 pending 任务，找不到才新建
-                existing = task_manager.find_pending_task(skill_name, conversation_id)
-                if existing:
-                    task_id = existing.task_id
-                    task_manager.mark_running(task_id)
-                    logger.info(f"[PERMISSION] Bash linked to existing skill task {task_id} for '{skill_name}'")
-                else:
-                    task_id = task_manager.submit(
-                        skill_name=skill_name,
-                        params={"command": command},
-                        conversation_id=conversation_id,
-                    )
-                    task_manager.mark_running(task_id)
-                    logger.info(f"[PERMISSION] Bash created new skill task {task_id} for '{skill_name}'")
+                task_id = task_manager.submit(
+                    skill_name=skill_name,
+                    params={"command": command},
+                    conversation_id=conversation_id,
+                )
+                logger.info(f"[PERMISSION] Bash created skill task {task_id} for '{skill_name}' (running)")
 
-                # 记录 task_id 供 tool_result 回调时更新状态（已移除死代码）
+                # 在 _tool_task_map 中记录 tool_use_id -> task_id 映射。
+                # 后台任务由 _post_tool_use_hook 提取 PID 后启动监控协程，
+                # 前台任务则直接用 is_error 判断终态。
+                hook_tool_use_id = (
+                    getattr(context, "tool_use_id", None) or
+                    (context.get("tool_use_id") if isinstance(context, dict) else None)
+                )
+                if hook_tool_use_id:
+                    self._tool_task_map[str(hook_tool_use_id)] = task_id
+                    logger.info(f"[PERMISSION] _tool_task_map: {hook_tool_use_id} -> {task_id}")
+                else:
+                    # fallback：SDK 未暴露 tool_use_id，用 session+command 组合 key
+                    fallback_key = f"{hook_session_id}|{command[:200]}"
+                    self._tool_task_map[fallback_key] = task_id
+                    logger.info(f"[PERMISSION] _tool_task_map fallback key -> {task_id}")
 
                 # 通知前端 Work Flow 面板
                 await self._permission_queue.put({
@@ -826,12 +809,13 @@ class ClaudeAgent:
 
         except asyncio.CancelledError:
             logger.warning(f"Session {captured_session_id} task was cancelled")
-            # 会话被取消时，标记 running 任务为 failed
+            # 会话被取消时，标记所有 running/pending 任务为 failed，并清理映射表
             conversation_id = self._session_conversation_map.get(captured_session_id, "")
             if conversation_id:
                 try:
                     from src.server_agent.service.SkillTaskManager import get_skill_task_manager
                     task_manager = get_skill_task_manager()
+                    cancelled_ids: set[str] = set()
                     for task in task_manager.list_tasks(conversation_id=conversation_id):
                         if task.status == "running":
                             task_manager.mark_finished(
@@ -839,18 +823,30 @@ class ClaudeAgent:
                                 success=False,
                                 error="会话被取消",
                             )
+                            cancelled_ids.add(task.task_id)
                             logger.info(f"[CLEANUP] Skill task {task.task_id} marked failed on session cancel")
+                    # 清理 _tool_task_map 中属于本次会话的条目
+                    self._tool_task_map = {
+                        k: v for k, v in self._tool_task_map.items()
+                        if v not in cancelled_ids
+                    }
+                    # 撤销对应的后台 PID 监控协程
+                    for tid in cancelled_ids:
+                        watcher = self._bg_watchers.pop(tid, None)
+                        if watcher and not watcher.done():
+                            watcher.cancel()
                 except Exception as e:
                     logger.warning(f"[CLEANUP] Failed to update skill tasks on cancel: {e}")
             raise
         except Exception as e:
             logger.error(f"Claude SDK query error: {e}")
-            # 异常时，标记 running 任务为 failed
+            # 异常时，标记 running/pending 任务为 failed，并清理映射表
             conversation_id = self._session_conversation_map.get(captured_session_id, "")
             if conversation_id:
                 try:
                     from src.server_agent.service.SkillTaskManager import get_skill_task_manager
                     task_manager = get_skill_task_manager()
+                    cancelled_ids: set[str] = set()
                     for task in task_manager.list_tasks(conversation_id=conversation_id):
                         if task.status == "running":
                             task_manager.mark_finished(
@@ -858,7 +854,17 @@ class ClaudeAgent:
                                 success=False,
                                 error=f"会话异常: {str(e)[:200]}",
                             )
+                            cancelled_ids.add(task.task_id)
                             logger.info(f"[CLEANUP] Skill task {task.task_id} marked failed on exception")
+                    self._tool_task_map = {
+                        k: v for k, v in self._tool_task_map.items()
+                        if v not in cancelled_ids
+                    }
+                    # 撤销对应的后台 PID 监控协程
+                    for tid in cancelled_ids:
+                        watcher = self._bg_watchers.pop(tid, None)
+                        if watcher and not watcher.done():
+                            watcher.cancel()
                 except Exception as cleanup_error:
                     logger.warning(f"[CLEANUP] Failed to update skill tasks on exception: {cleanup_error}")
             yield NormalizedMessage(

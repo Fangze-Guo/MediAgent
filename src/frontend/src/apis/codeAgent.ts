@@ -219,7 +219,7 @@ export interface SkillTaskInfo {
   task_id: string
   skill_name: string
   conversation_id: string
-  status: 'pending' | 'running' | 'success' | 'failed'
+  status: 'running' | 'success' | 'failed'
   progress: number
   created_at: string
   started_at: string | null
@@ -247,7 +247,7 @@ export interface MessageResponse {
   skill_arguments?: string | null
   // Skill 后台任务字段（event_type === 'skill_submitted' 时有效）
   skill_task_id?: string
-  skill_status?: 'pending' | 'running' | 'success' | 'failed'
+  skill_status?: 'running' | 'success' | 'failed'
   skill_progress?: number
   skill_started_at?: string | null
   skill_finished_at?: string | null

@@ -103,31 +103,19 @@
             <!-- 任务头部 -->
             <div class="workflow-task-header">
               <span class="workflow-task-status-icon">
-                <span v-if="task.status === 'pending'" class="workflow-spin">⟳</span>
-                <span v-else-if="task.status === 'running'" class="workflow-spin">⟳</span>
+                <span v-if="task.status === 'running'" class="workflow-spin">⟳</span>
                 <span v-else-if="task.status === 'success'">✓</span>
                 <span v-else-if="task.status === 'failed'">✕</span>
               </span>
               <span class="workflow-task-name" :title="task.skill_name">{{ task.skill_name }}</span>
               <span class="workflow-task-status-text">
-                <span v-if="task.status === 'pending'">等待中</span>
-                <span v-else-if="task.status === 'running'">执行中</span>
+                <span v-if="task.status === 'running'">执行中</span>
                 <span v-else-if="task.status === 'success'">已完成</span>
                 <span v-else-if="task.status === 'failed'">失败</span>
               </span>
               <!-- 操作按钮 -->
               <div class="workflow-task-actions">
-                <a-popconfirm
-                  v-if="task.status === 'pending' || task.status === 'running'"
-                  title="确认要中断这个任务吗？"
-                  ok-text="中断"
-                  cancel-text="取消"
-                  @confirm="handleCancelTask(task.task_id)"
-                >
-                  <button class="workflow-task-action-btn workflow-task-cancel-btn" title="中断任务">中断</button>
-                </a-popconfirm>
                 <button
-                  v-else
                   class="workflow-task-action-btn workflow-task-delete-btn"
                   title="删除任务"
                   @click="handleDeleteTask(task.task_id)"
@@ -143,8 +131,8 @@
                 :title="canJumpToConv(task.conversation_id) ? '跳转到该会话' : '该会话不在当前列表'"
                 @click="jumpToConversation(task.conversation_id)"
               >💬 {{ getConvTitle(task.conversation_id) }}</span>
-              <span v-if="task.status === 'success' && task.skill_elapsed_seconds != null" class="workflow-task-elapsed">
-                {{ task.skill_elapsed_seconds.toFixed(1) }}s
+              <span v-if="taskLiveElapsed(task)" class="workflow-task-elapsed" :class="{ 'workflow-task-elapsed-live': task.status === 'running' }">
+                {{ taskLiveElapsed(task) }}
               </span>
               <span v-else-if="task.status === 'failed'" class="workflow-task-error-hint" :title="task.skill_error || ''">
                 {{ task.skill_error || '查看错误' }}
@@ -487,7 +475,6 @@ import {
   interruptSession,
   getSkillTask,
   listSkillTasks,
-  cancelSkillTask,
   deleteSkillTask
 } from '@/apis/codeAgent'
 
@@ -844,24 +831,65 @@ const allSkillTasks = ref<Array<{
   task_id: string
   skill_name: string
   conversation_id: string
-  status: 'pending' | 'running' | 'success' | 'failed'
-  skill_progress: number
+  status: 'running' | 'success' | 'failed'
   skill_elapsed_seconds: number | null
+  skill_started_at: string | null
   skill_error: string | null
   created_at: string
 }>>([])
 
-// 当前项目下的会话 ID 集合（用于按项目过滤 Work Flow）
-const currentConvIdSet = computed(() => new Set(conversations.value.map(c => c.conversation_id)))
+// 实时时钟，每秒更新一次，用于 running 任务的动态计时
+const now = ref(Date.now())
+setInterval(() => { now.value = Date.now() }, 1000)
 
-// 仅展示当前项目下的任务
-const filteredSkillTasks = computed(() =>
-  allSkillTasks.value.filter(t => currentConvIdSet.value.has(t.conversation_id))
-)
+// 返回任务的展示时长字符串：running 时实时计时，success 时显示实际耗时
+const taskLiveElapsed = (task: typeof allSkillTasks.value[0]): string => {
+  if (task.status === 'success' && task.skill_elapsed_seconds != null) {
+    return `${task.skill_elapsed_seconds.toFixed(1)}s`
+  }
+  if (task.status === 'running' && task.skill_started_at) {
+    const secs = Math.floor((now.value - new Date(task.skill_started_at).getTime()) / 1000)
+    return `${secs}s`
+  }
+  return ''
+}
+
+// 已见过的任务 id（含初次加载），防止刷新后对历史 success 任务重复弹通知
+const seenTaskIds = new Set<string>()
+
+// 监听任务列表：
+//   - 已见过(seenTaskIds)的任务 → 说明是本次会话新建，状态变为 success 时弹通知
+//   - 未见过的任务(初次加载/刷新恢复) → 静默删除 success，不弹通知
+watch(allSkillTasks, (tasks) => {
+  for (const task of tasks) {
+    if (!seenTaskIds.has(task.task_id)) {
+      seenTaskIds.add(task.task_id)
+      // 初次加载时已是 success：静默删除，不弹通知
+      if (task.status === 'success') {
+        setTimeout(() => handleDeleteTask(task.task_id), 0)
+      }
+      continue
+    }
+    // 本次会话内状态变为 success：弹通知后删除
+    if (task.status === 'success') {
+      message.success(`任务成功：${task.skill_name}`)
+      setTimeout(() => handleDeleteTask(task.task_id), 1000)
+    }
+  }
+}, { deep: true })
+
+// 当前项目下的会话 ID 集合（用于按项目过滤 Work Flow）
+// 仅展示当前会话的任务，按创建时间倒序
+const filteredSkillTasks = computed(() => {
+  if (!selectedConversationId.value) return []
+  return allSkillTasks.value
+    .filter(t => t.conversation_id === selectedConversationId.value)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+})
 
 // 正在运行的任务数量（仅当前项目）
 const runningTaskCount = computed(() =>
-  filteredSkillTasks.value.filter(t => t.status === 'pending' || t.status === 'running').length
+  filteredSkillTasks.value.filter(t => t.status === 'running').length
 )
 
 // 已完成 / 失败的任务数量（仅当前项目）
@@ -877,7 +905,7 @@ const getConvTitle = (conversationId: string): string => {
 
 // 是否可以跳转到该会话
 const canJumpToConv = (conversationId: string): boolean => {
-  return currentConvIdSet.value.has(conversationId)
+  return conversations.value.some(c => c.conversation_id === conversationId)
 }
 
 // 跳转到任务对应的会话
@@ -886,33 +914,6 @@ const jumpToConversation = (conversationId: string) => {
   const conv = conversations.value.find(c => c.conversation_id === conversationId)
   if (conv) {
     selectConversation(conv)
-  }
-}
-
-// 中断任务
-const handleCancelTask = async (taskId: string) => {
-  try {
-    const res = await cancelSkillTask(taskId)
-    if (res.code === 200) {
-      message.success('已请求中断任务')
-      // 立即更新前端状态，不等下次轮询
-      upsertGlobalTask(taskId, { status: 'failed', skill_error: '已取消' })
-      const msg = messages.value.find(m => m.skill_task_id === taskId)
-      if (msg) {
-        msg.skill_status = 'failed'
-        msg.skill_error = '已取消'
-      }
-      // 停止轮询
-      if (skillTaskPollers[taskId]) {
-        clearInterval(skillTaskPollers[taskId])
-        delete skillTaskPollers[taskId]
-      }
-    } else {
-      message.error(res.message || '中断任务失败')
-    }
-  } catch (e) {
-    console.error('[handleCancelTask] 失败:', e)
-    message.error('中断任务失败')
   }
 }
 
@@ -976,13 +977,13 @@ const loadAllSkillTasks = async () => {
         skill_name: task.skill_name,
         conversation_id: task.conversation_id,
         status: task.status,
-        skill_progress: task.progress,
         skill_elapsed_seconds: task.elapsed_seconds,
+        skill_started_at: task.started_at ?? null,
         skill_error: task.error ?? null,
         created_at: task.created_at,
       })
       // 对未结束的任务恢复轮询
-      if (task.status === 'pending' || task.status === 'running') {
+      if (task.status === 'running') {
         startSkillTaskPoller(task.task_id)
       }
     }
@@ -1013,7 +1014,6 @@ const startSkillTaskPoller = (taskId: string) => {
       const msg = messages.value.find(m => m.skill_task_id === taskId)
       if (msg) {
         msg.skill_status = task.status
-        msg.skill_progress = task.progress
         msg.skill_started_at = task.started_at
         msg.skill_finished_at = task.finished_at
         msg.skill_elapsed_seconds = task.elapsed_seconds
@@ -1022,8 +1022,8 @@ const startSkillTaskPoller = (taskId: string) => {
       // 更新 Work Flow 面板
       upsertGlobalTask(taskId, {
         status: task.status,
-        skill_progress: task.progress,
         skill_elapsed_seconds: task.elapsed_seconds,
+        skill_started_at: task.started_at ?? null,
         skill_error: task.error ?? null,
       })
       // 终态：停止轮询
@@ -1050,8 +1050,8 @@ const restoreSkillTasks = async (conversationId: string) => {
         skill_name: task.skill_name,
         conversation_id: conversationId,
         status: task.status,
-        skill_progress: task.progress,
         skill_elapsed_seconds: task.elapsed_seconds,
+        skill_started_at: task.started_at ?? null,
         skill_error: task.error ?? null,
         created_at: task.created_at,
       })
@@ -1068,7 +1068,6 @@ const restoreSkillTasks = async (conversationId: string) => {
         skill_name: task.skill_name,
         skill_task_id: task.task_id,
         skill_status: task.status,
-        skill_progress: task.progress,
         skill_started_at: task.started_at,
         skill_finished_at: task.finished_at,
         skill_elapsed_seconds: task.elapsed_seconds,
@@ -1078,7 +1077,7 @@ const restoreSkillTasks = async (conversationId: string) => {
       })
 
       // 未完成的任务恢复轮询
-      if (task.status === 'pending' || task.status === 'running') {
+      if (task.status === 'running') {
         startSkillTaskPoller(task.task_id)
       }
     }
@@ -1138,8 +1137,7 @@ const handleStreamEvent = (event: CodeEventType, capturedSessionId: string | nul
         event_type: 'skill_submitted',
         skill_name: skillName,
         skill_task_id: taskId,
-        skill_status: 'pending',
-        skill_progress: 0,
+        skill_status: 'running',
         created_at: now,
         loading: false
       })
@@ -1148,9 +1146,9 @@ const handleStreamEvent = (event: CodeEventType, capturedSessionId: string | nul
         task_id: taskId,
         skill_name: skillName,
         conversation_id: convId,
-        status: 'pending',
-        skill_progress: 0,
+        status: 'running',
         skill_elapsed_seconds: null,
+        skill_started_at: null,
         skill_error: null,
         created_at: now,
       })
@@ -1913,6 +1911,16 @@ onUnmounted(() => {
   font-weight: 500;
 }
 
+.workflow-task-elapsed-live {
+  color: #f59e0b;
+  animation: elapsed-blink 1.5s ease-in-out infinite;
+}
+
+@keyframes elapsed-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 .workflow-task-time {
   font-size: 11px;
   color: var(--text-secondary);
@@ -1982,11 +1990,6 @@ onUnmounted(() => {
   transition: all 0.15s;
 }
 
-.workflow-task-cancel-btn:hover {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: #ef4444;
-  color: #ef4444;
-}
 
 .workflow-task-delete-btn {
   font-size: 14px;

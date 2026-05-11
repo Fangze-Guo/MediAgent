@@ -18,10 +18,7 @@ from typing import Dict, List, Literal, Optional
 
 logger = logging.getLogger(__name__)
 
-SkillStatus = Literal["pending", "running", "success", "failed"]
-
-# 日志环形缓冲大小
-MAX_LOG_LINES = 200
+SkillStatus = Literal["running", "success", "failed"]
 
 
 @dataclass
@@ -30,13 +27,10 @@ class SkillTask:
     skill_name: str
     params: dict
     conversation_id: str
-    status: SkillStatus = "pending"
+    status: SkillStatus = "running"
     created_at: datetime = field(default_factory=datetime.now)
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
-    logs: List[str] = field(default_factory=list)
-    progress: int = 0          # 0~100，从日志中解析（可选）
-    output: Optional[dict] = None   # 成功后的输出信息
     error: Optional[str] = None     # 失败原因
 
     def elapsed_seconds(self) -> Optional[float]:
@@ -50,13 +44,10 @@ class SkillTask:
             "skill_name": self.skill_name,
             "conversation_id": self.conversation_id,
             "status": self.status,
-            "progress": self.progress,
             "created_at": self.created_at.isoformat(),
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "finished_at": self.finished_at.isoformat() if self.finished_at else None,
             "elapsed_seconds": self.elapsed_seconds(),
-            "logs": self.logs[-50:],   # 只返回最后 50 行给前端
-            "output": self.output,
             "error": self.error,
         }
 
@@ -78,9 +69,10 @@ class SkillTaskManager:
     def _persist(self, task: SkillTask):
         """异步写 DB，不阻塞调用方"""
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.create_task(self._persist_async(task))
+            asyncio.get_running_loop()
+            asyncio.create_task(self._persist_async(task))
+        except RuntimeError:
+            pass  # 没有运行中的事件循环，跳过
         except Exception as e:
             logger.warning(f"[SkillTaskManager] persist schedule failed: {e}")
 
@@ -94,12 +86,10 @@ class SkillTaskManager:
                 "params": task.params,
                 "conversation_id": task.conversation_id,
                 "status": task.status,
-                "progress": task.progress,
                 "created_at": task.created_at,
                 "started_at": task.started_at,
                 "finished_at": task.finished_at,
                 "error": task.error,
-                "output": task.output,
             })
         except Exception as e:
             logger.warning(f"[SkillTaskManager] DB persist failed for {task.task_id}: {e}")
@@ -116,7 +106,7 @@ class SkillTaskManager:
                     continue
                 status = row["status"]
                 # 服务重启后，上次未完成的任务进程已死，标记为 failed
-                if status in ("pending", "running"):
+                if status == "running":
                     status = "failed"
                     row["error"] = (row.get("error") or "") + " [服务重启，任务中断]"
                     row["finished_at"] = row["finished_at"] or datetime.now()
@@ -126,12 +116,10 @@ class SkillTaskManager:
                     params=row["params"],
                     conversation_id=row["conversation_id"],
                     status=status,
-                    progress=row["progress"],
                     created_at=row["created_at"],
                     started_at=row["started_at"],
                     finished_at=row["finished_at"],
                     error=row["error"],
-                    output=row["output"],
                 )
                 self._tasks[task_id] = task
                 # 如果状态被修正，同步写回 DB
@@ -144,7 +132,7 @@ class SkillTaskManager:
 
     def submit(self, skill_name: str, params: dict, conversation_id: str) -> str:
         """
-        提交 Skill 任务，立即返回 task_id，后台异步执行。
+        提交 Skill 任务，直接创建为 running 状态，立即返回 task_id。
 
         Args:
             skill_name: Skill 名称，如 "bodycomp-seg-nnunet"
@@ -160,24 +148,16 @@ class SkillTaskManager:
             skill_name=skill_name,
             params=params,
             conversation_id=conversation_id,
+            status="running",
+            started_at=datetime.now(),
         )
         self._tasks[task_id] = task
         self._persist(task)  # 写 DB
-        logger.info(f"[SkillTaskManager] Submitted task {task_id} for skill '{skill_name}'")
+        logger.info(f"[SkillTaskManager] Submitted task {task_id} for skill '{skill_name}' (running)")
         return task_id
 
     def get_task(self, task_id: str) -> Optional[SkillTask]:
         return self._tasks.get(task_id)
-
-    async def wait_for_task(self, task_id: str, poll_interval: float = 2.0) -> Optional[SkillTask]:
-        """等待任务进入终态（success/failed），期间每隔 poll_interval 秒检查一次"""
-        while True:
-            task = self._tasks.get(task_id)
-            if not task:
-                return None
-            if task.status in ("success", "failed"):
-                return task
-            await asyncio.sleep(poll_interval)
 
     def list_tasks(self, conversation_id: Optional[str] = None) -> List[SkillTask]:
         tasks = list(self._tasks.values())
@@ -185,36 +165,16 @@ class SkillTaskManager:
             tasks = [t for t in tasks if t.conversation_id == conversation_id]
         return sorted(tasks, key=lambda t: t.created_at, reverse=True)
 
-    def cancel(self, task_id: str) -> bool:
-        """取消 pending 任务（running 任务无法中断，由 CC 自己管理）"""
-        task = self._tasks.get(task_id)
-        if not task:
-            return False
-        if task.status != "pending":
-            logger.warning(f"[SkillTaskManager] Cannot cancel task {task_id} in status {task.status}")
-            return False
-
-        # pending 任务直接置为 failed
-        task.status = "failed"
-        task.error = "已取消"
-        task.finished_at = datetime.now()
-        self._persist(task)
-        logger.info(f"[SkillTaskManager] Cancelled pending task {task_id}")
-        return True
-
     def delete(self, task_id: str) -> bool:
-        """从任务表中移除单个任务（运行中的会先取消）。"""
-        task = self._tasks.get(task_id)
-        if not task:
+        """从任务表中移除单个任务（直接删除，不论状态）。"""
+        if task_id not in self._tasks:
             return False
-        if task.status in ("pending", "running"):
-            self.cancel(task_id)
         self._tasks.pop(task_id, None)
-        # 从 DB 删除
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.create_task(self._get_mapper().delete_skill_task(task_id))
+            asyncio.get_running_loop()
+            asyncio.create_task(self._get_mapper().delete_skill_task(task_id))
+        except RuntimeError:
+            pass
         except Exception as e:
             logger.warning(f"[SkillTaskManager] DB delete failed for {task_id}: {e}")
         return True
@@ -236,62 +196,38 @@ class SkillTaskManager:
             task = self._tasks[tid]
             if conversation_id and task.conversation_id != conversation_id:
                 continue
-            is_finished = task.status in ("success", "failed")
-            if only_finished and not is_finished:
+            if only_finished and task.status not in ("success", "failed"):
                 continue
-            if not is_finished:
-                self.cancel(tid)
             self._tasks.pop(tid, None)
             removed_ids.append(tid)
             removed += 1
         # 批量从 DB 删除
         if removed_ids:
             try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    async def _bulk_delete(ids):
-                        mapper = self._get_mapper()
-                        for tid in ids:
-                            await mapper.delete_skill_task(tid)
-                    asyncio.create_task(_bulk_delete(removed_ids))
+                asyncio.get_running_loop()
+                async def _bulk_delete(ids):
+                    mapper = self._get_mapper()
+                    for tid in ids:
+                        await mapper.delete_skill_task(tid)
+                asyncio.create_task(_bulk_delete(removed_ids))
+            except RuntimeError:
+                pass
             except Exception as e:
                 logger.warning(f"[SkillTaskManager] DB bulk delete failed: {e}")
         logger.info(f"[SkillTaskManager] Cleared {removed} tasks (conv={conversation_id}, only_finished={only_finished})")
         return removed
-
-    def find_pending_task(self, skill_name: str, conversation_id: str) -> Optional["SkillTask"]:
-        """按 skill_name + conversation_id 找最近一条 pending 任务（Bash 拦截时关联用）"""
-        candidates = [
-            t for t in self._tasks.values()
-            if t.skill_name == skill_name
-            and t.conversation_id == conversation_id
-            and t.status == "pending"
-        ]
-        if not candidates:
-            return None
-        return max(candidates, key=lambda t: t.created_at)
-
-    def mark_running(self, task_id: str) -> bool:
-        """将任务标记为 running（Bash 开始执行时调用）"""
-        task = self._tasks.get(task_id)
-        if not task or task.status != "pending":
-            return False
-        task.status = "running"
-        task.started_at = datetime.now()
-        self._persist(task)
-        logger.info(f"[SkillTaskManager] Task {task_id} marked as running")
-        return True
 
     def mark_finished(self, task_id: str, success: bool, error: Optional[str] = None) -> bool:
         """将任务标记为终态（Bash tool_result 回调时调用）"""
         task = self._tasks.get(task_id)
         if not task:
             return False
+        if task.status in ("success", "failed"):
+            logger.debug(f"[SkillTaskManager] Task {task_id} already in terminal state {task.status}, skip")
+            return False
         task.status = "success" if success else "failed"
         task.error = error
         task.finished_at = datetime.now()
-        if success:
-            task.progress = 100
         self._persist(task)
         logger.info(f"[SkillTaskManager] Task {task_id} marked as {'success' if success else 'failed'}")
         return True
