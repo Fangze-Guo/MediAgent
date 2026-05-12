@@ -81,6 +81,7 @@ import { getSkillFiles, getSkillFileContent, type FileTreeNode, type FileContent
 
 const props = defineProps<{
   skillId: string
+  projectId?: string
 }>()
 
 const loading = ref(true)
@@ -118,7 +119,7 @@ const flattenedFiles = computed(() => {
 const loadFileTree = async () => {
   loading.value = true
   try {
-    const files = await getSkillFiles(props.skillId)
+    const files = await getSkillFiles(props.skillId, props.projectId)
     fileTree.value = files
   } catch (error) {
     console.error('加载文件树失败', error)
@@ -148,7 +149,7 @@ const handleRowClick = async (item: FlattenedItem) => {
 const loadFileContent = async (path: string) => {
   loadingContent.value = true
   try {
-    const content = await getSkillFileContent(props.skillId, path)
+    const content = await getSkillFileContent(props.skillId, path, props.projectId)
     fileContent.value = content
   } catch (error) {
     console.error('加载文件内容失败', error)

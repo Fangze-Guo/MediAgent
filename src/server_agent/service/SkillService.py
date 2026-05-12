@@ -22,6 +22,19 @@ class SkillService:
         if skills_dir is None:
             skills_dir = os.path.expanduser("~/.claude/skills")
         self.skills_dir = Path(skills_dir)
+
+    @classmethod
+    def for_project(cls, project_id: str) -> "SkillService":
+        """
+        根据 project_id 创建对应项目的 SkillService。
+        技能目录约定为 <project.base_dir>/.claude/skills/
+        """
+        from src.server_agent.agent.claude.project_config import get_project_config
+        config = get_project_config(project_id)
+        if config:
+            skills_dir = config.base_dir / ".claude" / "skills"
+            return cls(str(skills_dir))
+        return cls()
         
     def _parse_skill_md(self, skill_path: Path) -> Optional[Dict[str, Any]]:
         """

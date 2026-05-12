@@ -16,38 +16,51 @@ class SkillController(BaseController):
     
     def __init__(self):
         super().__init__(prefix="/skills", tags=["技能仓库"])
-        self.skill_service = SkillService()
+        self.default_skill_service = SkillService()
         self._register_routes()
-    
+
+    def _get_service(self, project_id: Optional[str]) -> SkillService:
+        if project_id:
+            return SkillService.for_project(project_id)
+        return self.default_skill_service
+
     def _register_routes(self):
         """注册路由"""
-        
+
+        @self.router.get("/projects")
+        async def get_projects() -> BaseResponse[List[dict]]:
+            try:
+                from src.server_agent.agent.claude.project_config import PROJECT_CONFIGS
+                projects = [
+                    {"id": pid, "name": cfg.project_name}
+                    for pid, cfg in PROJECT_CONFIGS.items()
+                    if (cfg.base_dir / ".claude" / "skills").exists()
+                ]
+                return ResultUtils.success(projects)
+            except Exception as e:
+                return ResultUtils.error(ErrorCode.SYSTEM_ERROR, f"获取项目列表失败: {str(e)}")
+
         @self.router.get("/list")
         async def get_skills(
             category: Optional[str] = Query(None, description="分类筛选"),
-            search: Optional[str] = Query(None, description="搜索关键词")
+            search: Optional[str] = Query(None, description="搜索关键词"),
+            project_id: Optional[str] = Query(None, description="项目ID，不传则使用默认目录")
         ) -> BaseResponse[List[dict]]:
-            """
-            获取 skill 列表
-            Args:
-                category: 分类筛选 (可选)
-                search: 搜索关键词 (可选)
-            """
             try:
-                skills = await self.skill_service.get_skills(category=category, search=search)
+                svc = self._get_service(project_id)
+                skills = await svc.get_skills(category=category, search=search)
                 return ResultUtils.success(skills)
             except Exception as e:
                 return ResultUtils.error(ErrorCode.SYSTEM_ERROR, f"获取 skill 列表失败: {str(e)}")
         
         @self.router.get("/detail/{skill_id}")
-        async def get_skill_detail(skill_id: str) -> BaseResponse[dict]:
-            """
-            获取 skill 详情
-            Args:
-                skill_id: skill ID（目录名）
-            """
+        async def get_skill_detail(
+            skill_id: str,
+            project_id: Optional[str] = Query(None, description="项目ID")
+        ) -> BaseResponse[dict]:
             try:
-                skill = await self.skill_service.get_skill_detail(skill_id)
+                svc = self._get_service(project_id)
+                skill = await svc.get_skill_detail(skill_id)
                 if not skill:
                     return ResultUtils.error(ErrorCode.NOT_FOUND, "Skill 不存在")
                 return ResultUtils.success(skill)
@@ -55,23 +68,24 @@ class SkillController(BaseController):
                 return ResultUtils.error(ErrorCode.SYSTEM_ERROR, f"获取 skill 详情失败: {str(e)}")
         
         @self.router.get("/categories")
-        async def get_categories() -> BaseResponse[List[str]]:
-            """获取所有分类"""
+        async def get_categories(
+            project_id: Optional[str] = Query(None, description="项目ID")
+        ) -> BaseResponse[List[str]]:
             try:
-                categories = await self.skill_service.get_categories()
+                svc = self._get_service(project_id)
+                categories = await svc.get_categories()
                 return ResultUtils.success(categories)
             except Exception as e:
                 return ResultUtils.error(ErrorCode.SYSTEM_ERROR, f"获取分类失败: {str(e)}")
 
         @self.router.get("/files/{skill_id}")
-        async def get_skill_files(skill_id: str) -> BaseResponse[List[dict]]:
-            """
-            获取 skill 的文件树结构
-            Args:
-                skill_id: skill ID（目录名）
-            """
+        async def get_skill_files(
+            skill_id: str,
+            project_id: Optional[str] = Query(None, description="项目ID")
+        ) -> BaseResponse[List[dict]]:
             try:
-                files = await self.skill_service.get_skill_files(skill_id)
+                svc = self._get_service(project_id)
+                files = await svc.get_skill_files(skill_id)
                 if files is None:
                     return ResultUtils.error(ErrorCode.NOT_FOUND, "Skill 不存在")
                 return ResultUtils.success(files)
@@ -81,16 +95,12 @@ class SkillController(BaseController):
         @self.router.get("/file-content/{skill_id}")
         async def get_skill_file_content(
             skill_id: str,
-            path: str = Query(..., description="文件相对路径")
+            path: str = Query(..., description="文件相对路径"),
+            project_id: Optional[str] = Query(None, description="项目ID")
         ) -> BaseResponse[dict]:
-            """
-            获取 skill 中某个文件的内容
-            Args:
-                skill_id: skill ID（目录名）
-                path: 文件相对路径
-            """
             try:
-                content = await self.skill_service.get_skill_file_content(skill_id, path)
+                svc = self._get_service(project_id)
+                content = await svc.get_skill_file_content(skill_id, path)
                 if content is None:
                     return ResultUtils.error(ErrorCode.NOT_FOUND, "文件不存在")
                 return ResultUtils.success(content)

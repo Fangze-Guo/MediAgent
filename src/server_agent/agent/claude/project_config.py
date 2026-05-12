@@ -31,7 +31,7 @@ class ProjectConfig:
 PROJECT_CONFIGS: Dict[str, ProjectConfig] = {
     "gl-nict": ProjectConfig(
         project_id="gl-nict",
-        project_name="GL-NICT 肺癌分析",
+        project_name="GL-NICT",
         base_dir=Path("/home/fetters/project/GL-NICT"),
         system_prompt="""【项目专属：GL-NICT 肺癌新辅助治疗影像分析】
 

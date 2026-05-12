@@ -392,7 +392,7 @@
                   <div class="feature-title">{{ t('views_CodeAgentView.featureData') }}</div>
                   <div class="feature-desc">{{ t('views_CodeAgentView.featureDataDesc') }}</div>
                 </div>
-                <div class="feature-card" @click="startNewConversation">
+                <div class="feature-card" @click="goToSkillStore">
                   <div class="feature-icon">🔬</div>
                   <div class="feature-title">{{ t('views_CodeAgentView.featureSkill') }}</div>
                   <div class="feature-desc">{{ t('views_CodeAgentView.featureSkillDesc') }}</div>
@@ -439,7 +439,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import {
   PlusOutlined,
@@ -479,6 +479,7 @@ import {
 
 const { t } = useI18n()
 const route = useRoute()
+const router = useRouter()
 
 // 根据当前路由判断项目标识
 const currentProjectId = computed(() => {
@@ -1352,6 +1353,12 @@ const selectConversation = async (conversation: ConversationInfo) => {
 // 搜索
 const handleSearch = () => {
   // 搜索由computed自动处理
+}
+
+// 跳转到技能仓库（携带 project_id）
+const goToSkillStore = () => {
+  const query = currentProjectId.value ? { project_id: currentProjectId.value } : {}
+  router.push({ path: '/skill-store', query })
 }
 
 // 开始新对话 - 调用 API 创建会话

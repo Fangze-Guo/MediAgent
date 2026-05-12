@@ -47,7 +47,7 @@
               文件浏览
             </h2>
             <div class="files-content">
-              <GitHubStyleFileList :skill-id="skillId" />
+              <GitHubStyleFileList :skill-id="skillId" :project-id="projectId" />
             </div>
           </div>
 
@@ -136,6 +136,9 @@ import GitHubStyleFileList from '@/components/skill-store/GitHubStyleFileList.vu
 const route = useRoute()
 const router = useRouter()
 
+// 从路由 query 读取 project_id
+const projectId = computed(() => (route.query.project_id as string) || undefined)
+
 // 响应式状态
 const loading = ref(true)
 const skill = ref<SkillInfo | null>(null)
@@ -148,14 +151,12 @@ const skillId = computed(() => route.params.id as string)
 const loadSkillDetail = async () => {
   loading.value = true
   try {
-    const data = await getSkillDetail(skillId.value)
+    const data = await getSkillDetail(skillId.value, projectId.value)
     skill.value = data
 
-    // 加载相关技能（同类别）
-    if (data.category) {
-      const allSkills = await getSkills(data.category)
-      relatedSkills.value = allSkills.filter(s => s.id !== skillId.value).slice(0, 5)
-    }
+    // 加载相关技能（同项目，不按类别筛选）
+    const allSkills = await getSkills(undefined, undefined, projectId.value)
+    relatedSkills.value = allSkills.filter(s => s.id !== skillId.value).slice(0, 5)
   } catch (error) {
     console.error('加载技能详情失败', error)
     message.error('加载技能详情失败')
@@ -164,14 +165,16 @@ const loadSkillDetail = async () => {
   }
 }
 
-// 返回技能仓库
+// 返回技能仓库（保留 project_id）
 const goBack = () => {
-  router.push('/skill-store')
+  const query = projectId.value ? { project_id: projectId.value } : {}
+  router.push({ path: '/skill-store', query })
 }
 
-// 跳转到其他技能
+// 跳转到其他技能（保留 project_id）
 const goToSkill = (id: string) => {
-  router.push(`/skill-store/${id}`)
+  const query = projectId.value ? { project_id: projectId.value } : {}
+  router.push({ path: `/skill-store/${id}`, query })
 }
 
 // 监听路由变化，重新加载数据

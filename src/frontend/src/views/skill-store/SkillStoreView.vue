@@ -24,16 +24,22 @@
       </div>
     </div>
 
-    <!-- 分类标签栏 -->
+    <!-- 项目标签栏 -->
     <div class="categories-bar">
       <div class="categories-container">
         <div
-          v-for="cat in categories"
-          :key="cat"
-          :class="['category-tab', { active: selectedCategory === cat }]"
-          @click="selectCategory(cat)"
+          :class="['category-tab', { active: selectedProjectId === undefined }]"
+          @click="selectProject(undefined)"
         >
-          {{ cat }}
+          默认技能库
+        </div>
+        <div
+          v-for="proj in projects"
+          :key="proj.id"
+          :class="['category-tab', { active: selectedProjectId === proj.id }]"
+          @click="selectProject(proj.id)"
+        >
+          {{ proj.name }}
         </div>
       </div>
     </div>
@@ -57,9 +63,7 @@
         <!-- 技能网格 -->
         <div v-else>
           <div class="section-header">
-            <h2 class="section-title">
-              {{ selectedCategory === '全部' ? '所有技能' : selectedCategory }}
-            </h2>
+            <h2 class="section-title">{{ currentProjectName }}</h2>
             <span class="results-count">共 {{ skills.length }} 个技能</span>
           </div>
           
@@ -83,7 +87,6 @@
               <p class="skill-description">{{ skill.description }}</p>
               
               <div class="card-footer">
-                <span class="skill-category-badge">{{ skill.category }}</span>
                 <a-button class="view-btn" size="small">
                   查看详情
                 </a-button>
@@ -98,33 +101,43 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { SearchOutlined, InboxOutlined } from '@ant-design/icons-vue'
-import { getSkills, getSkillCategories, type SkillInfo } from '@/apis/skills'
+import { getSkills, getSkillProjects, type SkillInfo, type SkillProject } from '@/apis/skills'
 
 const router = useRouter()
+const route = useRoute()
 
 // 响应式状态
 const loading = ref(true)
 const skills = ref<SkillInfo[]>([])
-const categories = ref<string[]>([])
-const selectedCategory = ref('全部')
+const projects = ref<SkillProject[]>([])
+const selectedProjectId = ref<string | undefined>(undefined)
 const searchKeyword = ref('')
 
-// 组件挂载时执行
+// 当前项目显示名
+const currentProjectName = computed(() => {
+  if (!selectedProjectId.value) return '默认技能库'
+  return projects.value.find(p => p.id === selectedProjectId.value)?.name ?? selectedProjectId.value
+})
+
+// 组件挂载时：先加载项目列表，再根据路由 query 决定初始 Tab
 onMounted(async () => {
-  await loadCategories()
+  await loadProjects()
+  const qp = route.query.project_id as string | undefined
+  if (qp && projects.value.some(p => p.id === qp)) {
+    selectedProjectId.value = qp
+  }
   await loadSkills()
 })
 
-// 加载分类列表
-const loadCategories = async () => {
+// 加载项目列表
+const loadProjects = async () => {
   try {
-    const data = await getSkillCategories()
-    categories.value = data
+    projects.value = await getSkillProjects()
   } catch (error) {
-    console.error('加载分类失败', error)
+    console.error('加载项目列表失败', error)
   }
 }
 
@@ -132,8 +145,7 @@ const loadCategories = async () => {
 const loadSkills = async () => {
   loading.value = true
   try {
-    const category = selectedCategory.value === '全部' ? undefined : selectedCategory.value
-    const data = await getSkills(category, searchKeyword.value)
+    const data = await getSkills(undefined, searchKeyword.value || undefined, selectedProjectId.value)
     skills.value = data
   } catch (error) {
     console.error('加载技能列表失败', error)
@@ -143,9 +155,9 @@ const loadSkills = async () => {
   }
 }
 
-// 选择分类
-const selectCategory = (category: string) => {
-  selectedCategory.value = category
+// 选择项目 Tab
+const selectProject = (id: string | undefined) => {
+  selectedProjectId.value = id
   searchKeyword.value = ''
   loadSkills()
 }
@@ -157,7 +169,8 @@ const handleSearch = () => {
 
 // 跳转到技能详情页
 const goToSkillDetail = (id: string) => {
-  router.push(`/skill-store/${id}`)
+  const query = selectedProjectId.value ? { project_id: selectedProjectId.value } : {}
+  router.push({ path: `/skill-store/${id}`, query })
 }
 </script>
 

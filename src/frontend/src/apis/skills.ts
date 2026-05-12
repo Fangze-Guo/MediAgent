@@ -5,6 +5,14 @@
 import { get } from '@/utils/request'
 
 /**
+ * 项目信息接口
+ */
+export interface SkillProject {
+  id: string
+  name: string
+}
+
+/**
  * Skill 信息接口（复用 AppInfo 结构以保持前端兼容）
  */
 export interface SkillInfo {
@@ -40,10 +48,11 @@ interface BaseResponse<T> {
  * @param search 搜索关键词
  * @returns Promise<SkillInfo[]>
  */
-export async function getSkills(category?: string, search?: string): Promise<SkillInfo[]> {
+export async function getSkills(category?: string, search?: string, projectId?: string): Promise<SkillInfo[]> {
   const params: Record<string, string> = {}
   if (category) params.category = category
   if (search) params.search = search
+  if (projectId) params.project_id = projectId
   
   const response = await get<BaseResponse<SkillInfo[]>>('/skills/list', { params })
   return response.data.data
@@ -54,8 +63,10 @@ export async function getSkills(category?: string, search?: string): Promise<Ski
  * @param skillId skill ID
  * @returns Promise<SkillInfo>
  */
-export async function getSkillDetail(skillId: string): Promise<SkillInfo> {
-  const response = await get<BaseResponse<SkillInfo>>(`/skills/detail/${skillId}`)
+export async function getSkillDetail(skillId: string, projectId?: string): Promise<SkillInfo> {
+  const params: Record<string, string> = {}
+  if (projectId) params.project_id = projectId
+  const response = await get<BaseResponse<SkillInfo>>(`/skills/detail/${skillId}`, { params })
   return response.data.data
 }
 
@@ -63,8 +74,10 @@ export async function getSkillDetail(skillId: string): Promise<SkillInfo> {
  * 获取所有分类
  * @returns Promise<string[]>
  */
-export async function getSkillCategories(): Promise<string[]> {
-  const response = await get<BaseResponse<string[]>>('/skills/categories')
+export async function getSkillCategories(projectId?: string): Promise<string[]> {
+  const params: Record<string, string> = {}
+  if (projectId) params.project_id = projectId
+  const response = await get<BaseResponse<string[]>>('/skills/categories', { params })
   return response.data.data
 }
 
@@ -94,8 +107,10 @@ export interface FileContent {
  * @param skillId skill ID
  * @returns Promise<FileTreeNode[]>
  */
-export async function getSkillFiles(skillId: string): Promise<FileTreeNode[]> {
-  const response = await get<BaseResponse<FileTreeNode[]>>(`/skills/files/${skillId}`)
+export async function getSkillFiles(skillId: string, projectId?: string): Promise<FileTreeNode[]> {
+  const params: Record<string, string> = {}
+  if (projectId) params.project_id = projectId
+  const response = await get<BaseResponse<FileTreeNode[]>>(`/skills/files/${skillId}`, { params })
   return response.data.data
 }
 
@@ -105,9 +120,17 @@ export async function getSkillFiles(skillId: string): Promise<FileTreeNode[]> {
  * @param filePath 文件相对路径
  * @returns Promise<FileContent>
  */
-export async function getSkillFileContent(skillId: string, filePath: string): Promise<FileContent> {
-  const response = await get<BaseResponse<FileContent>>(`/skills/file-content/${skillId}`, {
-    params: { path: filePath }
-  })
+export async function getSkillFileContent(skillId: string, filePath: string, projectId?: string): Promise<FileContent> {
+  const params: Record<string, string> = { path: filePath }
+  if (projectId) params.project_id = projectId
+  const response = await get<BaseResponse<FileContent>>(`/skills/file-content/${skillId}`, { params })
+  return response.data.data
+}
+
+/**
+ * 获取有 skills 的项目列表
+ */
+export async function getSkillProjects(): Promise<SkillProject[]> {
+  const response = await get<BaseResponse<SkillProject[]>>('/skills/projects')
   return response.data.data
 }
