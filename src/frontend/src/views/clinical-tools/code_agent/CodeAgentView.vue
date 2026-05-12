@@ -70,19 +70,19 @@
         <div class="workflow-header">
           <span class="workflow-title">
             <span class="workflow-title-icon">⚡</span>
-            Task Manager
+            {{ t('views_CodeAgentView.taskManager.title') }}
           </span>
           <div class="workflow-header-actions">
             <span v-if="runningTaskCount > 0" class="workflow-running-badge">{{ runningTaskCount }}</span>
             <a-popconfirm
               v-if="filteredSkillTasks.length > 0"
-              title="确认要清空所有已完成/失败的任务吗？运行中的任务不会被清理。"
-              ok-text="清空"
-              cancel-text="取消"
+              :title="t('views_CodeAgentView.taskManager.clearConfirm')"
+              :ok-text="t('views_CodeAgentView.taskManager.clear')"
+              :cancel-text="t('common.cancel')"
               @confirm="handleClearFinishedTasks"
             >
-              <button class="workflow-clear-btn" :disabled="finishedTaskCount === 0" :title="finishedTaskCount === 0 ? '没有可清理的任务' : '清空已完成/失败任务'">
-                清空
+              <button class="workflow-clear-btn" :disabled="finishedTaskCount === 0" :title="finishedTaskCount === 0 ? t('views_CodeAgentView.taskManager.clearDisabledTitle') : t('views_CodeAgentView.taskManager.clearTitle')">
+                {{ t('views_CodeAgentView.taskManager.clear') }}
               </button>
             </a-popconfirm>
           </div>
@@ -90,7 +90,7 @@
 
         <div v-if="filteredSkillTasks.length === 0" class="workflow-empty">
           <span class="workflow-empty-icon">🗂️</span>
-          <span>暂无后台任务</span>
+          <span>{{ t('views_CodeAgentView.taskManager.empty') }}</span>
         </div>
 
         <div v-else class="workflow-task-list">
@@ -109,15 +109,15 @@
               </span>
               <span class="workflow-task-name" :title="task.skill_name">{{ task.skill_name }}</span>
               <span class="workflow-task-status-text">
-                <span v-if="task.status === 'running'">执行中</span>
-                <span v-else-if="task.status === 'success'">已完成</span>
-                <span v-else-if="task.status === 'failed'">失败</span>
+                <span v-if="task.status === 'running'">{{ t('views_CodeAgentView.taskManager.statusRunning') }}</span>
+                <span v-else-if="task.status === 'success'">{{ t('views_CodeAgentView.taskManager.statusSuccess') }}</span>
+                <span v-else-if="task.status === 'failed'">{{ t('views_CodeAgentView.taskManager.statusFailed') }}</span>
               </span>
               <!-- 操作按钮 -->
               <div class="workflow-task-actions">
                 <button
                   class="workflow-task-action-btn workflow-task-delete-btn"
-                  title="删除任务"
+                  :title="t('views_CodeAgentView.taskManager.deleteTask')"
                   @click="handleDeleteTask(task.task_id)"
                 >×</button>
               </div>
@@ -128,14 +128,14 @@
               <span
                 class="workflow-task-conv"
                 :class="{ 'workflow-task-conv-clickable': canJumpToConv(task.conversation_id) }"
-                :title="canJumpToConv(task.conversation_id) ? '跳转到该会话' : '该会话不在当前列表'"
+                :title="canJumpToConv(task.conversation_id) ? t('views_CodeAgentView.taskManager.jumpToConv') : t('views_CodeAgentView.taskManager.convNotInList')"
                 @click="jumpToConversation(task.conversation_id)"
               >💬 {{ getConvTitle(task.conversation_id) }}</span>
               <span v-if="taskLiveElapsed(task)" class="workflow-task-elapsed" :class="{ 'workflow-task-elapsed-live': task.status === 'running' }">
                 {{ taskLiveElapsed(task) }}
               </span>
               <span v-else-if="task.status === 'failed'" class="workflow-task-error-hint" :title="task.skill_error || ''">
-                {{ task.skill_error || '查看错误' }}
+                {{ task.skill_error || t('views_CodeAgentView.taskManager.viewError') }}
               </span>
               <span v-else class="workflow-task-time">{{ formatTime(task.created_at) }}</span>
             </div>
@@ -872,7 +872,7 @@ watch(allSkillTasks, (tasks) => {
     }
     // 本次会话内状态变为 success：弹通知后删除
     if (task.status === 'success') {
-      message.success(`任务成功：${task.skill_name}`)
+      message.success(t('views_CodeAgentView.taskManager.taskSuccess', { name: task.skill_name }))
       setTimeout(() => handleDeleteTask(task.task_id), 1000)
     }
   }

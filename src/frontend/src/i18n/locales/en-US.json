@@ -988,7 +988,23 @@
       "featureData": "Data Import",
       "featureDataDesc": "Import and analyze medical data",
       "featureSkill": "Medical Skills",
-      "featureSkillDesc": "Access professional medical tools"
+      "featureSkillDesc": "Access professional medical tools",
+      "taskManager": {
+        "title": "Task Manager",
+        "clearConfirm": "Clear all completed/failed tasks? Running tasks will not be removed.",
+        "clear": "Clear",
+        "clearDisabledTitle": "No tasks to clear",
+        "clearTitle": "Clear completed/failed tasks",
+        "empty": "No background tasks",
+        "statusRunning": "Running",
+        "statusSuccess": "Completed",
+        "statusFailed": "Failed",
+        "deleteTask": "Delete task",
+        "jumpToConv": "Jump to this conversation",
+        "convNotInList": "This conversation is not in the current list",
+        "taskSuccess": "Task succeeded: {name}",
+        "viewError": "View Error"
+      }
     },
     "views_RagKnowledgeBaseView": {
       "title": "RAG Knowledge Base",
