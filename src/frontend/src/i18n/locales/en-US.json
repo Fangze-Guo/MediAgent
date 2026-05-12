@@ -983,6 +983,8 @@
       "inputHint": "Enter to send, Shift+Enter for new line",
       "welcomeTitle": "Medical AI Agent",
       "welcomeSubtitle": "Professional medical AI assistant to support your medical research and clinical work",
+      "welcomeSubtitleGlNict": "Lung Cancer Neoadjuvant Therapy Imaging Analysis & MPR Prediction Assistant",
+      "unnamedConversation": "Unnamed Session",
       "featureMedical": "Medical Consultation",
       "featureMedicalDesc": "Professional medical Q&A",
       "featureData": "Data Import",
@@ -1004,6 +1006,28 @@
         "convNotInList": "This conversation is not in the current list",
         "taskSuccess": "Task succeeded: {name}",
         "viewError": "View Error"
+      },
+      "messages": {
+        "createSuccess": "Session created successfully",
+        "createFailed": "Failed to create session",
+        "deleteConvSuccess": "Session deleted successfully",
+        "deleteConvFailed": "Failed to delete session",
+        "loadConvsFailed": "Failed to load conversation list",
+        "loadDetailFailed": "Failed to load session details",
+        "deleteTaskFailed": "Failed to delete task",
+        "clearTasksSuccess": "Cleared {count} tasks",
+        "clearTasksFailed": "Failed to clear tasks",
+        "sendFailed": "Failed to send message, please retry",
+        "toolAllowed": "Tool execution allowed",
+        "toolRejected": "Tool execution rejected",
+        "confirmFailed": "Confirmation failed",
+        "confirmPermFailed": "Failed to confirm permission",
+        "cancelFailed": "Cancellation failed",
+        "cancelPermFailed": "Failed to cancel permission",
+        "interruptedConv": "Conversation interrupted",
+        "interruptFailed": "Interruption failed",
+        "interruptConvFailed": "Failed to interrupt conversation",
+        "interruptNoSession": "No active conversation to interrupt"
       }
     },
     "views_RagKnowledgeBaseView": {

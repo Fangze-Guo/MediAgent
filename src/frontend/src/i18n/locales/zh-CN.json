@@ -926,6 +926,8 @@
       "inputHint": "Enter 发送，Shift+Enter 换行",
       "welcomeTitle": "医学智能体",
       "welcomeSubtitle": "专业的医学 AI 助手，助力您的医学研究与临床工作",
+      "welcomeSubtitleGlNict": "肺癌新辅助治疗影像分析与 MPR 预测助手",
+      "unnamedConversation": "未命名会话",
       "featureMedical": "医学咨询",
       "featureMedicalDesc": "专业医学问题解答",
       "featureData": "数据导入",
@@ -947,6 +949,28 @@
         "convNotInList": "该会话不在当前列表",
         "taskSuccess": "任务成功：{name}",
         "viewError": "查看错误"
+      },
+      "messages": {
+        "createSuccess": "创建会话成功",
+        "createFailed": "创建会话失败",
+        "deleteConvSuccess": "删除会话成功",
+        "deleteConvFailed": "删除会话失败",
+        "loadConvsFailed": "加载对话列表失败",
+        "loadDetailFailed": "加载会话详情失败",
+        "deleteTaskFailed": "删除任务失败",
+        "clearTasksSuccess": "已清空 {count} 个任务",
+        "clearTasksFailed": "清空任务失败",
+        "sendFailed": "发送消息失败，请重试",
+        "toolAllowed": "已允许工具执行",
+        "toolRejected": "已拒绝工具执行",
+        "confirmFailed": "确认失败",
+        "confirmPermFailed": "确认权限失败",
+        "cancelFailed": "取消失败",
+        "cancelPermFailed": "取消权限失败",
+        "interruptedConv": "已中断对话",
+        "interruptFailed": "中断失败",
+        "interruptConvFailed": "中断对话失败",
+        "interruptNoSession": "没有正在进行的对话"
       }
     },
     "views_RagKnowledgeBaseView": {

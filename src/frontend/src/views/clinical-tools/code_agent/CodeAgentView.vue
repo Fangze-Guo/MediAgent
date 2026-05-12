@@ -37,7 +37,7 @@
             >
               <div class="conversation-header">
                 <span class="patient-name">
-                  {{ conversation.title || '未命名会话' }}
+                  {{ conversation.title || t('views_CodeAgentView.unnamedConversation') }}
                 </span>
                 <div class="header-actions">
                   <span class="conversation-time">{{ formatTime(conversation.updated_at) }}</span>
@@ -306,18 +306,18 @@
               <!-- 顶部工具栏 -->
               <div class="input-toolbar">
                 <div class="toolbar-left">
-                  <a-button type="text" size="small" class="toolbar-btn" :title="t('views_CodeAgentView.attachFile') || '附加文件'">
+                  <a-button type="text" size="small" class="toolbar-btn" :title="t('views_CodeAgentView.attachFile')">
                     <PaperClipOutlined />
                   </a-button>
-                  <a-button type="text" size="small" class="toolbar-btn" :title="t('views_CodeAgentView.insertCode') || '插入代码'">
+                  <a-button type="text" size="small" class="toolbar-btn" :title="t('views_CodeAgentView.insertCode')">
                     <CodeOutlined />
                   </a-button>
-                  <a-button type="text" size="small" class="toolbar-btn" :title="t('views_CodeAgentView.voiceInput') || '语音输入'">
+                  <a-button type="text" size="small" class="toolbar-btn" :title="t('views_CodeAgentView.voiceInput')">
                     <AudioOutlined />
                   </a-button>
                 </div>
                 <div class="toolbar-right">
-                  <a-button type="text" size="small" class="toolbar-btn" @click="inputMessage = ''" :title="t('views_CodeAgentView.clearInput') || '清空输入'">
+                  <a-button type="text" size="small" class="toolbar-btn" @click="inputMessage = ''" :title="t('views_CodeAgentView.clearInput')">
                     <DeleteOutlined />
                   </a-button>
                 </div>
@@ -340,7 +340,7 @@
               <!-- 底部操作栏 -->
               <div class="input-bottom">
                 <div class="input-hint">
-                  <span class="hint-text">{{ t('views_CodeAgentView.inputHint') || 'Enter 发送，Shift+Enter 换行' }}</span>
+                  <span class="hint-text">{{ t('views_CodeAgentView.inputHint') }}</span>
                 </div>
                 <a-button
                   v-if="!sendingMessage"
@@ -378,25 +378,24 @@
                 <CodeOutlined />
               </div>
               <h2 class="welcome-title">{{ projectDisplayName }}</h2>
-              <p class="welcome-subtitle" v-if="currentProjectId === 'bc'">CT 体成分分割与定量分析助手</p>
-              <p class="welcome-subtitle" v-else-if="currentProjectId === 'spine'">CT 脊柱分割与椎体分析助手</p>
-              <p class="welcome-subtitle" v-else>{{ t('views_CodeAgentView.welcomeSubtitle') || '强大的代码助手，帮助您高效完成开发任务' }}</p>
+              <p class="welcome-subtitle" v-if="currentProjectId === 'gl-nict'">{{ t('views_CodeAgentView.welcomeSubtitleGlNict') }}</p>
+              <p class="welcome-subtitle" v-else>{{ t('views_CodeAgentView.welcomeSubtitle') }}</p>
 
               <div class="feature-cards">
                 <div class="feature-card" @click="startNewConversation">
                   <div class="feature-icon">🩺</div>
-                  <div class="feature-title">{{ t('views_CodeAgentView.featureMedical') || '医学咨询' }}</div>
-                  <div class="feature-desc">{{ t('views_CodeAgentView.featureMedicalDesc') || '专业医学问题解答' }}</div>
+                  <div class="feature-title">{{ t('views_CodeAgentView.featureMedical') }}</div>
+                  <div class="feature-desc">{{ t('views_CodeAgentView.featureMedicalDesc') }}</div>
                 </div>
                 <div class="feature-card" @click="startNewConversation">
                   <div class="feature-icon">📊</div>
-                  <div class="feature-title">{{ t('views_CodeAgentView.featureData') || '数据导入' }}</div>
-                  <div class="feature-desc">{{ t('views_CodeAgentView.featureDataDesc') || '导入并分析医学数据' }}</div>
+                  <div class="feature-title">{{ t('views_CodeAgentView.featureData') }}</div>
+                  <div class="feature-desc">{{ t('views_CodeAgentView.featureDataDesc') }}</div>
                 </div>
                 <div class="feature-card" @click="startNewConversation">
                   <div class="feature-icon">🔬</div>
-                  <div class="feature-title">{{ t('views_CodeAgentView.featureSkill') || '医学技能' }}</div>
-                  <div class="feature-desc">{{ t('views_CodeAgentView.featureSkillDesc') || '调用专业医学工具' }}</div>
+                  <div class="feature-title">{{ t('views_CodeAgentView.featureSkill') }}</div>
+                  <div class="feature-desc">{{ t('views_CodeAgentView.featureSkillDesc') }}</div>
                 </div>
               </div>
             </div>
@@ -483,15 +482,13 @@ const route = useRoute()
 
 // 根据当前路由判断项目标识
 const currentProjectId = computed(() => {
-  if (route.name === 'BodycompAgent') return 'bc'
-  if (route.name === 'SpineAgent') return 'spine'
+  if (route.name === 'GlNictAgent') return 'gl-nict'
   return undefined
 })
 
 // 项目显示名称
 const projectDisplayName = computed(() => {
-  if (currentProjectId.value === 'bc') return '体成分分析'
-  if (currentProjectId.value === 'spine') return '脊柱分析'
+  if (currentProjectId.value === 'gl-nict') return 'GL-NICT 智能体'
   return t('views_CodeAgentView.title')
 })
 
@@ -605,14 +602,14 @@ const handleConfirmPermission = async () => {
     })
 
     if (response.code === 200) {
-      message.success('已允许工具执行')
+      message.success(t('views_CodeAgentView.messages.toolAllowed'))
       pendingPermission.value = null
     } else {
-      message.error(response.message || '确认失败')
+      message.error(response.message || t('views_CodeAgentView.messages.confirmFailed'))
     }
   } catch (error) {
     console.error('确认权限失败:', error)
-    message.error('确认权限失败')
+    message.error(t('views_CodeAgentView.messages.confirmPermFailed'))
   } finally {
     confirmingPermission.value = false
   }
@@ -628,36 +625,36 @@ const handleCancelPermission = async () => {
     })
 
     if (response.code === 200) {
-      message.info('已拒绝工具执行')
+      message.info(t('views_CodeAgentView.messages.toolRejected'))
       pendingPermission.value = null
     } else {
-      message.error(response.message || '取消失败')
+      message.error(response.message || t('views_CodeAgentView.messages.cancelFailed'))
     }
   } catch (error) {
     console.error('取消权限失败:', error)
-    message.error('取消权限失败')
+    message.error(t('views_CodeAgentView.messages.cancelPermFailed'))
   }
 }
 
 // 中断对话
 const handleInterrupt = async () => {
   if (!currentSessionId.value) {
-    message.warning('没有正在进行的对话')
+    message.warning(t('views_CodeAgentView.messages.interruptNoSession'))
     return
   }
 
   try {
     const response = await interruptSession(currentSessionId.value)
     if (response.code === 200) {
-      message.success('已中断对话')
+      message.success(t('views_CodeAgentView.messages.interruptedConv'))
       sendingMessage.value = false
       currentSessionId.value = null
     } else {
-      message.error(response.message || '中断失败')
+      message.error(response.message || t('views_CodeAgentView.messages.interruptFailed'))
     }
   } catch (error) {
     console.error('中断对话失败:', error)
-    message.error('中断对话失败')
+    message.error(t('views_CodeAgentView.messages.interruptConvFailed'))
   }
 }
 
@@ -900,7 +897,7 @@ const finishedTaskCount = computed(() =>
 // 根据 conversation_id 获取会话标题
 const getConvTitle = (conversationId: string): string => {
   const conv = conversations.value.find(c => c.conversation_id === conversationId)
-  return conv?.title || '未命名会话'
+  return conv?.title || t('views_CodeAgentView.unnamedConversation')
 }
 
 // 是否可以跳转到该会话
@@ -931,11 +928,11 @@ const handleDeleteTask = async (taskId: string) => {
       const idx = allSkillTasks.value.findIndex(t => t.task_id === taskId)
       if (idx >= 0) allSkillTasks.value.splice(idx, 1)
     } else {
-      message.error(res.message || '删除任务失败')
+      message.error(t('views_CodeAgentView.messages.deleteTaskFailed'))
     }
   } catch (e) {
     console.error('[handleDeleteTask] 失败:', e)
-    message.error('删除任务失败')
+    message.error(t('views_CodeAgentView.messages.deleteTaskFailed'))
   }
 }
 
@@ -959,10 +956,10 @@ const handleClearFinishedTasks = async () => {
       }
     }
     allSkillTasks.value = allSkillTasks.value.filter(t => !toRemove.includes(t.task_id))
-    message.success(`已清空 ${toRemove.length} 个任务`)
+    message.success(t('views_CodeAgentView.messages.clearTasksSuccess', { count: toRemove.length }))
   } catch (e) {
     console.error('[handleClearFinishedTasks] 失败:', e)
-    message.error('清空任务失败')
+    message.error(t('views_CodeAgentView.messages.clearTasksFailed'))
   }
 }
 
@@ -1277,11 +1274,11 @@ const loadConversations = async () => {
       // 会话列表加载完后再加载 Work Flow，确保 filteredSkillTasks 过滤正确
       await loadAllSkillTasks()
     } else {
-      message.error(response.message || '加载对话列表失败')
+      message.error(t('views_CodeAgentView.messages.loadConvsFailed'))
     }
   } catch (error) {
     console.error('加载对话列表失败:', error)
-    message.error('加载对话列表失败')
+    message.error(t('views_CodeAgentView.messages.loadConvsFailed'))
   } finally {
     loadingConversations.value = false
   }
@@ -1336,16 +1333,16 @@ const selectConversation = async (conversation: ConversationInfo) => {
       scrollToBottom()
       setupResizeObserver()
     } else {
-      message.error(response.message || '加载会话详情失败')
+      message.error(t('views_CodeAgentView.messages.loadDetailFailed'))
     }
   } catch (error: any) {
     // 忽略被取消的请求错误
-    if (error.name === 'AbortError' || error.name === 'CanceledError') {
+    if (error?.name === 'AbortError' || error?.code === 'ERR_CANCELED') {
       console.log('会话详情请求被取消')
       return
     }
     console.error('加载会话详情失败:', error)
-    message.error('加载会话详情失败')
+    message.error(t('views_CodeAgentView.messages.loadDetailFailed'))
   } finally {
     loadingConversationDetail.value = false
     currentAbortController = null
@@ -1365,13 +1362,13 @@ const startNewConversation = async () => {
       // 先刷新列表（含 loadAllSkillTasks），再选中新会话，避免并发竞争
       await loadConversations()
       await selectConversation(response.data)
-      message.success('创建会话成功')
+      message.success(t('views_CodeAgentView.messages.createSuccess'))
     } else {
-      message.error(response.message || '创建会话失败')
+      message.error(t('views_CodeAgentView.messages.createFailed'))
     }
   } catch (error) {
     console.error('创建会话失败:', error)
-    message.error('创建会话失败')
+    message.error(t('views_CodeAgentView.messages.createFailed'))
   }
 }
 
@@ -1380,7 +1377,7 @@ const handleDeleteConversation = async (conversationId: string) => {
   try {
     const response = await deleteConversation(conversationId)
     if (response.code === 200 && response.data) {
-      message.success('删除会话成功')
+      message.success(t('views_CodeAgentView.messages.deleteConvSuccess'))
       // 如果删除的是当前选中的会话，清空选中状态
       if (selectedConversationId.value === conversationId) {
         selectedConversationId.value = null
@@ -1401,11 +1398,11 @@ const handleDeleteConversation = async (conversationId: string) => {
       // 重新加载对话列表
       await loadConversations()
     } else {
-      message.error(response.message || '删除会话失败')
+      message.error(t('views_CodeAgentView.messages.deleteConvFailed'))
     }
   } catch (error) {
     console.error('删除会话失败:', error)
-    message.error('删除会话失败')
+    message.error(t('views_CodeAgentView.messages.deleteConvFailed'))
   }
 }
 
@@ -1441,13 +1438,13 @@ const handleSendMessage = async () => {
         await selectConversation(resp.data)
         await loadConversations()
       } else {
-        message.error(resp.message || '创建会话失败')
+        message.error(resp.message || t('views_CodeAgentView.messages.createFailed'))
         sendingMessage.value = false
         return
       }
     } catch (error) {
       console.error('创建会话失败:', error)
-      message.error('创建会话失败')
+      message.error(t('views_CodeAgentView.messages.createFailed'))
       sendingMessage.value = false
       return
     }
@@ -1556,7 +1553,7 @@ const handleSendMessage = async () => {
     }
   } catch (error) {
     console.error('发送消息失败', error)
-    message.error('发送消息失败，请重试')
+    message.error(t('views_CodeAgentView.messages.sendFailed'))
     // 移除失败的AI消息
     const aiMsgIndex = messages.value.length - 1
     if (messages.value[aiMsgIndex]) {
@@ -1645,8 +1642,9 @@ onUnmounted(() => {
 // 监听路由变化，切换项目时重新加载会话列表
 watch(() => route.name, (newRouteName, oldRouteName) => {
   // 只在 BC 和 Spine 页面之间切换时重新加载
-  if ((newRouteName === 'BodycompAgent' || newRouteName === 'SpineAgent') &&
-      (oldRouteName === 'BodycompAgent' || oldRouteName === 'SpineAgent') &&
+  const projectRoutes = ['GlNictAgent']
+  if (projectRoutes.includes(newRouteName as string) &&
+      projectRoutes.includes(oldRouteName as string) &&
       newRouteName !== oldRouteName) {
     // 清空当前选中的会话
     selectedConversationId.value = null
