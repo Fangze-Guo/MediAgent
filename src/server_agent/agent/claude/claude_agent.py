@@ -319,8 +319,7 @@ class ClaudeAgent:
             self._tool_policy = ToolPolicy(project_config)
             logger.info(
                 f"[ClaudeAgent] 启用项目隔离: project={project_config.project_id}, "
-                f"base_dir={project_config.base_dir}, "
-                f"allowed_tools={project_config.allowed_tools}"
+                f"base_dir={project_config.base_dir}"
             )
 
         self._last_session_id: Optional[str] = None
@@ -664,10 +663,12 @@ class ClaudeAgent:
         # 创建新的 client
         logger.info(f"[CLIENT] Creating new client with permission_mode={self._permission_mode}, is_resume={is_resume}")
 
-        # 使用项目专属 system_prompt（如果有），否则根据 user_id 生成
+        # 基础 system_prompt（含 user_id 注入），项目专属内容追加在后
         system_prompt = get_system_prompt(user_id)
         if self._project_config and self._project_config.system_prompt:
-            system_prompt = self._project_config.system_prompt
+            uid = str(user_id) if user_id is not None else "unknown"
+            project_prompt = self._project_config.system_prompt.replace("{user_id}", uid)
+            system_prompt = system_prompt + "\n\n" + project_prompt
 
         # 使用项目 base_dir 作为 cwd（如果有），否则使用当前目录
         cwd = str(Path.cwd())

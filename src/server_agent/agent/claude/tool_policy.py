@@ -30,7 +30,6 @@ class ToolPolicy:
     def __init__(self, project_config: ProjectConfig):
         self.project_config = project_config
         self.sandbox = FileSystemSandbox(project_config.base_dir)
-        self.allowed_tools = set(project_config.allowed_tools)
 
     def validate_tool_call(
         self, tool_name: str, input_data: Any
@@ -45,13 +44,7 @@ class ToolPolicy:
         Returns:
             (allowed, deny_reason) - allowed=True 表示允许，deny_reason 为拒绝原因
         """
-        # 1. 工具白名单检查
-        if tool_name not in self.allowed_tools:
-            reason = f"工具 {tool_name} 不在项目 {self.project_config.project_id} 的白名单中"
-            logger.warning(f"[ToolPolicy] {reason}")
-            return False, reason
-
-        # 2. 路径参数校验
+        # 路径参数校验
         if isinstance(input_data, dict):
             path_fields = TOOLS_WITH_PATH_PARAMS.get(tool_name, [])
             for field in path_fields:
