@@ -602,3 +602,47 @@ export async function clearSkillTasks(
   const response = await del<BaseResponse<number>>(`/code-agent/skill-tasks?${params.toString()}`)
   return response.data
 }
+
+/**
+ * 导出会话内容
+ * @param conversationId 会话ID
+ * @param format 导出格式: markdown | json | html
+ * @returns void（触发浏览器下载）
+ */
+export async function exportConversation(
+  conversationId: string,
+  format: 'markdown' | 'json' | 'html' = 'markdown'
+): Promise<void> {
+  const { authenticatedFetch } = await import('@/utils/request')
+  const url = `/api/code-agent/conversations/${encodeURIComponent(conversationId)}/export?format=${format}`
+  const response = await authenticatedFetch(url)
+
+  if (!response.ok) {
+    throw new Error(`导出失败: HTTP ${response.status}`)
+  }
+
+  // 从 Content-Disposition 提取文件名（支持 RFC 5987 filename* 编码）
+  const disposition = response.headers.get('Content-Disposition') || ''
+  let filename = `conversation${format === 'markdown' ? '.md' : format === 'json' ? '.json' : '.html'}`
+  // 优先解析 filename*=UTF-8''<encoded>
+  const starMatch = disposition.match(/filename\*=UTF-8''(.+?)(?:;|$)/)
+  if (starMatch) {
+    filename = decodeURIComponent(starMatch[1])
+  } else {
+    const match = disposition.match(/filename="?([^";]+)"?/)
+    if (match) {
+      filename = match[1]
+    }
+  }
+
+  // 触发浏览器下载
+  const blob = await response.blob()
+  const downloadUrl = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = downloadUrl
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(downloadUrl)
+}

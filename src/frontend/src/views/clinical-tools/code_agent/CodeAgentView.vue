@@ -40,7 +40,33 @@
                   {{ conversation.title || t('views_CodeAgentView.unnamedConversation') }}
                 </span>
                 <div class="header-actions">
-                  <span class="conversation-time">{{ formatTime(conversation.updated_at) }}</span>
+                  <a-popover
+                    trigger="click"
+                    placement="bottomRight"
+                    @click.stop
+                  >
+                    <template #content>
+                      <div class="export-format-menu">
+                        <div class="export-format-item" @click.stop="handleExport(conversation.conversation_id, 'markdown')">
+                          Markdown (.md)
+                        </div>
+                        <div class="export-format-item" @click.stop="handleExport(conversation.conversation_id, 'json')">
+                          JSON (.json)
+                        </div>
+                        <div class="export-format-item" @click.stop="handleExport(conversation.conversation_id, 'html')">
+                          HTML (.html)
+                        </div>
+                      </div>
+                    </template>
+                    <a-button
+                      type="text"
+                      size="small"
+                      class="export-btn"
+                      @click.stop
+                    >
+                      <ExportOutlined />
+                    </a-button>
+                  </a-popover>
                   <a-button
                     type="text"
                     size="small"
@@ -52,6 +78,7 @@
                   </a-button>
                 </div>
               </div>
+              <span class="conversation-time">{{ formatTime(conversation.updated_at) }}</span>
               <p v-if="conversation.last_message" class="conversation-preview">{{ conversation.last_message }}</p>
             </div>
           </div>
@@ -451,7 +478,8 @@ import {
   PaperClipOutlined,
   CodeOutlined,
   AudioOutlined,
-  StopOutlined
+  StopOutlined,
+  ExportOutlined
 } from '@ant-design/icons-vue'
 import StreamingMarkdownRenderer from '@/components/markdown/StreamingMarkdownRenderer.vue'
 import StreamingThinkingRenderer from '@/components/markdown/StreamingThinkingRenderer.vue'
@@ -474,7 +502,8 @@ import {
   interruptSession,
   getSkillTask,
   listSkillTasks,
-  deleteSkillTask
+  deleteSkillTask,
+  exportConversation
 } from '@/apis/codeAgent'
 
 const { t } = useI18n()
@@ -489,7 +518,7 @@ const currentProjectId = computed(() => {
 
 // 项目显示名称
 const projectDisplayName = computed(() => {
-  if (currentProjectId.value === 'gl-nict') return 'GL-NICT 智能体'
+  if (currentProjectId.value === 'gl-nict') return t('views_CodeAgentView.titleGlNict')
   return t('views_CodeAgentView.title')
 })
 
@@ -507,6 +536,17 @@ const showDeleteConfirm = (event: MouseEvent, conversationId: string) => {
   deleteConfirmConvId.value = conversationId
   deleteConfirmPosition.value = { x: event.clientX, y: event.clientY }
   deleteConfirmVisible.value = true
+}
+
+// 导出会话
+const handleExport = async (conversationId: string, format: 'markdown' | 'json' | 'html') => {
+  try {
+    await exportConversation(conversationId, format)
+    message.success(t('views_CodeAgentView.messages.exportSuccess'))
+  } catch (error: any) {
+    console.error('导出会话失败:', error)
+    message.error(t('views_CodeAgentView.messages.exportFailed'))
+  }
 }
 
 // 取消删除
@@ -2071,7 +2111,7 @@ onUnmounted(() => {
 }
 
 .conversation-item {
-  padding: 12px;
+  padding: 14px 12px;
   border: 1px solid var(--border-color-light);
   border-radius: 6px;
   cursor: pointer;
@@ -2123,11 +2163,9 @@ onUnmounted(() => {
 .conversation-time {
   font-size: 12px;
   color: var(--text-tertiary);
-  flex-shrink: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 80px;
+  display: block;
+  margin-top: 2px;
+  margin-bottom: 2px;
 }
 
 .header-actions {
@@ -2163,8 +2201,39 @@ onUnmounted(() => {
   justify-content: center;
 }
 
-.conversation-item:hover .delete-btn {
+.export-btn {
+  opacity: 0;
+  transition: opacity 0.3s;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.conversation-item:hover .delete-btn,
+.conversation-item:hover .export-btn {
   opacity: 1;
+}
+
+.export-format-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 140px;
+}
+
+.export-format-item {
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #333;
+  transition: background 0.2s;
+}
+
+.export-format-item:hover {
+  background: #f0f0f0;
 }
 
 /* ==========================================
