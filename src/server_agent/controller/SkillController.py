@@ -42,13 +42,13 @@ class SkillController(BaseController):
 
         @self.router.get("/list")
         async def get_skills(
-            category: Optional[str] = Query(None, description="分类筛选"),
+            type: Optional[str] = Query(None, description="类型筛选"),
             search: Optional[str] = Query(None, description="搜索关键词"),
             project_id: Optional[str] = Query(None, description="项目ID，不传则使用默认目录")
         ) -> BaseResponse[List[dict]]:
             try:
                 svc = self._get_service(project_id)
-                skills = await svc.get_skills(category=category, search=search)
+                skills = await svc.get_skills(type=type, search=search)
                 return ResultUtils.success(skills)
             except Exception as e:
                 return ResultUtils.error(ErrorCode.SYSTEM_ERROR, f"获取 skill 列表失败: {str(e)}")
@@ -67,16 +67,16 @@ class SkillController(BaseController):
             except Exception as e:
                 return ResultUtils.error(ErrorCode.SYSTEM_ERROR, f"获取 skill 详情失败: {str(e)}")
         
-        @self.router.get("/categories")
-        async def get_categories(
+        @self.router.get("/types")
+        async def get_types(
             project_id: Optional[str] = Query(None, description="项目ID")
         ) -> BaseResponse[List[str]]:
             try:
                 svc = self._get_service(project_id)
-                categories = await svc.get_categories()
-                return ResultUtils.success(categories)
+                types = await svc.get_types()
+                return ResultUtils.success(types)
             except Exception as e:
-                return ResultUtils.error(ErrorCode.SYSTEM_ERROR, f"获取分类失败: {str(e)}")
+                return ResultUtils.error(ErrorCode.SYSTEM_ERROR, f"获取类型失败: {str(e)}")
 
         @self.router.get("/files/{skill_id}")
         async def get_skill_files(

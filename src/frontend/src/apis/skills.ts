@@ -13,16 +13,15 @@ export interface SkillProject {
 }
 
 /**
- * Skill 信息接口（复用 AppInfo 结构以保持前端兼容）
+ * Skill 信息接口
  */
 export interface SkillInfo {
   id: string
   name: string
-  category: string
+  type: string
   description: string
   full_description?: string
   features?: string
-  icon: string
   version: string
   author: string
   downloads: number
@@ -50,7 +49,7 @@ interface BaseResponse<T> {
  */
 export async function getSkills(category?: string, search?: string, projectId?: string): Promise<SkillInfo[]> {
   const params: Record<string, string> = {}
-  if (category) params.category = category
+  if (category) params.type = category
   if (search) params.search = search
   if (projectId) params.project_id = projectId
   
@@ -74,10 +73,10 @@ export async function getSkillDetail(skillId: string, projectId?: string): Promi
  * 获取所有分类
  * @returns Promise<string[]>
  */
-export async function getSkillCategories(projectId?: string): Promise<string[]> {
+export async function getSkillTypes(projectId?: string): Promise<string[]> {
   const params: Record<string, string> = {}
   if (projectId) params.project_id = projectId
-  const response = await get<BaseResponse<string[]>>('/skills/categories', { params })
+  const response = await get<BaseResponse<string[]>>('/skills/types', { params })
   return response.data.data
 }
 

@@ -87,11 +87,11 @@ class SkillService:
             print(f"解析 SKILL.md 失败: {skill_path}, 错误: {e}")
             return None
     
-    async def get_skills(self, category: Optional[str] = None, search: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_skills(self, type: Optional[str] = None, search: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         获取 skill 列表
         Args:
-            category: 分类筛选 (可选)
+            type: 分类筛选 (可选)
             search: 搜索关键词 (可选)
         Returns:
             skill 列表
@@ -120,16 +120,15 @@ class SkillService:
                 skill_name = metadata.get('name', skill_dir.name)
                 skill_description = parsed['description']
                 
-                # 构建 skill 信息（兼容前端 AppInfo 接口）
+                # 构建 skill 信息
                 skill_info = {
                     'id': skill_dir.name,
                     'name': skill_name,
-                    'category': metadata.get('type', 'user-invocable'),
+                    'type': metadata.get('type', 'user-invocable'),
                     'description': skill_description,
                     'full_description': parsed['full_description'],
-                    'icon': self._get_skill_icon(metadata.get('type', 'user-invocable')),
-                    'version': '1.0.0',
-                    'author': 'Claude Skills',
+                    'version': metadata.get('version', '1.0.0'),
+                    'author': metadata.get('author', 'Claude Skills'),
                     'downloads': 0,
                     'rating': 5.0,
                     'installed': True,  # 本地 skills 都视为已安装
@@ -141,8 +140,8 @@ class SkillService:
                 skills.append(skill_info)
             
             # 应用筛选
-            if category and category != "全部":
-                skills = [s for s in skills if s['category'] == category]
+            if type and type != "全部":
+                skills = [s for s in skills if s['type'] == type]
             
             if search:
                 search_lower = search.lower()
@@ -184,13 +183,12 @@ class SkillService:
             return {
                 'id': skill_dir.name,
                 'name': skill_name,
-                'category': metadata.get('type', 'user-invocable'),
+                'type': metadata.get('type', 'user-invocable'),
                 'description': parsed['description'],
                 'full_description': parsed['markdown_content'],  # 返回完整的 markdown 内容
                 'features': parsed['markdown_content'],  # 功能特点也使用 markdown 内容
-                'icon': self._get_skill_icon(metadata.get('type', 'user-invocable')),
-                'version': '1.0.0',
-                'author': 'Claude Skills',
+                'version': metadata.get('version', '1.0.0'),
+                'author': metadata.get('author', 'Claude Skills'),
                 'downloads': 0,
                 'rating': 5.0,
                 'installed': True,
@@ -201,14 +199,14 @@ class SkillService:
 
         return await asyncio.to_thread(sync_get_detail)
 
-    async def get_categories(self) -> List[str]:
+    async def get_types(self) -> List[str]:
         """
-        获取所有 skill 分类
+        获取所有 skill 类型
         Returns:
-            分类列表
+            类型列表
         """
-        def sync_get_categories():
-            categories = set()
+        def sync_get_types():
+            types = set()
 
             if not self.skills_dir.exists():
                 return ["全部"]
@@ -224,32 +222,12 @@ class SkillService:
                 parsed = self._parse_skill_md(skill_md_path)
                 if parsed:
                     metadata = parsed['metadata']
-                    category = metadata.get('type', 'user-invocable')
-                    categories.add(category)
+                    skill_type = metadata.get('type', 'user-invocable')
+                    types.add(skill_type)
 
-            return ["全部"] + sorted(list(categories))
+            return ["全部"] + sorted(list(types))
 
-        return await asyncio.to_thread(sync_get_categories)
-
-    def _get_skill_icon(self, skill_type: str) -> str:
-        """
-        根据 skill 类型返回对应的图标
-        Args:
-            skill_type: skill 类型
-        Returns:
-            图标 emoji
-        """
-        icon_map = {
-            'user-invocable': '🛠️',
-            'tool': '🔧',
-            'agent': '🤖',
-            'workflow': '⚙️',
-            'medical': '🏥',
-            'analysis': '📊',
-            'segmentation': '🎯',
-            'default': '📦'
-        }
-        return icon_map.get(skill_type, icon_map['default'])
+        return await asyncio.to_thread(sync_get_types)
 
     def _build_file_tree(self, directory: Path, base_path: Path) -> List[Dict[str, Any]]:
         """

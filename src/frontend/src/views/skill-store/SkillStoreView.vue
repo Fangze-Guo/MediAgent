@@ -76,7 +76,8 @@
             >
               <div class="card-header">
                 <div class="skill-icon-wrapper">
-                  <span class="skill-icon">{{ skill.icon }}</span>
+                  <span v-if="isSvgIcon(getSkillIcon(skill.type))" class="skill-icon" v-html="getSkillIcon(skill.type)"></span>
+                  <span v-else class="skill-icon">{{ getSkillIcon(skill.type) }}</span>
                 </div>
                 <div class="skill-basic-info">
                   <h3 class="skill-name">{{ skill.name }}</h3>
@@ -84,13 +85,9 @@
                 </div>
               </div>
               
-              <p class="skill-description">{{ skill.description }}</p>
-              
-              <div class="card-footer">
-                <a-button class="view-btn" size="small">
-                  查看详情
-                </a-button>
-              </div>
+              <a-tooltip :title="skill.description" placement="bottomLeft">
+                <p class="skill-description">{{ skill.description }}</p>
+              </a-tooltip>
             </div>
           </div>
         </div>
@@ -105,6 +102,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { SearchOutlined, InboxOutlined } from '@ant-design/icons-vue'
 import { getSkills, getSkillProjects, type SkillInfo, type SkillProject } from '@/apis/skills'
+import { getSkillIcon, isSvgIcon } from '@/utils/skillIcon'
 
 const router = useRouter()
 const route = useRoute()
@@ -407,15 +405,6 @@ const goToSkillDetail = (id: string) => {
   -webkit-box-orient: vertical;
   overflow: hidden;
   flex: 1;
-}
-
-.card-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: auto;
-  padding-top: 12px;
-  border-top: 1px solid var(--bg-secondary);
 }
 
 .skill-category-badge {

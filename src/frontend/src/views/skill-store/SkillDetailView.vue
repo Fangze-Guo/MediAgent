@@ -23,14 +23,15 @@
         <div class="main-content">
           <!-- 技能头部信息 -->
           <div class="skill-header-section">
-            <div class="skill-icon-large">{{ skill.icon }}</div>
+            <div v-if="isSvgIcon(getSkillIcon(skill.type))" class="skill-icon-large" v-html="getSkillIcon(skill.type)"></div>
+            <div v-else class="skill-icon-large">{{ getSkillIcon(skill.type) }}</div>
             <div class="skill-header-info">
               <h1 class="skill-title">{{ skill.name }}</h1>
               <div class="skill-provider">提供者：{{ skill.author }}</div>
               <div class="skill-meta">
                 <span class="meta-item">
                   <TagOutlined />
-                  {{ skill.category }}
+                  {{ skill.type }}
                 </span>
                 <span class="meta-item">
                   <FileTextOutlined />
@@ -77,7 +78,7 @@
               </div>
               <div class="info-item">
                 <span class="info-label">类型</span>
-                <span class="info-value">{{ skill.category }}</span>
+                <span class="info-value">{{ skill.type }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">版本</span>
@@ -100,7 +101,8 @@
                 class="related-skill-item"
                 @click="goToSkill(related.id)"
               >
-                <span class="related-icon">{{ related.icon }}</span>
+                <span v-if="isSvgIcon(getSkillIcon(related.type))" class="related-icon" v-html="getSkillIcon(related.type)"></span>
+                <span v-else class="related-icon">{{ getSkillIcon(related.type) }}</span>
                 <span class="related-name">{{ related.name }}</span>
               </div>
             </div>
@@ -130,6 +132,7 @@ import {
   InboxOutlined
 } from '@ant-design/icons-vue'
 import { getSkillDetail, getSkills, type SkillInfo } from '@/apis/skills'
+import { getSkillIcon, isSvgIcon } from '@/utils/skillIcon'
 import MarkdownRenderer from '@/components/markdown/MarkdownRenderer.vue'
 import GitHubStyleFileList from '@/components/skill-store/GitHubStyleFileList.vue'
 
@@ -274,6 +277,11 @@ onMounted(() => {
   font-size: 96px;
   line-height: 1;
   flex-shrink: 0;
+}
+
+.skill-icon-large :deep(svg) {
+  width: 96px;
+  height: 96px;
 }
 
 .skill-header-info {
