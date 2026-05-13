@@ -809,8 +809,14 @@ class ClaudeAgent:
                     interrupt_task.cancel()
 
         except asyncio.CancelledError:
-            logger.warning(f"Session {captured_session_id} task was cancelled")
-            # 会话被取消时，标记所有 running/pending 任务为 failed，并清理映射表
+            # 区分两种取消原因：
+            #   1) 用户主动中断（interrupt_event.is_set()）→ 清理所有 running 任务
+            #   2) SSE 断开（刷新页面/网络抖动）→ 保留后台任务和 PID 监控
+            is_user_interrupt = interrupt_event.is_set()
+            logger.warning(
+                f"Session {captured_session_id} task was cancelled "
+                f"({'user interrupt' if is_user_interrupt else 'SSE disconnect'})"
+            )
             conversation_id = self._session_conversation_map.get(captured_session_id, "")
             if conversation_id:
                 try:
@@ -818,30 +824,38 @@ class ClaudeAgent:
                     task_manager = get_skill_task_manager()
                     cancelled_ids: set[str] = set()
                     for task in task_manager.list_tasks(conversation_id=conversation_id):
-                        if task.status == "running":
+                        if task.status != "running":
+                            continue
+                        if is_user_interrupt:
+                            # 用户主动中断：所有 running 任务标 failed
                             task_manager.mark_finished(
                                 task.task_id,
                                 success=False,
                                 error="会话被取消",
                             )
                             cancelled_ids.add(task.task_id)
-                            logger.info(f"[CLEANUP] Skill task {task.task_id} marked failed on session cancel")
-                    # 清理 _tool_task_map 中属于本次会话的条目
+                            logger.info(f"[CLEANUP] Skill task {task.task_id} marked failed on user interrupt")
+                        else:
+                            # SSE 断开：保留后台任务，PID 监控继续运行
+                            # 只清理前台任务的 _tool_task_map 映射
+                            logger.info(f"[CLEANUP] SSE disconnect: keeping background task {task.task_id} alive")
+                    # 清理 _tool_task_map 中属于已取消任务的条目
                     self._tool_task_map = {
                         k: v for k, v in self._tool_task_map.items()
                         if v not in cancelled_ids
                     }
-                    # 撤销对应的后台 PID 监控协程
-                    for tid in cancelled_ids:
-                        watcher = self._bg_watchers.pop(tid, None)
-                        if watcher and not watcher.done():
-                            watcher.cancel()
+                    if is_user_interrupt:
+                        # 仅用户主动中断时才撤销后台 PID 监控协程
+                        for tid in cancelled_ids:
+                            watcher = self._bg_watchers.pop(tid, None)
+                            if watcher and not watcher.done():
+                                watcher.cancel()
                 except Exception as e:
                     logger.warning(f"[CLEANUP] Failed to update skill tasks on cancel: {e}")
             raise
         except Exception as e:
             logger.error(f"Claude SDK query error: {e}")
-            # 异常时，标记 running/pending 任务为 failed，并清理映射表
+            # 异常时：前台任务标 failed，后台任务保留 PID 监控继续运行
             conversation_id = self._session_conversation_map.get(captured_session_id, "")
             if conversation_id:
                 try:
@@ -849,7 +863,15 @@ class ClaudeAgent:
                     task_manager = get_skill_task_manager()
                     cancelled_ids: set[str] = set()
                     for task in task_manager.list_tasks(conversation_id=conversation_id):
-                        if task.status == "running":
+                        if task.status != "running":
+                            continue
+                        # 检查是否有后台 PID 监控协程在追踪此任务
+                        has_bg_watcher = task.task_id in self._bg_watchers
+                        if has_bg_watcher:
+                            # 后台任务：PID 监控仍在运行，不标记终态
+                            logger.info(f"[CLEANUP] Exception: keeping background task {task.task_id} alive (watcher running)")
+                        else:
+                            # 前台任务：无 PID 监控，标记 failed
                             task_manager.mark_finished(
                                 task.task_id,
                                 success=False,
@@ -861,7 +883,7 @@ class ClaudeAgent:
                         k: v for k, v in self._tool_task_map.items()
                         if v not in cancelled_ids
                     }
-                    # 撤销对应的后台 PID 监控协程
+                    # 仅取消已标记 failed 的前台任务的 watcher（实际前台任务不会有 watcher）
                     for tid in cancelled_ids:
                         watcher = self._bg_watchers.pop(tid, None)
                         if watcher and not watcher.done():
