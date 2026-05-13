@@ -5,7 +5,7 @@ Code 智能体服务 - 简化版
 """
 import json
 import logging
-from typing import AsyncGenerator, List, Optional
+from typing import AsyncGenerator, List, Optional, Tuple
 
 from src.server_agent.agent.claude import get_code_agent, get_agent_type, MessageKind
 from src.server_agent.agent.claude.claude_agent import find_agent_by_session
@@ -289,6 +289,91 @@ class CodeAgentService:
             raise ValidationError(detail="无权修改此会话")
 
         return await self.mapper.update_conversation_info(conversation_id, title=title)
+
+    @handle_service_exception
+    async def export_conversation(
+        self,
+        conversation_id: str,
+        user_id: Optional[int] = None,
+        fmt: str = "markdown",
+    ) -> Tuple[str, str, str]:
+        """导出会话内容
+
+        使用与前端 getConversationDetail 相同的数据源（_parse_jsonl_messages），
+        确保导出内容与用户在聊天界面看到的一致。
+
+        Args:
+            conversation_id: 会话ID
+            user_id: 用户ID（用于权限校验）
+            fmt: 导出格式 "markdown" | "json" | "html"
+
+        Returns:
+            (渲染内容, MIME类型, 建议文件名)
+        """
+        from src.server_agent.service.clinical_tools.JsonlSessionService import get_session_service
+        from src.server_agent.service.clinical_tools.export_renderer import (
+            ExportConversation,
+            ExportMessage,
+            render_conversation,
+            get_mime_type,
+            get_file_extension,
+        )
+
+        # 1. 校验权限
+        conversation = await self.mapper.get_conversation_by_id(conversation_id)
+        if not conversation:
+            raise NotFoundError(resource_type="conversation", resource_id=conversation_id)
+
+        if user_id and conversation.user_id != user_id:
+            raise ValidationError(detail="无权导出此会话")
+
+        # 2. 获取全量消息（与前端 getConversationDetail 使用相同的数据源）
+        session_id = conversation.session_id
+        logger.info(f"[export] conversation_id={conversation_id}, session_id={session_id}")
+        if not session_id:
+            # 无 session_id 的空会话
+            export_conv = ExportConversation(
+                conversation_id=conversation_id,
+                title=conversation.title,
+                project_id=conversation.project_id,
+                created_at=conversation.created_at.isoformat() if conversation.created_at else None,
+                updated_at=conversation.updated_at.isoformat() if conversation.updated_at else None,
+            )
+            content = render_conversation(export_conv, [], fmt)
+        else:
+            session_service = get_session_service()
+            jsonl_messages, _, _ = await session_service.get_session_messages(
+                session_id=session_id,
+                project_path=None,
+                limit=None,  # 获取全部消息
+                offset=0,
+            )
+            logger.info(f"[export] jsonl_messages count={len(jsonl_messages)}")
+
+            # 3. 使用与前端相同的解析逻辑（_parse_jsonl_messages）
+            #    这里需要调用 Controller 的解析方法，但 Service 层不应依赖 Controller
+            #    所以将解析逻辑提取为独立函数供 Service 调用
+            from src.server_agent.service.clinical_tools.message_parser import parse_jsonl_messages
+            parsed_messages = parse_jsonl_messages(jsonl_messages, conversation_id)
+            logger.info(f"[export] parsed_messages count={len(parsed_messages)}")
+
+            # 4. 转换为 ExportMessage 并渲染
+            export_messages = [ExportMessage.from_message_response(m) for m in parsed_messages]
+            export_conv = ExportConversation(
+                conversation_id=conversation_id,
+                title=conversation.title,
+                project_id=conversation.project_id,
+                created_at=conversation.created_at.isoformat() if conversation.created_at else None,
+                updated_at=conversation.updated_at.isoformat() if conversation.updated_at else None,
+            )
+            content = render_conversation(export_conv, export_messages, fmt)
+
+        # 5. 生成安全文件名
+        safe_title = (conversation.title or "conversation").replace("/", "_").replace("\\", "_").replace(":", "_").replace(" ", "_")
+        filename = f"{safe_title}{get_file_extension(fmt)}"
+        mime = get_mime_type(fmt)
+
+        return content, mime, filename
 
     async def close(self):
         """关闭资源"""

@@ -14,6 +14,9 @@ from src.server_agent.model.vo.UserVO import UserVO
 from src.server_agent.service.clinical_tools.CodeAgentService import CodeAgentService
 
 
+from src.server_agent.model.entity.MessageResponse import MessageResponse
+
+
 class ChatMessage(BaseModel):
     role: str = Field(..., pattern="^(user|assistant)$", description="消息角色")
     content: str = Field(..., min_length=1, max_length=10000, description="消息内容")
@@ -50,21 +53,6 @@ class ConversationInfoResponse(BaseModel):
     last_message: Optional[str] = None
 
 
-class MessageResponse(BaseModel):
-    message_id: Optional[str] = None
-    conversation_id: Optional[str] = None
-    role: Optional[str] = None  # None 表示非消息事件（如 skill_call）
-    content: Optional[str] = None
-    thinking: Optional[str] = None
-    created_at: Optional[str] = None
-    # Skill call 字段
-    event_type: Optional[str] = None  # "skill_call" | "todo" | None
-    skill_name: Optional[str] = None
-    skill_arguments: Optional[str] = None
-    # Todo 事件字段
-    todo_list: Optional[List[dict]] = None
-
-
 class ConversationDetailResponse(BaseModel):
     conversation_id: Optional[str] = None
     session_id: Optional[str] = None
@@ -81,204 +69,13 @@ class CodeAgentController(BaseController):
         self.service = CodeAgentService()
         self._register_routes()
 
-    def _extract_text_and_thinking(self, message_content: Any) -> Tuple[str, Optional[str]]:
-        """
-        从 JSONL 的 message.content 中提取可见文本与 thinking。
-        支持 Claude 风格内容分块：text / thinking。
-        """
-        text_parts: List[str] = []
-        thinking_parts: List[str] = []
-
-        if isinstance(message_content, str):
-            if message_content.strip():
-                text_parts.append(message_content.strip())
-        elif isinstance(message_content, list):
-            for part in message_content:
-                if isinstance(part, str):
-                    if part.strip():
-                        text_parts.append(part.strip())
-                    continue
-
-                if not isinstance(part, dict):
-                    continue
-
-                part_type = part.get("type")
-                if part_type in ("text", "input_text", "output_text"):
-                    text = part.get("text")
-                    if isinstance(text, str) and text.strip():
-                        text_parts.append(text.strip())
-                elif part_type == "thinking":
-                    thinking = part.get("thinking") or part.get("text")
-                    if isinstance(thinking, str) and thinking.strip():
-                        thinking_parts.append(thinking.strip())
-
-        text = "\n".join(text_parts).strip()
-        thinking = "\n".join(thinking_parts).strip() if thinking_parts else None
-        return text, thinking
-
     def _parse_jsonl_messages(self, jsonl_messages: List[Dict[str, Any]], conversation_id: str) -> List[MessageResponse]:
         """
         将原始 JSONL 记录转换成前端可渲染消息。
-        - Skill call 组：toolUseResult.commandName 条目 + 后续连续的 isMeta/attachment 条目
-        - TodoWrite 事件：从 tool_use 类型中提取 name==TodoWrite 的 todo 列表
-        - 跳过控制类记录（queue-operation / last-prompt / attachment）
-        - 仅保留 user/assistant 消息
-        - 对同一个 message.id 的 assistant thinking/text 片段做合并
+        委托给 message_parser.parse_jsonl_messages，确保 Controller 和 Service 使用同一套解析逻辑。
         """
-        sorted_entries = sorted(jsonl_messages, key=lambda x: x.get("timestamp", ""))
-        messages_response: List[MessageResponse] = []
-        assistant_index_by_message_id: Dict[str, int] = {}
-
-        # Skill call 分组收集：跳过 isMeta/attachment 条目
-        skill_call_skipped_indices: set = set()
-
-        for i, entry in enumerate(sorted_entries):
-            entry_type = entry.get("type", "")
-            is_meta = entry.get("isMeta", False)
-            raw_message = entry.get("message", {})
-            entry_role = raw_message.get("role") if isinstance(raw_message, dict) else None
-
-            # 跳过 type=user 且 isMeta=true 的条目（这些是 skill 内部的用户输入，不对外展示）
-            if entry_role == "user" and is_meta:
-                continue
-
-            # 跳过 Monitor 工具注入的 task-notification 消息（进度通知，不是用户说的话）
-            origin = entry.get("origin", {})
-            if isinstance(origin, dict) and origin.get("kind") == "task-notification":
-                continue
-
-            # 跳过已被 skill call 收集的条目
-            if i in skill_call_skipped_indices:
-                continue
-
-            # 跳过控制类记录（但不在 skill call 组中的）
-            if entry_type in ("queue-operation", "last-prompt"):
-                continue
-
-            # ======== TodoWrite 检测（必须在 role 判断之前） ========
-            raw_message = entry.get("message", {})
-            raw_content = raw_message.get("content", []) if isinstance(raw_message, dict) else None
-
-            todo_handled = False
-            if isinstance(raw_content, list):
-                for part in raw_content:
-                    if not isinstance(part, dict):
-                        continue
-
-                    if part.get("type") == "tool_use":
-                        tool_name = part.get("name")
-                        if tool_name == "TodoWrite":
-                            todos = part.get("input", {}).get("todos", [])
-                            # 每个 TodoWrite 事件单独输出（保持 JSONL 顺序）
-                            messages_response.append(MessageResponse(
-                                message_id=entry.get("uuid") or f"todo_{i}",
-                                conversation_id=conversation_id,
-                                role=None,
-                                content=None,
-                                thinking=None,
-                                created_at=entry.get("timestamp"),
-                                event_type="todo",
-                                skill_name="TodoWrite",
-                                todo_list=todos
-                            ))
-                            todo_handled = True
-                            break
-
-            if todo_handled:
-                continue
-
-            # ======== Skill Call 检测（toolUseResult.commandName） ========
-            # 检查是否是 skill call 触发条目
-            tool_use_result = entry.get("toolUseResult", {})
-            command_name = tool_use_result.get("commandName") if isinstance(tool_use_result, dict) else None
-
-            if command_name:
-                # Skill call 组：收集后续连续的 isMeta/attachment 条目
-                group_indices = {i}
-                arguments = None
-
-                for j in range(i + 1, len(sorted_entries)):
-                    next_entry = sorted_entries[j]
-                    next_type = next_entry.get("type", "")
-                    next_is_meta = next_entry.get("isMeta", False)
-
-                    if next_is_meta or next_type == "attachment":
-                        group_indices.add(j)
-                        # 从 isMeta 条目提取 arguments（message.content 末尾的 ARGUMENTS: 行）
-                        if next_is_meta:
-                            msg_content = next_entry.get("message", {}).get("content", "")
-                            if isinstance(msg_content, str):
-                                # 查找末尾的 ARGUMENTS: 行
-                                for line in reversed(msg_content.strip().split('\n')):
-                                    if line.startswith("ARGUMENTS:"):
-                                        arguments = line[len("ARGUMENTS:"):].strip()
-                                        break
-                                    elif line.strip():
-                                        # 遇到非空的非 ARGUMENTS 行则停止查找
-                                        break
-                    else:
-                        break
-
-                skill_call_skipped_indices.update(group_indices)
-
-                # 创建 skill_call 事件
-                skill_call_event = MessageResponse(
-                    message_id=entry.get("uuid") or f"skill_{i}",
-                    conversation_id=conversation_id,
-                    role=None,
-                    content=None,
-                    thinking=None,
-                    created_at=entry.get("timestamp"),
-                    event_type="skill_call",
-                    skill_name=command_name,
-                    skill_arguments=arguments,
-                )
-                messages_response.append(skill_call_event)
-                continue
-
-            # 跳过 attachment 类型（已被 skill call 收集或独立存在）
-            if entry_type == "attachment":
-                continue
-
-            if not isinstance(raw_message, dict):
-                continue
-
-            role = raw_message.get("role")
-            if role not in ("user", "assistant"):
-                continue
-
-            content, thinking = self._extract_text_and_thinking(raw_message.get("content", ""))
-            if not content and not thinking:
-                continue
-
-            message_id = entry.get("uuid") or f"msg_{i}"
-            assistant_message_id = raw_message.get("id")
-
-            if role == "assistant" and assistant_message_id and assistant_message_id in assistant_index_by_message_id:
-                idx = assistant_index_by_message_id[assistant_message_id]
-                existing = messages_response[idx]
-
-                if content:
-                    existing.content = f"{existing.content}\n{content}".strip() if existing.content else content
-                if thinking:
-                    existing.thinking = f"{existing.thinking}\n{thinking}".strip() if existing.thinking else thinking
-                continue
-
-            parsed_message = MessageResponse(
-                message_id=message_id,
-                conversation_id=conversation_id,
-                role=role,
-                content=content,
-                thinking=thinking,
-                created_at=entry.get("timestamp"),
-            )
-            messages_response.append(parsed_message)
-
-            if role == "assistant" and assistant_message_id:
-                assistant_index_by_message_id[assistant_message_id] = len(messages_response) - 1
-
-        # 输出 Todo 事件（汇总所有状态）
-        return messages_response
+        from src.server_agent.service.clinical_tools.message_parser import parse_jsonl_messages
+        return parse_jsonl_messages(jsonl_messages, conversation_id)
 
     def _register_routes(self):
         @self.router.post("/taking")
@@ -495,6 +292,33 @@ class CodeAgentController(BaseController):
             )
 
             return ResultUtils.success(response)
+
+        @self.router.get("/conversations/{conversation_id}/export")
+        async def export_conversation(
+            conversation_id: str,
+            format: str = Query("markdown", regex="^(markdown|json|html)$", description="导出格式"),
+            user_vo: UserVO = Depends(self._get_current_user)
+        ) -> StreamingResponse:
+            """导出会话内容为 Markdown / JSON / HTML 文件"""
+            content, mime_type, filename = await self.service.export_conversation(
+                conversation_id=conversation_id,
+                user_id=user_vo.uid,
+                fmt=format,
+            )
+
+            import io
+            from urllib.parse import quote
+            # RFC 5987: 用 filename* 支持非 ASCII 文件名（中文等），同时保留 filename 作 fallback
+            encoded_filename = quote(filename, safe='')
+            ascii_fallback = encoded_filename if not filename.isascii() else filename
+            disposition = f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded_filename}"
+            return StreamingResponse(
+                io.BytesIO(content.encode("utf-8")),
+                media_type=mime_type,
+                headers={
+                    "Content-Disposition": disposition,
+                },
+            )
 
         @self.router.put("/conversations/{conversation_id}")
         async def update_conversation(
