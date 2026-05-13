@@ -5,7 +5,7 @@
       <div class="header-container">
         <a-button type="text" @click="goBack" class="back-btn">
           <LeftOutlined />
-          返回技能仓库
+          {{ t('views_SkillDetailView.backToStore') }}
         </a-button>
       </div>
     </div>
@@ -13,7 +13,7 @@
     <!-- 加载状态 -->
     <div v-if="loading" class="loading-container">
       <a-spin size="large" />
-      <p>加载中...</p>
+      <p>{{ t('views_SkillDetailView.loading') }}</p>
     </div>
 
     <!-- 技能详情内容 -->
@@ -27,7 +27,7 @@
             <div v-else class="skill-icon-large">{{ getSkillIcon(skill.type) }}</div>
             <div class="skill-header-info">
               <h1 class="skill-title">{{ skill.name }}</h1>
-              <div class="skill-provider">提供者：{{ skill.author }}</div>
+              <div class="skill-provider">{{ t('views_SkillDetailView.provider', { author: skill.author }) }}</div>
               <div class="skill-meta">
                 <span class="meta-item">
                   <TagOutlined />
@@ -35,7 +35,7 @@
                 </span>
                 <span class="meta-item">
                   <FileTextOutlined />
-                  本地技能
+                  {{ t('views_SkillDetailView.localSkill') }}
                 </span>
               </div>
             </div>
@@ -45,7 +45,7 @@
           <div class="section files-section">
             <h2 class="section-title">
               <FolderOpenOutlined style="margin-right: 8px" />
-              文件浏览
+              {{ t('views_SkillDetailView.fileBrowser') }}
             </h2>
             <div class="files-content">
               <GitHubStyleFileList :skill-id="skillId" :project-id="projectId" />
@@ -70,22 +70,22 @@
         <!-- 右侧信息栏 -->
         <div class="sidebar-content">
           <div class="info-card">
-            <h3 class="card-title">技能信息</h3>
+            <h3 class="card-title">{{ t('views_SkillDetailView.skillInfo') }}</h3>
             <div class="info-list">
               <div class="info-item">
                 <span class="info-label">ID</span>
                 <span class="info-value">{{ skill.id }}</span>
               </div>
               <div class="info-item">
-                <span class="info-label">类型</span>
+                <span class="info-label">{{ t('views_SkillDetailView.type') }}</span>
                 <span class="info-value">{{ skill.type }}</span>
               </div>
               <div class="info-item">
-                <span class="info-label">版本</span>
+                <span class="info-label">{{ t('views_SkillDetailView.version') }}</span>
                 <span class="info-value">{{ skill.version }}</span>
               </div>
               <div class="info-item">
-                <span class="info-label">作者</span>
+                <span class="info-label">{{ t('views_SkillDetailView.author') }}</span>
                 <span class="info-value">{{ skill.author }}</span>
               </div>
             </div>
@@ -93,7 +93,7 @@
 
           <!-- 相关技能 -->
           <div v-if="relatedSkills.length > 0" class="info-card">
-            <h3 class="card-title">相关技能</h3>
+            <h3 class="card-title">{{ t('views_SkillDetailView.relatedSkills') }}</h3>
             <div class="related-skills">
               <div
                 v-for="related in relatedSkills"
@@ -114,8 +114,8 @@
     <!-- 错误状态 -->
     <div v-else class="error-container">
       <InboxOutlined style="font-size: 64px; color: #dadce0" />
-      <p class="error-text">技能不存在</p>
-      <a-button type="primary" @click="goBack">返回</a-button>
+      <p class="error-text">{{ t('views_SkillDetailView.skillNotFound') }}</p>
+      <a-button type="primary" @click="goBack">{{ t('views_SkillDetailView.back') }}</a-button>
     </div>
   </div>
 </template>
@@ -123,6 +123,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { message } from 'ant-design-vue'
 import {
   LeftOutlined,
@@ -138,6 +139,7 @@ import GitHubStyleFileList from '@/components/skill-store/GitHubStyleFileList.vu
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 
 // 从路由 query 读取 project_id
 const projectId = computed(() => (route.query.project_id as string) || undefined)
@@ -161,8 +163,8 @@ const loadSkillDetail = async () => {
     const allSkills = await getSkills(undefined, undefined, projectId.value)
     relatedSkills.value = allSkills.filter(s => s.id !== skillId.value).slice(0, 5)
   } catch (error) {
-    console.error('加载技能详情失败', error)
-    message.error('加载技能详情失败')
+    console.error(t('views_SkillDetailView.loadDetailFailed'), error)
+    message.error(t('views_SkillDetailView.loadDetailFailed'))
   } finally {
     loading.value = false
   }

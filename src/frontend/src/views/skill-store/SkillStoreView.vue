@@ -5,13 +5,13 @@
       <div class="header-container">
         <div class="store-logo">
           <span class="logo-icon">🛠️</span>
-          <span class="logo-text">技能仓库</span>
+          <span class="logo-text">{{ t('views_SkillStoreView.title') }}</span>
         </div>
         
         <div class="search-box">
           <a-input-search
             v-model:value="searchKeyword"
-            placeholder="搜索技能名称或描述"
+            :placeholder="t('views_SkillStoreView.searchPlaceholder')"
             size="large"
             @search="handleSearch"
             class="search-input"
@@ -31,7 +31,7 @@
           :class="['category-tab', { active: selectedProjectId === undefined }]"
           @click="selectProject(undefined)"
         >
-          默认技能库
+          {{ t('views_SkillStoreView.defaultCategory') }}
         </div>
         <div
           v-for="proj in projects"
@@ -50,21 +50,21 @@
         <!-- 加载状态 -->
         <div v-if="loading" class="loading-state">
           <a-spin size="large" />
-          <p>加载中...</p>
+          <p>{{ t('views_SkillStoreView.loading') }}</p>
         </div>
 
         <!-- 空状态 -->
         <div v-else-if="skills.length === 0" class="empty-state">
           <InboxOutlined style="font-size: 64px; color: #dadce0" />
-          <p class="empty-text">未找到匹配的技能</p>
-          <p class="empty-hint">尝试调整搜索条件或选择其他分类</p>
+          <p class="empty-text">{{ t('views_SkillStoreView.emptyText') }}</p>
+          <p class="empty-hint">{{ t('views_SkillStoreView.emptyHint') }}</p>
         </div>
 
         <!-- 技能网格 -->
         <div v-else>
           <div class="section-header">
             <h2 class="section-title">{{ currentProjectName }}</h2>
-            <span class="results-count">共 {{ skills.length }} 个技能</span>
+            <span class="results-count">{{ t('views_SkillStoreView.resultsCount', { count: skills.length }) }}</span>
           </div>
           
           <div class="skills-grid">
@@ -99,6 +99,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { message } from 'ant-design-vue'
 import { SearchOutlined, InboxOutlined } from '@ant-design/icons-vue'
 import { getSkills, getSkillProjects, type SkillInfo, type SkillProject } from '@/apis/skills'
@@ -106,6 +107,7 @@ import { getSkillIcon, isSvgIcon } from '@/utils/skillIcon'
 
 const router = useRouter()
 const route = useRoute()
+const { t } = useI18n()
 
 // 响应式状态
 const loading = ref(true)
@@ -116,7 +118,7 @@ const searchKeyword = ref('')
 
 // 当前项目显示名
 const currentProjectName = computed(() => {
-  if (!selectedProjectId.value) return '默认技能库'
+  if (!selectedProjectId.value) return t('views_SkillStoreView.defaultCategory')
   return projects.value.find(p => p.id === selectedProjectId.value)?.name ?? selectedProjectId.value
 })
 
@@ -135,7 +137,7 @@ const loadProjects = async () => {
   try {
     projects.value = await getSkillProjects()
   } catch (error) {
-    console.error('加载项目列表失败', error)
+    console.error(t('views_SkillStoreView.loadProjectsFailed'), error)
   }
 }
 
@@ -146,8 +148,8 @@ const loadSkills = async () => {
     const data = await getSkills(undefined, searchKeyword.value || undefined, selectedProjectId.value)
     skills.value = data
   } catch (error) {
-    console.error('加载技能列表失败', error)
-    message.error('加载技能列表失败')
+    console.error(t('views_SkillStoreView.loadSkillsFailed'), error)
+    message.error(t('views_SkillStoreView.loadSkillsFailed'))
   } finally {
     loading.value = false
   }
