@@ -902,7 +902,8 @@
       }
     },
     "views_CodeAgentView": {
-      "title": "GL-NICT 智能体",
+      "title": "医学智能体",
+      "titleGlNict": "GL-NICT 智能体",
       "placeholder": "功能开发中，敬请期待",
       "conversationList": "会话列表",
       "newSession": "新建会话",
@@ -970,8 +971,36 @@
         "interruptedConv": "已中断对话",
         "interruptFailed": "中断失败",
         "interruptConvFailed": "中断对话失败",
-        "interruptNoSession": "没有正在进行的对话"
+        "interruptNoSession": "没有正在进行的对话",
+        "exportSuccess": "导出成功",
+        "exportFailed": "导出失败"
       }
+    },
+    "views_SkillStoreView": {
+      "title": "技能仓库",
+      "searchPlaceholder": "搜索技能名称或描述",
+      "defaultCategory": "默认技能库",
+      "loading": "加载中...",
+      "emptyText": "未找到匹配的技能",
+      "emptyHint": "尝试调整搜索条件或选择其他分类",
+      "resultsCount": "共 {count} 个技能",
+      "loadProjectsFailed": "加载项目列表失败",
+      "loadSkillsFailed": "加载技能列表失败"
+    },
+    "views_SkillDetailView": {
+      "backToStore": "返回技能仓库",
+      "loading": "加载中...",
+      "provider": "提供者：{author}",
+      "localSkill": "本地技能",
+      "fileBrowser": "文件浏览",
+      "skillInfo": "技能信息",
+      "type": "类型",
+      "version": "版本",
+      "author": "作者",
+      "relatedSkills": "相关技能",
+      "skillNotFound": "技能不存在",
+      "back": "返回",
+      "loadDetailFailed": "加载技能详情失败"
     },
     "views_RagKnowledgeBaseView": {
       "title": "RAG 知识库",

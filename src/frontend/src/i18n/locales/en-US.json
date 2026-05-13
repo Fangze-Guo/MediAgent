@@ -959,7 +959,8 @@
       }
     },
     "views_CodeAgentView": {
-      "title": "GL-NICT Agent",
+      "title": "Medical AI Agent",
+      "titleGlNict": "GL-NICT Agent",
       "placeholder": "Feature under development, stay tuned",
       "conversationList": "Conversation List",
       "newSession": "New Session",
@@ -1027,8 +1028,36 @@
         "interruptedConv": "Conversation interrupted",
         "interruptFailed": "Interruption failed",
         "interruptConvFailed": "Failed to interrupt conversation",
-        "interruptNoSession": "No active conversation to interrupt"
+        "interruptNoSession": "No active conversation to interrupt",
+        "exportSuccess": "Export successful",
+        "exportFailed": "Export failed"
       }
+    },
+    "views_SkillStoreView": {
+      "title": "Skill Store",
+      "searchPlaceholder": "Search skill name or description",
+      "defaultCategory": "Default Skills",
+      "loading": "Loading...",
+      "emptyText": "No matching skills found",
+      "emptyHint": "Try adjusting search criteria or selecting another category",
+      "resultsCount": "{count} skills",
+      "loadProjectsFailed": "Failed to load project list",
+      "loadSkillsFailed": "Failed to load skill list"
+    },
+    "views_SkillDetailView": {
+      "backToStore": "Back to Skill Store",
+      "loading": "Loading...",
+      "provider": "Provider: {author}",
+      "localSkill": "Local Skill",
+      "fileBrowser": "File Browser",
+      "skillInfo": "Skill Info",
+      "type": "Type",
+      "version": "Version",
+      "author": "Author",
+      "relatedSkills": "Related Skills",
+      "skillNotFound": "Skill not found",
+      "back": "Back",
+      "loadDetailFailed": "Failed to load skill detail"
     },
     "views_RagKnowledgeBaseView": {
       "title": "RAG Knowledge Base",
