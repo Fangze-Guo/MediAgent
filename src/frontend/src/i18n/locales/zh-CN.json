@@ -725,8 +725,9 @@
       "loadFailed": "获取文件列表失败"
     },
   "views_HomeView": {
-      "welcome": "欢迎使用 MediAgent",
-      "subtitle": "输入你的问题，开始与助手对话。",
+      "welcome": "欢迎使用 MedWiser Agent",
+      "subtitle": "（输入你的问题，开始与助手对话）",
+      "description": "MedWiser Agent 是面向多模态医学影像与临床科研的智能体应用平台，聚焦疾病精准诊疗、AI 智能分析与科研知识赋能。以医学智慧为核心，聚合专业模型与知识库，为科研工作者、临床医师提供智能研判、高效分析、科研加速的一站式医学 AI 智能服务。",
       "startConversation": "开始对话",
       "programming": "💻 编程",
       "writing": "✍️ 写作助手",
@@ -903,7 +904,7 @@
     },
     "views_CodeAgentView": {
       "title": "医学智能体",
-      "titleGlNict": "GL-NICT 智能体",
+      "titleGlNict": "NICE-BCX",
       "placeholder": "功能开发中，敬请期待",
       "conversationList": "会话列表",
       "newSession": "新建会话",
@@ -927,7 +928,7 @@
       "inputHint": "Enter 发送，Shift+Enter 换行",
       "welcomeTitle": "医学智能体",
       "welcomeSubtitle": "专业的医学 AI 助手，助力您的医学研究与临床工作",
-      "welcomeSubtitleGlNict": "肺癌新辅助治疗影像分析与 MPR 预测助手",
+      "welcomeSubtitleGlNict": "肺癌新辅助免疫联合化疗疗效评估助手",
       "unnamedConversation": "未命名会话",
       "featureMedical": "医学咨询",
       "featureMedicalDesc": "专业医学问题解答",
@@ -935,6 +936,13 @@
       "featureDataDesc": "导入并分析医学数据",
       "featureSkill": "医学技能",
       "featureSkillDesc": "调用专业医学工具",
+      "suggestedPrompt1": "数据加载",
+      "suggestedPrompt2": "肺/肿瘤分割",
+      "suggestedPrompt3": "脊柱分割",
+      "suggestedPrompt4": "体脂成分分割",
+      "suggestedPrompt5": "体成分量化",
+      "suggestedPrompt6": "肿瘤量化",
+      "suggestedPrompt7": "疗效评估",
       "taskManager": {
         "title": "任务管理器",
         "clearConfirm": "确认要清空所有已完成/失败的任务吗？运行中的任务不会被清理。",
@@ -1141,7 +1149,7 @@
       },
       "projects": {
         "glNict": {
-          "name": "GL-NICT",
+          "name": "NICE-BCX",
           "description": "新辅助免疫治疗智能诊疗系统"
         }
       },

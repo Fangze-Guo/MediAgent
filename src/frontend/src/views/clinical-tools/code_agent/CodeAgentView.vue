@@ -408,22 +408,16 @@
               <p class="welcome-subtitle" v-if="currentProjectId === 'gl-nict'">{{ t('views_CodeAgentView.welcomeSubtitleGlNict') }}</p>
               <p class="welcome-subtitle" v-else>{{ t('views_CodeAgentView.welcomeSubtitle') }}</p>
 
-              <div class="feature-cards">
-                <div class="feature-card" @click="startNewConversation">
-                  <div class="feature-icon">🩺</div>
-                  <div class="feature-title">{{ t('views_CodeAgentView.featureMedical') }}</div>
-                  <div class="feature-desc">{{ t('views_CodeAgentView.featureMedicalDesc') }}</div>
-                </div>
-                <div class="feature-card" @click="startNewConversation">
-                  <div class="feature-icon">📊</div>
-                  <div class="feature-title">{{ t('views_CodeAgentView.featureData') }}</div>
-                  <div class="feature-desc">{{ t('views_CodeAgentView.featureDataDesc') }}</div>
-                </div>
-                <div class="feature-card" @click="goToSkillStore">
-                  <div class="feature-icon">🔬</div>
-                  <div class="feature-title">{{ t('views_CodeAgentView.featureSkill') }}</div>
-                  <div class="feature-desc">{{ t('views_CodeAgentView.featureSkillDesc') }}</div>
-                </div>
+              <div class="suggested-chain">
+                <template v-for="(prompt, index) in glNictSuggestedPrompts" :key="index">
+                  <div class="chain-item" @click="handleSuggestedPrompt(prompt)">
+                    <div class="chain-circle">
+                      <span class="chain-icon">{{ prompt.icon }}</span>
+                    </div>
+                    <span class="chain-label">{{ prompt.text }}</span>
+                  </div>
+                  <div v-if="index < glNictSuggestedPrompts.length - 1" class="chain-connector"></div>
+                </template>
               </div>
             </div>
           </div>
@@ -466,7 +460,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
 import {
   PlusOutlined,
@@ -508,7 +502,6 @@ import {
 
 const { t } = useI18n()
 const route = useRoute()
-const router = useRouter()
 
 // 根据当前路由判断项目标识
 const currentProjectId = computed(() => {
@@ -1395,11 +1388,19 @@ const handleSearch = () => {
   // 搜索由computed自动处理
 }
 
-// 跳转到技能仓库（携带 project_id）
-const goToSkillStore = () => {
-  const query = currentProjectId.value ? { project_id: currentProjectId.value } : {}
-  router.push({ path: '/skill-store', query })
-}
+// GL-NICT 建议提示
+const glNictSuggestedPrompts = computed(() => [
+  { icon: '1', text: t('views_CodeAgentView.suggestedPrompt1') },
+  { icon: '2', text: t('views_CodeAgentView.suggestedPrompt2') },
+  { icon: '3', text: t('views_CodeAgentView.suggestedPrompt3') },
+  { icon: '4', text: t('views_CodeAgentView.suggestedPrompt4') },
+  { icon: '5', text: t('views_CodeAgentView.suggestedPrompt5') },
+  { icon: '6', text: t('views_CodeAgentView.suggestedPrompt6') },
+  { icon: '7', text: t('views_CodeAgentView.suggestedPrompt7') },
+])
+
+// 点击建议提示（纯展示，无操作）
+const handleSuggestedPrompt = (_prompt: { icon: string; text: string }) => {}
 
 // 开始新对话 - 调用 API 创建会话
 const startNewConversation = async () => {
@@ -2306,9 +2307,9 @@ onUnmounted(() => {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  padding: 60px 40px;
+  padding: 80px 40px;
   min-height: 0;
-  background: var(--bg-primary);
+  background: linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
 }
 
 .new-session-welcome {
@@ -2322,78 +2323,108 @@ onUnmounted(() => {
 }
 
 .welcome-icon {
-  width: 80px;
-  height: 80px;
-  border-radius: 20px;
-  background: linear-gradient(135deg, #1890ff 0%, #0050b3 100%);
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #1890ff 0%, #722ed1 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 40px;
+  font-size: 36px;
   color: #fff;
-  margin-bottom: 24px;
-  box-shadow: 0 8px 24px rgba(24, 144, 255, 0.3);
+  margin-bottom: 28px;
+  box-shadow: 0 8px 32px rgba(24, 144, 255, 0.25);
 }
 
 .welcome-title {
-  font-size: 32px;
-  font-weight: 600;
+  font-size: 28px;
+  font-weight: 700;
   color: var(--text-primary);
-  margin: 0 0 12px 0;
+  margin: 0 0 8px 0;
   letter-spacing: -0.5px;
 }
 
 .welcome-subtitle {
-  font-size: 16px;
+  font-size: 15px;
   color: var(--text-secondary);
-  margin: 0 0 48px 0;
+  margin: 0 0 56px 0;
   line-height: 1.6;
+  font-weight: 400;
 }
 
-.feature-cards {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 24px;
+.suggested-chain {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
   width: 100%;
+  max-width: 700px;
+  justify-content: center;
 }
 
-.feature-card {
-  background: var(--bg-primary);
-  border-radius: 12px;
-  padding: 32px 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  transition: all 0.3s ease;
-  border: 1px solid var(--border-color-light);
+.chain-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
   cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   user-select: none;
+  flex-shrink: 0;
+  width: 44px;
 }
 
-.feature-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+.chain-item:hover .chain-circle {
   border-color: #1890ff;
+  background: linear-gradient(135deg, #e6f7ff 0%, #f0f5ff 100%);
+  box-shadow: 0 4px 16px rgba(24, 144, 255, 0.25);
+  transform: scale(1.1);
 }
 
-.feature-card:active {
-  transform: translateY(-2px);
+.chain-item:hover .chain-label {
+  color: #1890ff;
+  font-weight: 500;
 }
 
-.feature-icon {
-  font-size: 40px;
-  margin-bottom: 16px;
+.chain-item:active .chain-circle {
+  transform: scale(0.95);
 }
 
-.feature-title {
+.chain-circle {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--bg-primary);
+  border: 2px solid #d9d9d9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.chain-icon {
   font-size: 18px;
   font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 8px;
+  color: #1890ff;
 }
 
-.feature-desc {
-  font-size: 14px;
+.chain-label {
+  font-size: 12px;
   color: var(--text-secondary);
+  text-align: center;
+  white-space: nowrap;
   line-height: 1.5;
+  transition: all 0.25s ease;
+  font-weight: 400;
+}
+
+.chain-connector {
+  width: 40px;
+  height: 2px;
+  background: linear-gradient(90deg, #d9d9d9 0%, #bfbfbf 100%);
+  margin-top: 22px;
+  flex-shrink: 0;
+  border-radius: 1px;
 }
 
 .patient-info {

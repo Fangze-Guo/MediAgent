@@ -1,19 +1,23 @@
 <template>
   <div class="home">
     <div class="hero">
-      <h1 class="title">{{ t('views_HomeView.welcome') }}</h1>
-      <p class="subtitle">{{ t('views_HomeView.subtitle') }}</p>
-      <div class="start-box">
-        <a-textarea
-            v-model:value="draft"
-            :auto-size="{ minRows: 2, maxRows: 6 }"
-            :placeholder="t('views_HomeView.placeholder')"
-            class="start-input"
-            @keydown="handleKeyDown"
-        />
-        <a-button type="primary" class="start-btn" :loading="creating" @click="startConversation">{{ t('views_HomeView.startConversation') }}</a-button>
+      <div class="hero-header">
+        <h1 class="title">{{ t('views_HomeView.welcome') }}</h1>
+        <p class="subtitle">{{ t('views_HomeView.subtitle') }}</p>
+        <p class="description">{{ t('views_HomeView.description') }}</p>
       </div>
-      <!-- 技能按钮区域 -->
+      <div class="hero-actions">
+        <div class="start-box">
+          <a-textarea
+              v-model:value="draft"
+              :auto-size="{ minRows: 2, maxRows: 6 }"
+              :placeholder="t('views_HomeView.placeholder')"
+              class="start-input"
+              @keydown="handleKeyDown"
+          />
+          <a-button type="primary" class="start-btn" :loading="creating" @click="startConversation">{{ t('views_HomeView.startConversation') }}</a-button>
+        </div>
+      </div>
       <div class="skills-container">
         <a-button type="default" class="skill-btn">
           <span class="skill-icon">{{ t('views_HomeView.programming') }}</span>
@@ -131,14 +135,34 @@ const startConversation = async () => {
 }
 
 .title {
-  margin: 0 0 8px 0;
-  font-size: 28px;
+  margin: 0 0 10px 0;
+  font-size: 32px;
+  font-weight: 600;
   color: var(--text-primary);
+  letter-spacing: -0.5px;
 }
 
 .subtitle {
-  margin: 0 0 24px 0;
+  margin: 0 0 40px 0;
+  color: var(--text-tertiary);
+  font-size: 14px;
+}
+
+.description {
+  margin: 0 auto 32px;
   color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.7;
+  max-width: 920px;
+  text-align: center;
+}
+
+.hero-header {
+  margin-bottom: 24px;
+}
+
+.hero-actions {
+  margin-bottom: 32px;
 }
 
 .start-box {
@@ -158,9 +182,9 @@ const startConversation = async () => {
 .skills-container {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 10px;
   justify-content: center;
-  margin-top: 40px;
+  margin-top: 32px;
 }
 
 .skill-btn {

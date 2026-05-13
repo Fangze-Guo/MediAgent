@@ -1279,14 +1279,14 @@ def get_code_agent(project_config: Optional[ProjectConfig] = None) -> ClaudeAgen
         pid = project_config.project_id
         if pid not in _agent_instances:
             _agent_instances[pid] = ClaudeAgent(
-                permission_mode="default",
+                permission_mode="bypassPermissions",
                 project_config=project_config,
             )
         return _agent_instances[pid]
 
     # 向后兼容：无 project_config 时返回默认实例
     if _default_agent is None:
-        _default_agent = ClaudeAgent(permission_mode="default")
+        _default_agent = ClaudeAgent(permission_mode="bypassPermissions")
     return _default_agent
 
 

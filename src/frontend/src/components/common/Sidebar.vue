@@ -3,7 +3,7 @@
     <!-- ==================== 顶部标题区 ==================== -->
     <div class="sidebar-header">
       <img src="/MediAgent.png" alt="MediAgent Logo" class="logo-image" />
-      <h3>MediAgent</h3>
+      <h3>MedWiser Agent</h3>
     </div>
 
     <!-- ==================== 主内容区 ==================== -->
