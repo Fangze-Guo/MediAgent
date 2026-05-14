@@ -5,6 +5,8 @@ Code 智能体服务 - 简化版
 """
 import json
 import logging
+from datetime import datetime
+from pathlib import Path
 from typing import AsyncGenerator, List, Optional, Tuple
 
 from src.server_agent.agent.claude import get_code_agent, get_agent_type, MessageKind
@@ -87,6 +89,13 @@ class CodeAgentService:
 
         # 根据 project_id 获取对应的隔离 Agent
         code_agent = self._get_agent_for_project(existing.project_id)
+
+        # 检查 session 是否已死亡（进程崩溃/被 kill），避免 resume 死进程导致资源泄露
+        if sdk_session_id and hasattr(code_agent, '_dead_sessions') and sdk_session_id in code_agent._dead_sessions:
+            logger.warning(f"[CodeAgentService] Session {sdk_session_id} is dead, clearing DB session_id to force new session")
+            await self.mapper.update_conversation_session_id(conversation_id, None)
+            code_agent._dead_sessions.discard(sdk_session_id)
+            sdk_session_id = None
 
         # 如果没有 session_id，说明是首次发消息，需要调用 SDK 获取
         if not sdk_session_id:
@@ -263,7 +272,7 @@ class CodeAgentService:
         conversation_id: str,
         user_id: Optional[int] = None
     ) -> bool:
-        """删除会话"""
+        """删除会话（同时清理 SDK jsonl 文件和 agent client）"""
         conversation = await self.mapper.get_conversation_by_id(conversation_id)
         if not conversation:
             raise NotFoundError(resource_type="conversation", resource_id=conversation_id)
@@ -271,6 +280,78 @@ class CodeAgentService:
         if user_id and conversation.user_id != user_id:
             raise ValidationError(detail="无权删除此会话")
 
+        sdk_session_id = conversation.session_id
+        project_id = conversation.project_id
+
+        # 1. 清理 agent 中的 client 和映射
+        code_agent = self._get_agent_for_project(project_id)
+        if sdk_session_id:
+            await code_agent.close_client(sdk_session_id)
+            code_agent._session_conversation_map.pop(sdk_session_id, None)
+            if hasattr(code_agent, '_dead_sessions'):
+                code_agent._dead_sessions.discard(sdk_session_id)
+
+            # 清理 _tool_task_map 中属于该 session 的条目
+            code_agent._tool_task_map = {
+                k: v for k, v in code_agent._tool_task_map.items()
+                if not k.startswith(sdk_session_id)
+            }
+
+        # 清理 SkillTaskManager 内存中属于该会话的任务
+        try:
+            from src.server_agent.service.SkillTaskManager import get_skill_task_manager
+            task_manager = get_skill_task_manager()
+            for task in task_manager.list_tasks(conversation_id=conversation_id):
+                # 取消后台 watcher
+                watcher = code_agent._bg_watchers.pop(task.task_id, None)
+                if watcher and not watcher.done():
+                    watcher.cancel()
+                # 清理内存中的任务
+                task_manager._tasks.pop(task.task_id, None)
+        except Exception as e:
+            logger.warning(f"[CodeAgentService] Failed to cleanup skill tasks for conversation {conversation_id}: {e}")
+
+        # 2. 删除 SDK 本地 jsonl 会话文件及空目录
+        if sdk_session_id:
+            try:
+                home_dir = Path.home()
+                # SDK jsonl 路径规则：~/.claude/projects/-<encoded_path>/<session_id>.jsonl
+                # encoded_path: 将项目 base_dir 的 / 替换为 -，前面加 -
+                if project_id:
+                    config = get_project_config(project_id)
+                    if config and config.base_dir:
+                        encoded = str(config.base_dir).replace("/", "-")
+                        project_dir = home_dir / ".claude" / "projects" / encoded
+                        jsonl_path = project_dir / f"{sdk_session_id}.jsonl"
+                        logger.info(f"[CodeAgentService] Trying to delete jsonl: {jsonl_path} (exists={jsonl_path.exists()})")
+                        if jsonl_path.exists():
+                            jsonl_path.unlink()
+                            logger.info(f"[CodeAgentService] Deleted jsonl: {jsonl_path}")
+
+                        # 清理以 session_id 命名的子目录（SDK 有时会创建此类目录）
+                        session_dir = project_dir / sdk_session_id
+                        if session_dir.is_dir():
+                            import shutil
+                            shutil.rmtree(session_dir, ignore_errors=True)
+                            logger.info(f"[CodeAgentService] Deleted session dir: {session_dir}")
+
+                        # 如果项目目录为空则删除
+                        try:
+                            if project_dir.is_dir() and not any(project_dir.iterdir()):
+                                project_dir.rmdir()
+                                logger.info(f"[CodeAgentService] Deleted empty project dir: {project_dir}")
+                        except Exception:
+                            pass
+                    else:
+                        logger.warning(f"[CodeAgentService] No project config for project_id={project_id}, cannot locate jsonl")
+                else:
+                    logger.warning(f"[CodeAgentService] No project_id for conversation {conversation_id}, cannot locate jsonl")
+            except Exception as e:
+                logger.warning(f"[CodeAgentService] Failed to delete jsonl for session {sdk_session_id}: {e}")
+        else:
+            logger.info(f"[CodeAgentService] No sdk_session_id for conversation {conversation_id}, skipping jsonl cleanup")
+
+        # 3. 删除 DB 记录
         return await self.mapper.delete_conversation(conversation_id)
 
     @handle_service_exception
@@ -368,9 +449,11 @@ class CodeAgentService:
             )
             content = render_conversation(export_conv, export_messages, fmt)
 
-        # 5. 生成安全文件名
+        # 5. 生成安全文件名（包含用户ID和导出时间戳）
         safe_title = (conversation.title or "conversation").replace("/", "_").replace("\\", "_").replace(":", "_").replace(" ", "_")
-        filename = f"{safe_title}{get_file_extension(fmt)}"
+        user_tag = f"uid{user_id}" if user_id else "unknown"
+        export_ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+        filename = f"{safe_title}_{user_tag}_{export_ts}{get_file_extension(fmt)}"
         mime = get_mime_type(fmt)
 
         return content, mime, filename

@@ -117,7 +117,7 @@ def _format_timestamp(ts) -> str:
             # JSONL 中 timestamp 是毫秒
             dt = datetime.fromtimestamp(ts / 1000 if ts > 1e12 else ts)
         elif isinstance(ts, str):
-            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone()
         else:
             return str(ts)
         return dt.strftime("%Y-%m-%d %H:%M:%S")
@@ -241,8 +241,8 @@ def render_json(conv: ExportConversation, messages: List[ExportMessage]) -> str:
             "conversation_id": conv.conversation_id,
             "title": conv.title,
             "project_id": conv.project_id,
-            "created_at": conv.created_at,
-            "updated_at": conv.updated_at,
+            "created_at": _format_timestamp(conv.created_at),
+            "updated_at": _format_timestamp(conv.updated_at),
         },
         "messages": [],
     }
@@ -252,7 +252,7 @@ def render_json(conv: ExportConversation, messages: List[ExportMessage]) -> str:
             "id": msg.message_id,
             "conversation_id": msg.conversation_id,
             "role": msg.role,
-            "timestamp": msg.created_at,
+            "timestamp": _format_timestamp(msg.created_at),
         }
         if msg.content:
             entry["content"] = msg.content
@@ -273,9 +273,9 @@ def render_json(conv: ExportConversation, messages: List[ExportMessage]) -> str:
         if msg.skill_progress is not None:
             entry["skill_progress"] = msg.skill_progress
         if msg.skill_started_at:
-            entry["skill_started_at"] = msg.skill_started_at
+            entry["skill_started_at"] = _format_timestamp(msg.skill_started_at)
         if msg.skill_finished_at:
-            entry["skill_finished_at"] = msg.skill_finished_at
+            entry["skill_finished_at"] = _format_timestamp(msg.skill_finished_at)
         if msg.skill_elapsed_seconds is not None:
             entry["skill_elapsed_seconds"] = msg.skill_elapsed_seconds
         if msg.skill_error:

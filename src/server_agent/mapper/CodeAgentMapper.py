@@ -311,7 +311,7 @@ class CodeAgentMapper:
 
     async def delete_conversation(self, conversation_id: str) -> bool:
         """
-        删除会话（级联删除消息）
+        删除会话（级联删除关联的 skill_tasks）
 
         Args:
             conversation_id: 会话ID
@@ -322,6 +322,12 @@ class CodeAgentMapper:
         pool = await self._get_pool()
 
         async with pool.acquire() as conn:
+            # 先删关联的 skill_tasks
+            await conn.execute("""
+                DELETE FROM skill_tasks
+                WHERE conversation_id = $1
+            """, conversation_id)
+
             result = await conn.execute("""
                 DELETE FROM medical_conversations
                 WHERE conversation_id = $1

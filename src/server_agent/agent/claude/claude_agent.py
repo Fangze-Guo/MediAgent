@@ -345,6 +345,22 @@ class ClaudeAgent:
         # 会话取消/异常时可撤销，防止僵尸 watcher 改写已终态的任务
         self._bg_watchers: dict[str, asyncio.Task] = {}
 
+        # Skill 脚本映射缓存：{脚本文件名: skill_name}
+        # 用于二级检测：当命令中不含 .claude/skills/ 路径时，通过脚本名反查 skill
+        # 只扫描 skill 目录顶层的 .py/.sh，不递归子目录
+        self._skill_script_map: dict[str, str] = {}
+        if project_config:
+            skills_dir = project_config.base_dir / ".claude" / "skills"
+            if skills_dir.is_dir():
+                for skill_dir in skills_dir.iterdir():
+                    if not skill_dir.is_dir():
+                        continue
+                    skill_name = skill_dir.name
+                    for script in skill_dir.iterdir():
+                        if script.is_file() and script.suffix in (".py", ".sh"):
+                            self._skill_script_map[script.name] = skill_name
+                logger.info(f"[ClaudeAgent] Skill script map: {len(self._skill_script_map)} entries")
+
     async def _dummy_hook(self, input_data: Any, tool_use_id: Any, context: Any):
         """
         Dummy hook - 官方文档要求的 Python workaround：保持流打开，才能触发 can_use_tool
@@ -505,6 +521,16 @@ class ClaudeAgent:
                 detected_skill = skill_candidate
                 logger.info(f"[PERMISSION] Skill detected: '{detected_skill}' (background={run_in_background})")
 
+            # ===== 二级检测：通过脚本名反查 skill（兜底 cd 省略的情况） =====
+            if not detected_skill and self._skill_script_map:
+                m = re.search(r'(?:python[0-9.]*|bash|sh)\s+(\S+\.(?:py|sh))', command)
+                if m:
+                    script_path = m.group(1)
+                    script_name = Path(script_path).name  # 取文件名，如 scripts/run_xxx.py → run_xxx.py
+                    detected_skill = self._skill_script_map.get(script_name)
+                    if detected_skill:
+                        logger.info(f"[PERMISSION] Skill detected by script mapping: '{detected_skill}' (script={script_name})")
+
             if detected_skill:
                 skill_name = detected_skill
 
@@ -554,6 +580,35 @@ class ClaudeAgent:
                 # 放行，让 CC 自己执行
                 return PermissionResultAllow()
 
+        # ===== 低风险 Bash 命令自动放行（已注释：全部放行后此段冗余） =====
+        # if tool_name == "Bash":
+        #     command = input_data.get("command", "") if isinstance(input_data, dict) else ""
+        #     import re as _re
+        #     _LOW_RISK_PATTERNS = [
+        #         r'^\s*ls\b', r'^\s*mkdir\b', r'^\s*cat\b', r'^\s*head\b',
+        #         r'^\s*tail\b', r'^\s*find\b', r'^\s*pwd\b', r'^\s*echo\b',
+        #         r'^\s*wc\b', r'^\s*du\b', r'^\s*tree\b', r'^\s*stat\b',
+        #         r'^\s*file\b', r'^\s*which\b', r'^\s*env\b', r'^\s*printenv\b',
+        #         r'^\s*grep\b', r'^\s*sort\b', r'^\s*uniq\b', r'^\s*cut\b',
+        #         r'^\s*awk\b', r'^\s*sed\b', r'^\s*tr\b', r'^\s*xargs\b',
+        #         r'^\s*diff\b', r'^\s*lsblk\b', r'^\s*df\b', r'^\s*free\b',
+        #         r'^\s*nproc\b', r'^\s*uname\b', r'^\s*date\b', r'^\s*whoami\b',
+        #     ]
+        #     _DANGEROUS_WRITE = re.compile(r'>(?!>&|/dev/null)|>>')
+        #     _PIPE_SPLIT = _re.compile(r'\|(?!\|)')
+        #     def _is_low_risk_cmd(cmd: str) -> bool:
+        #         cmd = cmd.strip()
+        #         cmd_cleaned = _re.sub(r'\s*\d*>/?\S*\s*$', '', cmd).strip()
+        #         for pat in _LOW_RISK_PATTERNS:
+        #             if _re.match(pat, cmd_cleaned):
+        #                 return True
+        #         return False
+        #     if not _DANGEROUS_WRITE.search(command):
+        #         segments = _PIPE_SPLIT.split(command)
+        #         if all(_is_low_risk_cmd(seg) for seg in segments):
+        #             logger.info(f"[PERMISSION] Low-risk command auto-allowed: {command[:80]}")
+        #             return PermissionResultAllow()
+
         # ===== MVP-2: 工具白名单 + 路径校验 =====
         if self._tool_policy:
             allowed, deny_reason = self._tool_policy.validate_tool_call(
@@ -563,62 +618,52 @@ class ClaudeAgent:
                 logger.warning(f"[PERMISSION] ToolPolicy denied: {deny_reason}")
                 return PermissionResultDeny(message=deny_reason or "工具调用被拒绝")
 
-        # 从 context 中获取 session_id
-        session_id = None
-        if hasattr(context, 'session_id'):
-            session_id = context.session_id
-        elif isinstance(context, dict):
-            session_id = context.get("sessionId") or context.get("session_id")
+        # ===== 全部放行（跳过用户确认） =====
+        logger.info(f"[PERMISSION] Auto-allowed tool: {tool_name}")
+        return PermissionResultAllow(updated_input=input_data)
 
-        if not session_id:
-            session_id = self._last_session_id
+        # logger.info(f"[PERMISSION] Tool: {tool_name}, Session: {session_id}, Input: {input_data}")
 
-        if not session_id:
-            logger.warning("[PERMISSION] No session_id found, allowing by default")
-            return PermissionResultAllow(updated_input=input_data)
+        # # 创建权限请求数据
+        # request_id = str(uuid.uuid4())
+        # permission_data = {
+        #     "session_id": session_id,
+        #     "tool_name": tool_name,
+        #     "tool_input": input_data if isinstance(input_data, dict) else {},
+        #     "request_id": request_id,
+        # }
 
-        logger.info(f"[PERMISSION] Tool: {tool_name}, Session: {session_id}, Input: {input_data}")
+        # # 将权限请求放入队列（非阻塞）
+        # await self._permission_queue.put(permission_data)
+        # logger.info(f"[PERMISSION] Request queued: {session_id}, tool: {tool_name}, request_id: {request_id}")
 
-        # 创建权限请求数据
-        request_id = str(uuid.uuid4())
-        permission_data = {
-            "session_id": session_id,
-            "tool_name": tool_name,
-            "tool_input": input_data if isinstance(input_data, dict) else {},
-            "request_id": request_id,
-        }
+        # # 创建等待事件，用 request_id 做 key 避免同 session 并发工具调用互相覆盖
+        # event = asyncio.Event()
+        # self._permission_events[request_id] = event
 
-        # 将权限请求放入队列（非阻塞）
-        await self._permission_queue.put(permission_data)
-        logger.info(f"[PERMISSION] Request queued: {session_id}, tool: {tool_name}, request_id: {request_id}")
+        # # 等待用户确认（阻塞），设置超时
+        # logger.info(f"[PERMISSION] Waiting for user confirmation, request_id={request_id}")
+        # try:
+        #     await asyncio.wait_for(event.wait(), timeout=300.0)  # 5分钟超时
+        # except asyncio.TimeoutError:
+        #     logger.warning(f"[PERMISSION] Timeout for request_id: {request_id}")
+        #     self._permission_events.pop(request_id, None)
+        #     self._permission_results.pop(request_id, None)
+        #     return PermissionResultDeny(message="权限请求超时")
 
-        # 创建等待事件，用 request_id 做 key 避免同 session 并发工具调用互相覆盖
-        event = asyncio.Event()
-        self._permission_events[request_id] = event
+        # # 获取确认结果
+        # allowed = self._permission_results.get(request_id, False)
 
-        # 等待用户确认（阻塞），设置超时
-        logger.info(f"[PERMISSION] Waiting for user confirmation, request_id={request_id}")
-        try:
-            await asyncio.wait_for(event.wait(), timeout=300.0)  # 5分钟超时
-        except asyncio.TimeoutError:
-            logger.warning(f"[PERMISSION] Timeout for request_id: {request_id}")
-            self._permission_events.pop(request_id, None)
-            self._permission_results.pop(request_id, None)
-            return PermissionResultDeny(message="权限请求超时")
+        # # 清理
+        # self._permission_events.pop(request_id, None)
+        # self._permission_results.pop(request_id, None)
 
-        # 获取确认结果
-        allowed = self._permission_results.get(request_id, False)
-
-        # 清理
-        self._permission_events.pop(request_id, None)
-        self._permission_results.pop(request_id, None)
-
-        if allowed:
-            logger.info(f"[PERMISSION] User allowed tool: {tool_name}")
-            return PermissionResultAllow(updated_input=input_data)
-        else:
-            logger.info(f"[PERMISSION] User denied tool: {tool_name}")
-            return PermissionResultDeny(message="用户拒绝了此操作")
+        # if allowed:
+        #     logger.info(f"[PERMISSION] User allowed tool: {tool_name}")
+        #     return PermissionResultAllow(updated_input=input_data)
+        # else:
+        #     logger.info(f"[PERMISSION] User denied tool: {tool_name}")
+        #     return PermissionResultDeny(message="用户拒绝了此操作")
 
     async def confirm_permission(self, session_id: str, request_id: Optional[str] = None):
         """确认权限请求，优先用 request_id 定位，兜底用 session_id 匹配第一个等待中的请求"""
@@ -767,6 +812,7 @@ class ClaudeAgent:
 
             interrupt_task = asyncio.create_task(interrupt_event.wait())
 
+            next_item_task = None
             try:
                 while True:
                     next_item_task = asyncio.create_task(_get_next_item())
@@ -779,6 +825,10 @@ class ClaudeAgent:
                     if interrupt_task in done:
                         # 触发了中断
                         next_item_task.cancel()
+                        try:
+                            await next_item_task
+                        except (asyncio.CancelledError, Exception):
+                            pass
                         try:
                             await stream_gen.aclose()
                         except:
@@ -796,6 +846,9 @@ class ClaudeAgent:
                         try:
                             message = next_item_task.result()
                         except StopAsyncIteration:
+                            next_item_task = None  # 已自然结束，无需 cancel
+                            break
+                        except Exception:
                             break
 
                         # 标准化消息（一条 SDK 消息可能对应多个 block）
@@ -805,18 +858,29 @@ class ClaudeAgent:
                             yield normalized
 
             finally:
+                # 确保 next_item_task 被清理
+                if next_item_task and not next_item_task.done():
+                    next_item_task.cancel()
+                    try:
+                        await next_item_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
                 if not interrupt_task.done():
                     interrupt_task.cancel()
 
         except asyncio.CancelledError:
             # 区分两种取消原因：
-            #   1) 用户主动中断（interrupt_event.is_set()）→ 清理所有 running 任务
+            #   1) 用户主动中断（interrupt_event.is_set()）→ 清理 running 任务，不关 client
             #   2) SSE 断开（刷新页面/网络抖动）→ 保留后台任务和 PID 监控
             is_user_interrupt = interrupt_event.is_set()
             logger.warning(
                 f"Session {captured_session_id} task was cancelled "
                 f"({'user interrupt' if is_user_interrupt else 'SSE disconnect'})"
             )
+
+            # 用户中断时不关闭 client，保留 resume 能力继续对话
+            # client 只在进程真正死亡（Exception）时才关闭
+
             conversation_id = self._session_conversation_map.get(captured_session_id, "")
             if conversation_id:
                 try:
@@ -855,8 +919,21 @@ class ClaudeAgent:
             raise
         except Exception as e:
             logger.error(f"Claude SDK query error: {e}")
-            # 异常时：前台任务标 failed，后台任务保留 PID 监控继续运行
+
+            # 先取 conversation_id（pop 之后就取不到了）
             conversation_id = self._session_conversation_map.get(captured_session_id, "")
+
+            # 关闭死掉的 client，防止进程/线程泄露
+            await self.close_client(captured_session_id)
+            logger.info(f"[CLEANUP] Closed dead client for session {captured_session_id}")
+
+            # 清除映射，避免下次 resume 死进程
+            self._session_conversation_map.pop(captured_session_id, None)
+
+            # 通知 Service 层清空 DB 中的 session_id（通过 _dead_sessions 集合标记）
+            self._dead_sessions.add(captured_session_id)
+
+            # 异常时：前台任务标 failed，后台任务保留 PID 监控继续运行
             if conversation_id:
                 try:
                     from src.server_agent.service.SkillTaskManager import get_skill_task_manager
@@ -1200,6 +1277,9 @@ class ClaudeAgent:
             except asyncio.CancelledError:
                 pass
 
+            # 注意：正常完成后不关闭 client，保留 resume 能力
+            # client 只在异常/中断路径中关闭（见 query() 的 except 块）
+
     async def chat(
         self,
         current_message: str,
@@ -1234,14 +1314,10 @@ class ClaudeAgent:
         return full_content
 
     async def interrupt(self, session_id: str) -> bool:
-        """中断指定会话"""
+        """中断指定会话（不关闭 client，保留 resume 能力）"""
         if session_id in self._active_sessions:
             self._active_sessions[session_id].set()
             logger.info(f"Session {session_id} interrupted")
-
-            # 关闭 client 以彻底中断 SDK 通信
-            await self.close_client(session_id)
-
             return True
         return False
 
