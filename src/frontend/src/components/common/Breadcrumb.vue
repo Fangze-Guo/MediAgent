@@ -35,9 +35,9 @@ const routeI18nMap: Record<string, string> = {
   'SkillDetail': 'breadcrumb.skillDetail',
   'ModelConfig': 'breadcrumb.modelConfig',
   'ClinicalTools': 'breadcrumb.clinicalTools',
-  'GlNictAgent': 'breadcrumb.glNictAgent',
-  'GlNictWorkflow': 'breadcrumb.glNictWorkflow',
-  'GlNictKnowledgeBase': 'breadcrumb.glNictKnowledgeBase',
+  'NiceBcxAgent': 'breadcrumb.niceBcxAgent',
+  'NiceBcxWorkflow': 'breadcrumb.niceBcxWorkflow',
+  'NiceBcxKnowledgeBase': 'breadcrumb.niceBcxKnowledgeBase',
   'KnowledgeBaseDetail': 'breadcrumb.knowledgeBaseDetail',
   'DocumentDetail': 'breadcrumb.documentDetail'
 }
@@ -67,14 +67,14 @@ const breadcrumbs = computed<Breadcrumb[]>(() => {
     })
   } else if (route.name === 'KnowledgeBaseDetail') {
     items.push({
-      title: t('breadcrumb.glNictKnowledgeBase'),
-      path: '/gl-nict-knowledge-base',
+      title: t('breadcrumb.niceBcxKnowledgeBase'),
+      path: '/nice-bcx-knowledge-base',
       isLast: false
     })
   } else if (route.name === 'DocumentDetail') {
     items.push({
-      title: t('breadcrumb.glNictKnowledgeBase'),
-      path: '/gl-nict-knowledge-base',
+      title: t('breadcrumb.niceBcxKnowledgeBase'),
+      path: '/nice-bcx-knowledge-base',
       isLast: false
     })
     if (route.params.kbId) {

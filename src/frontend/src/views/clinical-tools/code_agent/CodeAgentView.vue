@@ -405,18 +405,18 @@
                 <CodeOutlined />
               </div>
               <h2 class="welcome-title">{{ projectDisplayName }}</h2>
-              <p class="welcome-subtitle" v-if="currentProjectId === 'gl-nict'">{{ t('views_CodeAgentView.welcomeSubtitleGlNict') }}</p>
+              <p class="welcome-subtitle" v-if="currentProjectId === 'nice-bcx'">{{ t('views_CodeAgentView.welcomeSubtitleNiceBcx') }}</p>
               <p class="welcome-subtitle" v-else>{{ t('views_CodeAgentView.welcomeSubtitle') }}</p>
 
               <div class="suggested-chain">
-                <template v-for="(prompt, index) in glNictSuggestedPrompts" :key="index">
+                <template v-for="(prompt, index) in niceBcxSuggestedPrompts" :key="index">
                   <div class="chain-item" @click="handleSuggestedPrompt(prompt)">
                     <div class="chain-circle">
                       <span class="chain-icon">{{ prompt.icon }}</span>
                     </div>
                     <span class="chain-label">{{ prompt.text }}</span>
                   </div>
-                  <div v-if="index < glNictSuggestedPrompts.length - 1" class="chain-connector"></div>
+                  <div v-if="index < niceBcxSuggestedPrompts.length - 1" class="chain-connector"></div>
                 </template>
               </div>
             </div>
@@ -505,13 +505,13 @@ const route = useRoute()
 
 // 根据当前路由判断项目标识
 const currentProjectId = computed(() => {
-  if (route.name === 'GlNictAgent') return 'gl-nict'
+  if (route.name === 'NiceBcxAgent') return 'nice-bcx'
   return undefined
 })
 
 // 项目显示名称
 const projectDisplayName = computed(() => {
-  if (currentProjectId.value === 'gl-nict') return t('views_CodeAgentView.titleGlNict')
+  if (currentProjectId.value === 'nice-bcx') return t('views_CodeAgentView.titleNiceBcx')
   return t('views_CodeAgentView.title')
 })
 
@@ -1388,8 +1388,8 @@ const handleSearch = () => {
   // 搜索由computed自动处理
 }
 
-// GL-NICT 建议提示
-const glNictSuggestedPrompts = computed(() => [
+// NICE-BCX 建议提示
+const niceBcxSuggestedPrompts = computed(() => [
   { icon: '1', text: t('views_CodeAgentView.suggestedPrompt1') },
   { icon: '2', text: t('views_CodeAgentView.suggestedPrompt2') },
   { icon: '3', text: t('views_CodeAgentView.suggestedPrompt3') },
@@ -1690,7 +1690,7 @@ onUnmounted(() => {
 // 监听路由变化，切换项目时重新加载会话列表
 watch(() => route.name, (newRouteName, oldRouteName) => {
   // 只在 BC 和 Spine 页面之间切换时重新加载
-  const projectRoutes = ['GlNictAgent']
+  const projectRoutes = ['NiceBcxAgent']
   if (projectRoutes.includes(newRouteName as string) &&
       projectRoutes.includes(oldRouteName as string) &&
       newRouteName !== oldRouteName) {

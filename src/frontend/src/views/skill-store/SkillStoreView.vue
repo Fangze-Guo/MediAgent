@@ -28,12 +28,6 @@
     <div class="categories-bar">
       <div class="categories-container">
         <div
-          :class="['category-tab', { active: selectedProjectId === undefined }]"
-          @click="selectProject(undefined)"
-        >
-          {{ t('views_SkillStoreView.defaultCategory') }}
-        </div>
-        <div
           v-for="proj in projects"
           :key="proj.id"
           :class="['category-tab', { active: selectedProjectId === proj.id }]"
@@ -118,7 +112,7 @@ const searchKeyword = ref('')
 
 // 当前项目显示名
 const currentProjectName = computed(() => {
-  if (!selectedProjectId.value) return t('views_SkillStoreView.defaultCategory')
+  if (!selectedProjectId.value) return projects.value[0]?.name ?? ''
   return projects.value.find(p => p.id === selectedProjectId.value)?.name ?? selectedProjectId.value
 })
 
@@ -128,6 +122,8 @@ onMounted(async () => {
   const qp = route.query.project_id as string | undefined
   if (qp && projects.value.some(p => p.id === qp)) {
     selectedProjectId.value = qp
+  } else if (projects.value.length > 0) {
+    selectedProjectId.value = projects.value[0].id
   }
   await loadSkills()
 })

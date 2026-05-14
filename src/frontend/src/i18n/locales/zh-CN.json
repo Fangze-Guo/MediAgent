@@ -32,9 +32,9 @@
     "skillDetail": "技能详情",
     "modelConfig": "模型配置",
     "clinicalTools": "临床工具",
-    "glNictAgent": "GL-NICT Agent",
-    "glNictWorkflow": "GL-NICT 工作流",
-    "glNictKnowledgeBase": "GL-NICT 知识库",
+    "niceBcxAgent": "NICE-BCX Agent",
+    "niceBcxWorkflow": "NICE-BCX 工作流",
+    "niceBcxKnowledgeBase": "NICE-BCX 知识库",
     "knowledgeBaseDetail": "知识库详情",
     "documentDetail": "文档详情"
   },
@@ -904,7 +904,7 @@
     },
     "views_CodeAgentView": {
       "title": "医学智能体",
-      "titleGlNict": "NICE-BCX",
+      "titleNiceBcx": "NICE-BCX",
       "placeholder": "功能开发中，敬请期待",
       "conversationList": "会话列表",
       "newSession": "新建会话",
@@ -928,7 +928,7 @@
       "inputHint": "Enter 发送，Shift+Enter 换行",
       "welcomeTitle": "医学智能体",
       "welcomeSubtitle": "专业的医学 AI 助手，助力您的医学研究与临床工作",
-      "welcomeSubtitleGlNict": "肺癌新辅助免疫联合化疗疗效评估助手",
+      "welcomeSubtitleNiceBcx": "肺癌新辅助免疫联合化疗疗效评估助手",
       "unnamedConversation": "未命名会话",
       "featureMedical": "医学咨询",
       "featureMedicalDesc": "专业医学问题解答",
@@ -1148,17 +1148,17 @@
         "neoadjuvant": "新辅助治疗"
       },
       "projects": {
-        "glNict": {
+        "niceBcx": {
           "name": "NICE-BCX",
           "description": "新辅助免疫治疗智能诊疗系统"
         }
       },
       "tools": {
-        "glNictAgent": {
+        "niceBcxAgent": {
           "name": "智能体",
           "description": "AI 驱动的智能诊疗助手，提供个性化治疗建议"
         },
-        "glNictKnowledgeBase": {
+        "niceBcxKnowledgeBase": {
           "name": "知识库",
           "description": "医学文献与临床指南管理，支持智能检索"
         }

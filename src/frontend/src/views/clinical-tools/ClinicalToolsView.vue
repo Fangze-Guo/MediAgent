@@ -169,27 +169,27 @@ const categories = computed<Category[]>(() => [
 // 项目数据
 const projects = computed<Project[]>(() => [
   {
-    id: 'gl-nict',
-    name: t('views_ClinicalToolsView.projects.glNict.name'),
-    description: t('views_ClinicalToolsView.projects.glNict.description'),
+    id: 'nice-bcx',
+    name: t('views_ClinicalToolsView.projects.niceBcx.name'),
+    description: t('views_ClinicalToolsView.projects.niceBcx.description'),
     icon: 'healthicons:medical-records',
     category: 'neoadjuvant',
     tools: [
       {
-        id: 'gl-nict-agent',
-        name: t('views_ClinicalToolsView.tools.glNictAgent.name'),
-        description: t('views_ClinicalToolsView.tools.glNictAgent.description'),
+        id: 'nice-bcx-agent',
+        name: t('views_ClinicalToolsView.tools.niceBcxAgent.name'),
+        description: t('views_ClinicalToolsView.tools.niceBcxAgent.description'),
         icon: 'carbon:bot',
         iconColor: '#52c41a',
-        route: '/gl-nict-agent'
+        route: '/nice-bcx-agent'
       },
       {
-        id: 'gl-nict-knowledge-base',
-        name: t('views_ClinicalToolsView.tools.glNictKnowledgeBase.name'),
-        description: t('views_ClinicalToolsView.tools.glNictKnowledgeBase.description'),
+        id: 'nice-bcx-knowledge-base',
+        name: t('views_ClinicalToolsView.tools.niceBcxKnowledgeBase.name'),
+        description: t('views_ClinicalToolsView.tools.niceBcxKnowledgeBase.description'),
         icon: 'healthicons:i-documents-accepted',
         iconColor: '#faad14',
-        route: '/gl-nict-knowledge-base'
+        route: '/nice-bcx-knowledge-base'
       }
     ]
   }

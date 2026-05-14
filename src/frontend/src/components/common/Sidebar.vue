@@ -248,7 +248,7 @@ const items = computed(() =>[
  * - /app-store → 高亮"工具仓库"
  * - /files → 高亮"文件管理"
  * - /clinical-tools → 高亮"临床工具"
- * - /gl-nict-* → 高亮"临床工具"
+ * - /nice-bcx-* → 高亮"临床工具"
  * - / → 高亮"新建对话"
  */
 const selectedKeys = computed(() => {
@@ -272,7 +272,7 @@ const selectedKeys = computed(() => {
 
   // 临床工具相关页面都高亮"临床工具"菜单
   if (path === '/clinical-tools' ||
-      path.startsWith('/gl-nict-') ||
+      path.startsWith('/nice-bcx-') ||
       path.startsWith('/knowledge-base/')) {
     return ['clinical-tools']
   }

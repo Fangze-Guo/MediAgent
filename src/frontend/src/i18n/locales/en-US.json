@@ -32,9 +32,9 @@
     "skillDetail": "Skill Detail",
     "modelConfig": "Model Configuration",
     "clinicalTools": "Clinical Tools",
-    "glNictAgent": "GL-NICT Agent",
-    "glNictWorkflow": "GL-NICT Workflow",
-    "glNictKnowledgeBase": "GL-NICT Knowledge Base",
+    "niceBcxAgent": "NICE-BCX Agent",
+    "niceBcxWorkflow": "NICE-BCX Workflow",
+    "niceBcxKnowledgeBase": "NICE-BCX Knowledge Base",
     "knowledgeBaseDetail": "Knowledge Base Detail",
     "documentDetail": "Document Detail"
   },
@@ -961,7 +961,7 @@
     },
     "views_CodeAgentView": {
       "title": "Medical AI Agent",
-      "titleGlNict": "NICE-BCX",
+      "titleNiceBcx": "NICE-BCX",
       "placeholder": "Feature under development, stay tuned",
       "conversationList": "Conversation List",
       "newSession": "New Session",
@@ -985,7 +985,7 @@
       "inputHint": "Enter to send, Shift+Enter for new line",
       "welcomeTitle": "Medical AI Agent",
       "welcomeSubtitle": "Professional medical AI assistant to support your medical research and clinical work",
-      "welcomeSubtitleGlNict": "Lung Cancer Neoadjuvant Immunotherapy Combined Chemotherapy Efficacy Evaluation Assistant",
+      "welcomeSubtitleNiceBcx": "Lung Cancer Neoadjuvant Immunotherapy Combined Chemotherapy Efficacy Evaluation Assistant",
       "unnamedConversation": "Unnamed Session",
       "featureMedical": "Medical Consultation",
       "featureMedicalDesc": "Professional medical Q&A",
@@ -1205,17 +1205,17 @@
         "neoadjuvant": "Neoadjuvant Therapy"
       },
       "projects": {
-        "glNict": {
+        "niceBcx": {
           "name": "NICE-BCX",
           "description": "Neoadjuvant Immunotherapy Intelligent Diagnosis System"
         }
       },
       "tools": {
-        "glNictAgent": {
+        "niceBcxAgent": {
           "name": "Agent",
           "description": "AI-driven intelligent diagnosis assistant providing personalized treatment recommendations"
         },
-        "glNictKnowledgeBase": {
+        "niceBcxKnowledgeBase": {
           "name": "Knowledge Base",
           "description": "Medical literature and clinical guideline management with intelligent search"
         }

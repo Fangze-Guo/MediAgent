@@ -113,29 +113,29 @@ const routes: RouteRecordRaw[] = [
         }
     },
     {
-        path: '/gl-nict-agent',
-        name: 'GlNictAgent',
+        path: '/nice-bcx-agent',
+        name: 'NiceBcxAgent',
         component: () => import('@/views/clinical-tools/code_agent/CodeAgentView.vue'),
         meta: {
-            title: 'MediAgent - GL-NICT Agent',
+            title: 'MediAgent - NICE-BCX Agent',
             requiresAuth: true
         }
     },
     {
-        path: '/gl-nict-workflow',
-        name: 'GlNictWorkflow',
+        path: '/nice-bcx-workflow',
+        name: 'NiceBcxWorkflow',
         component: () => import('@/views/clinical-tools/WorkflowView.vue'),
         meta: {
-            title: 'MediAgent - GL-NICT Workflow',
+            title: 'MediAgent - NICE-BCX Workflow',
             requiresAuth: true
         }
     },
     {
-        path: '/gl-nict-knowledge-base',
-        name: 'GlNictKnowledgeBase',
+        path: '/nice-bcx-knowledge-base',
+        name: 'NiceBcxKnowledgeBase',
         component: () => import('@/views/clinical-tools/rag/RagKnowledgeBaseView.vue'),
         meta: {
-            title: 'MediAgent - GL-NICT Knowledge Base',
+            title: 'MediAgent - NICE-BCX Knowledge Base',
             requiresAuth: true
         }
     },

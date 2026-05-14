@@ -4,7 +4,7 @@
       <template #title>
         <div style="display: flex; align-items: center; gap: 12px;">
           <ApartmentOutlined style="font-size: 24px;" />
-          <span>GL-NICT Workflow</span>
+          <span>NICE-BCX Workflow</span>
         </div>
       </template>
       
