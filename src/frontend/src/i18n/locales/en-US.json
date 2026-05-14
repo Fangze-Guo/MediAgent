@@ -986,6 +986,7 @@
       "welcomeTitle": "Medical AI Agent",
       "welcomeSubtitle": "Professional medical AI assistant to support your medical research and clinical work",
       "welcomeSubtitleNiceBcx": "Lung Cancer Neoadjuvant Immunotherapy Combined Chemotherapy Efficacy Evaluation Assistant",
+      "welcomeDescNiceBcx": "NICE-BCX is an AI agent system built on multi-scale imaging analysis, specifically designed for patients with non-small cell lung cancer (NSCLC) receiving neoadjuvant chemoimmunotherapy. By integrating multi-dimensional features spanning clinical data, tumor characteristics, and whole-body composition, the system dynamically predicts treatment response and survival outcomes, providing objective, quantifiable evidence to support clinical decision-making.",
       "unnamedConversation": "Unnamed Session",
       "featureMedical": "Medical Consultation",
       "featureMedicalDesc": "Professional medical Q&A",
@@ -1207,7 +1208,7 @@
       "projects": {
         "niceBcx": {
           "name": "NICE-BCX",
-          "description": "Neoadjuvant Immunotherapy Intelligent Diagnosis System"
+          "description": "Multi-scale imaging AI agent system for NSCLC neoadjuvant chemoimmunotherapy efficacy evaluation"
         }
       },
       "tools": {

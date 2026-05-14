@@ -407,6 +407,7 @@
               <h2 class="welcome-title">{{ projectDisplayName }}</h2>
               <p class="welcome-subtitle" v-if="currentProjectId === 'nice-bcx'">{{ t('views_CodeAgentView.welcomeSubtitleNiceBcx') }}</p>
               <p class="welcome-subtitle" v-else>{{ t('views_CodeAgentView.welcomeSubtitle') }}</p>
+              <p class="welcome-desc" v-if="currentProjectId === 'nice-bcx'">{{ t('views_CodeAgentView.welcomeDescNiceBcx') }}</p>
 
               <div class="suggested-chain">
                 <template v-for="(prompt, index) in niceBcxSuggestedPrompts" :key="index">
@@ -2347,9 +2348,18 @@ onUnmounted(() => {
 .welcome-subtitle {
   font-size: 15px;
   color: var(--text-secondary);
-  margin: 0 0 56px 0;
+  margin: 0 0 8px 0;
   line-height: 1.6;
   font-weight: 400;
+}
+
+.welcome-desc {
+  font-size: 13px;
+  color: var(--text-tertiary, #8c8c8c);
+  margin: 0 0 40px 0;
+  line-height: 1.8;
+  max-width: 600px;
+  text-align: center;
 }
 
 .suggested-chain {
@@ -2370,7 +2380,7 @@ onUnmounted(() => {
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   user-select: none;
   flex-shrink: 0;
-  width: 44px;
+  width: 80px;
 }
 
 .chain-item:hover .chain-circle {
@@ -2390,8 +2400,8 @@ onUnmounted(() => {
 }
 
 .chain-circle {
-  width: 44px;
-  height: 44px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
   background: var(--bg-primary);
   border: 2px solid #d9d9d9;
@@ -2403,26 +2413,28 @@ onUnmounted(() => {
 }
 
 .chain-icon {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
   color: #1890ff;
 }
 
 .chain-label {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-secondary);
   text-align: center;
-  white-space: nowrap;
-  line-height: 1.5;
+  white-space: normal;
+  word-break: break-word;
+  max-width: 80px;
+  line-height: 1.4;
   transition: all 0.25s ease;
   font-weight: 400;
 }
 
 .chain-connector {
-  width: 40px;
+  width: 24px;
   height: 2px;
   background: linear-gradient(90deg, #d9d9d9 0%, #bfbfbf 100%);
-  margin-top: 22px;
+  margin-top: 26px;
   flex-shrink: 0;
   border-radius: 1px;
 }
