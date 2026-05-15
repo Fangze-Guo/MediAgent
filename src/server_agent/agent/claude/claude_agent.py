@@ -61,7 +61,7 @@ SYSTEM_PROMPT_TEMPLATE = """
 
 【数据目录】
 5. 当用户询问或查找数据时，直接去以下目录查找：
-   /home/fetters/project/MediAgent/src/server_new/data/files/private/{user_id}/
+   /home/fetters/project/MediAgent/src/server_new/data/files/private/{user_id}/dataset
 
 【任务执行前的强制规划规则】
 6. 在执行任何任务前，必须先完成完整的输出规划，包括：

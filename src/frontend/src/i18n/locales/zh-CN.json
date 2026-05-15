@@ -930,6 +930,7 @@
       "welcomeSubtitle": "专业的医学 AI 助手，助力您的医学研究与临床工作",
       "welcomeSubtitleNiceBcx": "肺癌新辅助免疫联合化疗疗效评估助手",
       "welcomeDescNiceBcx": "NICE-BCX 是一款基于多尺度影像 AI 构建的智能体系统，专为非小细胞肺癌新辅助化免治疗场景设计。它整合了从临床信息、肿瘤到全身体成分的多维度特征，能够动态预测患者的治疗疗效与生存获益，为临床决策提供可量化的客观依据。",
+      "sessionInitDescNiceBcx": "你好！我是 NICE-BCX AI 智能体，专注于非小细胞肺癌新辅助化免治疗的疗效与生存预测。我基于多尺度影像分析构建，整合临床信息、肿瘤特征与全身体成分，实现动态预测。\n我的核心分析流程包括：\n・数据加载\n・肺与肿瘤分割\n・脊柱分割\n・体成分分割\n・T1–T12 范围内体成分定量\n・肿瘤定量与 MPR 评估\n请问你需要我为你提供哪方面的 NICE-BCX 分析帮助？",
       "unnamedConversation": "未命名会话",
       "featureMedical": "医学咨询",
       "featureMedicalDesc": "专业医学问题解答",

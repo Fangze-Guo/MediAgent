@@ -187,6 +187,19 @@
               <span class="event-message">{{ eventDisplay.message }}</span>
             </div>
 
+            <div
+              v-if="messages.length === 0 && currentProjectId === 'nice-bcx'"
+              class="conversation-empty-intro"
+            >
+              <p
+                v-for="(paragraph, idx) in sessionInitParagraphs"
+                :key="`init-${idx}`"
+                class="conversation-empty-intro-p"
+              >
+                {{ paragraph }}
+              </p>
+            </div>
+
             <template
               v-for="message in messages"
               :key="message.message_id"
@@ -515,6 +528,13 @@ const projectDisplayName = computed(() => {
   if (currentProjectId.value === 'nice-bcx') return t('views_CodeAgentView.titleNiceBcx')
   return t('views_CodeAgentView.title')
 })
+
+const sessionInitParagraphs = computed(() =>
+  t('views_CodeAgentView.sessionInitDescNiceBcx')
+    .split('\n')
+    .map(s => s.trim())
+    .filter(Boolean)
+)
 
 // 搜索关键词
 const searchKeyword = ref('')
@@ -2360,6 +2380,41 @@ onUnmounted(() => {
   line-height: 1.8;
   max-width: 600px;
   text-align: center;
+  white-space: pre-line;
+}
+
+.conversation-empty-intro {
+  max-width: 760px;
+  margin: 24px auto 14px auto;
+  padding: 14px 18px 14px 18px;
+  border-left: 3px solid rgba(24, 144, 255, 0.42);
+  border-radius: 0 10px 10px 0;
+  background: linear-gradient(90deg, rgba(24, 144, 255, 0.028) 0%, rgba(24, 144, 255, 0.006) 24%, transparent 100%);
+  color: var(--text-secondary);
+}
+
+.conversation-empty-intro-p {
+  margin: 0;
+  padding: 0;
+  line-height: 1.92;
+  font-size: 14px;
+  color: var(--text-secondary);
+  white-space: pre-line;
+}
+
+.conversation-empty-intro-p + .conversation-empty-intro-p {
+  margin-top: 12px;
+}
+
+.conversation-empty-intro-p:last-child {
+  margin-bottom: 4px;
+}
+
+.conversation-empty-intro-p:first-child {
+  font-size: 15px;
+  line-height: 1.85;
+  color: var(--text-primary);
+  font-weight: 500;
 }
 
 .suggested-chain {
