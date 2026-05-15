@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import uuid
+import time
 from pathlib import Path
 from typing import Any, AsyncGenerator, Optional
 
@@ -27,6 +28,8 @@ except ImportError:
     from tool_policy import ToolPolicy
 
 logger = logging.getLogger(__name__)
+IDLE_TTL_SECONDS = 30 * 60
+CLEANUP_INTERVAL_SECONDS = 60
 
 SYSTEM_PROMPT_TEMPLATE = """
 你是一个医学影像处理助手。
@@ -332,6 +335,7 @@ class ClaudeAgent:
 
         # ClaudeSDKClient 实例（每个会话一个）
         self._clients: dict[str, ClaudeSDKClient] = {}  # session_id -> client
+        self._session_last_active: dict[str, float] = {}
 
         # sdk_session_id -> conversation_id 映射，供 hook 提取 conversation_id
         self._session_conversation_map: dict[str, str] = {}
@@ -360,6 +364,48 @@ class ClaudeAgent:
                         if script.is_file() and script.suffix in (".py", ".sh"):
                             self._skill_script_map[script.name] = skill_name
                 logger.info(f"[ClaudeAgent] Skill script map: {len(self._skill_script_map)} entries")
+
+        self._cleanup_task: Optional[asyncio.Task] = None
+        self._is_closing = False
+
+    def _touch_session(self, session_id: Optional[str]):
+        if session_id:
+            self._session_last_active[session_id] = time.time()
+
+    def _start_cleanup_task_if_needed(self):
+        if self._cleanup_task is not None and not self._cleanup_task.done():
+            return
+        self._cleanup_task = asyncio.create_task(self._idle_cleanup_loop())
+
+    async def _idle_cleanup_loop(self):
+        try:
+            while not self._is_closing:
+                await asyncio.sleep(CLEANUP_INTERVAL_SECONDS)
+                now = time.time()
+                stale_sessions: list[tuple[str, float]] = []
+                for sid, ts in self._session_last_active.items():
+                    if sid not in self._clients:
+                        continue
+                    idle_seconds = now - ts
+                    if idle_seconds > IDLE_TTL_SECONDS:
+                        stale_sessions.append((sid, idle_seconds))
+
+                for sid, idle_seconds in stale_sessions:
+                    if sid in self._active_sessions:
+                        logger.info(
+                            f"[CLIENT] Skip idle cleanup for active session={sid}, "
+                            f"idle_seconds={int(idle_seconds)}"
+                        )
+                        continue
+                    logger.info(
+                        f"[CLIENT] Closing idle client session={sid}, "
+                        f"idle_seconds={int(idle_seconds)}, ttl_seconds={IDLE_TTL_SECONDS}"
+                    )
+                    await self.close_client(sid)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error(f"[CLIENT] Idle cleanup loop error: {e}")
 
     async def _dummy_hook(self, input_data: Any, tool_use_id: Any, context: Any):
         """
@@ -703,6 +749,7 @@ class ClaudeAgent:
 
         # 如果已有 client，返回
         if session_id in self._clients:
+            self._touch_session(session_id)
             return self._clients[session_id], session_id
 
         # 创建新的 client
@@ -742,6 +789,8 @@ class ClaudeAgent:
         client = ClaudeSDKClient(options=options)
         await client.__aenter__()
         self._clients[session_id] = client
+        self._touch_session(session_id)
+        self._start_cleanup_task_if_needed()
 
         logger.info(f"[CLIENT] Created new client for session: {session_id}")
         return client, session_id
@@ -754,6 +803,33 @@ class ClaudeAgent:
                 await client.__aexit__(None, None, None)
             except Exception as e:
                 logger.error(f"[CLIENT] Error closing client for session {session_id}: {e}")
+        self._session_last_active.pop(session_id, None)
+        self._active_sessions.pop(session_id, None)
+        self._session_conversation_map.pop(session_id, None)
+
+    async def aclose(self):
+        """关闭当前 Agent 的全部资源。"""
+        self._is_closing = True
+        if self._cleanup_task and not self._cleanup_task.done():
+            self._cleanup_task.cancel()
+            try:
+                await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
+        self._cleanup_task = None
+
+        for task_id, watcher in list(self._bg_watchers.items()):
+            if watcher and not watcher.done():
+                watcher.cancel()
+            self._bg_watchers.pop(task_id, None)
+
+        for session_id in list(self._clients.keys()):
+            await self.close_client(session_id)
+
+        self._tool_task_map.clear()
+        self._permission_events.clear()
+        self._permission_results.clear()
+        self._session_last_active.clear()
 
     async def query(
         self,
@@ -797,6 +873,7 @@ class ClaudeAgent:
             # 获取或创建 client
             client, _ = await self._get_or_create_client(captured_session_id, is_resume=is_resume, user_id=user_id)
             self._last_session_id = captured_session_id
+            self._touch_session(captured_session_id)
 
             logger.info(f"[QUERY] Starting query with {self._permission_mode} mode, session={captured_session_id}")
 
@@ -1317,6 +1394,7 @@ class ClaudeAgent:
         """中断指定会话（不关闭 client，保留 resume 能力）"""
         if session_id in self._active_sessions:
             self._active_sessions[session_id].set()
+            self._touch_session(session_id)
             logger.info(f"Session {session_id} interrupted")
             return True
         return False
@@ -1369,3 +1447,22 @@ def get_code_agent(project_config: Optional[ProjectConfig] = None) -> ClaudeAgen
 def get_agent_type() -> str:
     """获取当前 Agent 类型"""
     return "claude"
+
+
+async def shutdown_all_agents():
+    """关闭默认 agent 和所有项目隔离 agent 的资源。"""
+    global _default_agent
+
+    for project_id, agent in list(_agent_instances.items()):
+        try:
+            await agent.aclose()
+        except Exception as e:
+            logger.error(f"[ClaudeAgent] Failed to close project agent {project_id}: {e}")
+    _agent_instances.clear()
+
+    if _default_agent is not None:
+        try:
+            await _default_agent.aclose()
+        except Exception as e:
+            logger.error(f"[ClaudeAgent] Failed to close default agent: {e}")
+        _default_agent = None

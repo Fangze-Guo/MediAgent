@@ -3,6 +3,7 @@ Controllers包 - 统一管理所有API控制器
 """
 
 import os
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -25,6 +26,8 @@ from .ModelController import ModelController
 from .SkillController import SkillController
 from .TaskController import TaskController
 from .UserController import UserController
+
+logger = logging.getLogger(__name__)
 
 
 class Settings:
@@ -120,7 +123,12 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        logger.info("[LIFESPAN] Application shutdown started")
+        from src.server_agent.agent.claude.claude_agent import shutdown_all_agents
+        await shutdown_all_agents()
         await services.aclose()  # ✅ 对应释放
+        await code_agent_mapper.close()
+        logger.info("[LIFESPAN] Application shutdown completed")
 
 
 def create_app() -> FastAPI:

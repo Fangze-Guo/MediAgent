@@ -892,7 +892,7 @@ const allSkillTasks = ref<Array<{
 
 // 实时时钟，每秒更新一次，用于 running 任务的动态计时
 const now = ref(Date.now())
-setInterval(() => { now.value = Date.now() }, 1000)
+const liveClockTimer = window.setInterval(() => { now.value = Date.now() }, 1000)
 
 // 返回任务的展示时长字符串：running 时实时计时，success 时显示实际耗时
 const taskLiveElapsed = (task: typeof allSkillTasks.value[0]): string => {
@@ -1701,6 +1701,11 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  clearInterval(liveClockTimer)
+  for (const taskId of Object.keys(skillTaskPollers)) {
+    clearInterval(skillTaskPollers[taskId])
+    delete skillTaskPollers[taskId]
+  }
   messagesContainer.value?.removeEventListener('scroll', handleScroll)
   if (resizeObserver) {
     resizeObserver.disconnect()

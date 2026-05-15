@@ -38,6 +38,7 @@ class CodeAgentMapper:
 
     async def _ensure_database(self) -> None:
         """检查目标数据库是否存在，不存在则自动创建"""
+        conn = None
         try:
             # 先连接到默认的 postgres 数据库来检查/创建目标数据库
             conn = await asyncpg.connect(
@@ -54,9 +55,14 @@ class CodeAgentMapper:
                 logger.info(f"Database '{self._config.database}' not found, creating...")
                 await conn.execute(f'CREATE DATABASE "{self._config.database}"')
                 logger.info(f"Database '{self._config.database}' created successfully")
-            await conn.close()
         except Exception as e:
             logger.warning(f"Failed to auto-create database: {e}, continuing anyway...")
+        finally:
+            if conn is not None:
+                try:
+                    await conn.close()
+                except Exception:
+                    pass
 
     async def _get_pool(self) -> asyncpg.Pool:
         """获取连接池"""
@@ -481,5 +487,9 @@ class CodeAgentMapper:
     async def close(self) -> None:
         """关闭连接池"""
         if self._pool:
+            logger.info("[CodeAgentMapper] Closing connection pool")
             await self._pool.close()
             self._pool = None
+            logger.info("[CodeAgentMapper] Connection pool closed")
+        else:
+            logger.info("[CodeAgentMapper] Connection pool already closed")
