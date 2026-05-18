@@ -24,12 +24,13 @@
           </template>
           Edit
         </a-button>
-        <a-button type="primary" @click="showUploadModal = true">
+        <a-button type="primary" @click="() => { uploadKey++; showUploadModal = true }">
           <template #icon>
             <UploadOutlined />
           </template>
           Upload Documents
         </a-button>
+        <!-- uploadKey increments on open to force fresh component state -->
       </a-space>
     </div>
 
@@ -82,8 +83,9 @@
       title="Upload Documents"
       :footer="null"
       width="800px"
+      :body-style="{ maxHeight: '72vh', overflowY: 'auto', padding: '24px' }"
     >
-      <DocumentUploadSteps :knowledge-base-id="knowledgeBaseId" @complete="handleUploadComplete" />
+      <DocumentUploadSteps :key="uploadKey" :knowledge-base-id="knowledgeBaseId" @complete="handleUploadComplete" />
     </a-modal>
   </div>
 </template>
@@ -104,78 +106,59 @@ import {
 import type { KnowledgeBase } from '../../../types/knowledge-base'
 import DocumentList from "@/components/knowledge-base/DocumentList.vue";
 import DocumentUploadSteps from "@/components/knowledge-base/DocumentUploadSteps.vue";
+import { knowledgeBaseApi } from '../../../apis/knowledgeBase'
 
 const route = useRoute()
 const router = useRouter()
 const knowledgeBaseId = Number(route.params.id)
 
-// 状态管理
 const knowledgeBase = ref<KnowledgeBase | null>(null)
 const loading = ref(true)
 const showUploadModal = ref(false)
 const refreshKey = ref(0)
+const uploadKey = ref(0)
 
-// 返回上一页
 const handleGoBack = () => {
   router.back()
 }
 
-// 编辑知识库
 const handleEditKnowledgeBase = () => {
   message.info('Edit functionality coming soon')
 }
 
-// 刷新列表
 const handleRefresh = () => {
   refreshKey.value++
-  message.success('Documents refreshed')
+  fetchKnowledgeBase()
 }
 
-// 上传完成
 const handleUploadComplete = () => {
   showUploadModal.value = false
   refreshKey.value++
-  message.success('Documents uploaded successfully')
+  fetchKnowledgeBase()
 }
 
-// 格式化日期
 const formatDate = (dateString?: string): string => {
   if (!dateString) return 'Unknown'
   const date = new Date(dateString)
   const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-
+  const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
   if (diffDays === 0) return 'Today'
   if (diffDays === 1) return 'Yesterday'
   if (diffDays < 7) return `${diffDays} days ago`
-
   return date.toLocaleDateString()
 }
 
-// 获取知识库详情（静态演示数据）
 const fetchKnowledgeBase = async () => {
   loading.value = true
-
-  // 模拟API延迟
-  await new Promise(resolve => setTimeout(resolve, 500))
-
-  // 静态演示数据
-  knowledgeBase.value = {
-    id: knowledgeBaseId,
-    name: '医学文献知识库',
-    description: '包含最新的医学研究文献、临床试验报告和医学期刊文章，涵盖心血管疾病、糖尿病、肿瘤等多个领域。',
-    documents: [],
-    created_at: '2024-01-15T10:30:00Z',
-    updated_at: '2024-03-20T14:22:00Z',
-    document_count: 128,
-    chunk_count: 15240
+  try {
+    knowledgeBase.value = await knowledgeBaseApi.getKnowledgeBase(knowledgeBaseId)
+  } catch (err: any) {
+    message.error(err.response?.data?.message || 'Failed to load knowledge base')
+  } finally {
+    loading.value = false
   }
-
-  loading.value = false
 }
 
-// 初始化
 onMounted(() => {
   fetchKnowledgeBase()
 })

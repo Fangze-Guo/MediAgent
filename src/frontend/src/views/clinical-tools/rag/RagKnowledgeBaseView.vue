@@ -80,23 +80,22 @@
         </div>
 
         <div class="card-documents">
-          <h4 class="documents-title">Recent Documents</h4>
-          <div class="documents-grid">
+          <div class="documents-header">
+            <h4 class="documents-title">Recent Documents</h4>
+            <span v-if="kb.documents.length > 3" class="documents-more" @click="handleViewKnowledgeBase(kb)">
+              +{{ kb.documents.length - 3 }} more
+            </span>
+          </div>
+          <div v-if="kb.documents.length === 0" class="documents-empty">No documents yet</div>
+          <div v-else class="documents-list">
             <div
-              v-for="doc in kb.documents.slice(0, 5)"
+              v-for="doc in kb.documents.slice(0, 3)"
               :key="doc.id"
-              class="document-item"
+              class="document-row"
               @click="handleViewDocument(kb, doc)"
             >
-              <FileTextOutlined class="document-icon" />
-              <span class="document-name">{{ doc.file_name }}</span>
-            </div>
-            <div
-              v-if="kb.documents.length > 5"
-              class="document-item view-all"
-              @click="handleViewKnowledgeBase(kb)"
-            >
-              <span class="document-count">+{{ kb.documents.length - 5 }}</span>
+              <FileTextOutlined class="document-row-icon" />
+              <span class="document-row-name">{{ doc.file_name }}</span>
             </div>
           </div>
         </div>
@@ -147,227 +146,102 @@ import {
   FileTextOutlined
 } from '@ant-design/icons-vue'
 import type { KnowledgeBase, Document } from '../../../types/knowledge-base'
+import { knowledgeBaseApi } from '../../../apis/knowledgeBase'
 
 const { t } = useI18n()
 const router = useRouter()
 
-// 状态管理
 const loading = ref(true)
 const isLoading = ref(false)
 const error = ref<string | null>(null)
 const knowledgeBases = ref<KnowledgeBase[]>([])
 
-// 模态框状态
 const createModalVisible = ref(false)
 const editingKnowledgeBase = ref<KnowledgeBase | null>(null)
 
-// 表单数据
 const knowledgeBaseForm = ref({
   name: '',
   description: ''
 })
 
-// 获取知识库列表（静态演示数据）
 const fetchKnowledgeBases = async () => {
   loading.value = true
   error.value = null
-
-  // 模拟API延迟
-  await new Promise(resolve => setTimeout(resolve, 500))
-
-  // 静态演示数据
-  knowledgeBases.value = [
-    {
-      id: 1,
-      name: '医学文献知识库',
-      description: '包含最新的医学研究文献、临床试验报告和医学期刊文章',
-      created_at: '2024-01-15T10:30:00Z',
-      updated_at: '2024-03-20T14:22:00Z',
-      document_count: 128,
-      chunk_count: 15240,
-      documents: [
-        {
-          id: 1,
-          file_name: '心血管疾病诊疗指南2024.pdf',
-          file_path: '/uploads/cardio_guidelines_2024.pdf',
-          file_size: 2458624,
-          content_type: 'application/pdf',
-          knowledge_base_id: 1,
-          created_at: '2024-03-15T10:30:00Z',
-          updated_at: '2024-03-20T14:22:00Z',
-          processing_tasks: []
-        },
-        {
-          id: 2,
-          file_name: '糖尿病管理手册.docx',
-          file_path: '/uploads/diabetes_manual.docx',
-          file_size: 1524288,
-          content_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          knowledge_base_id: 1,
-          created_at: '2024-03-18T09:15:00Z',
-          updated_at: '2024-03-19T11:45:00Z',
-          processing_tasks: []
-        }
-      ]
-    },
-    {
-      id: 2,
-      name: '临床指南库',
-      description: '各种疾病的临床诊断和治疗指南，包括国际标准和本地化建议',
-      created_at: '2024-02-01T09:15:00Z',
-      updated_at: '2024-03-18T11:45:00Z',
-      document_count: 56,
-      chunk_count: 8340,
-      documents: [
-        {
-          id: 3,
-          file_name: '高血压治疗方案.txt',
-          file_path: '/uploads/hypertension_treatment.txt',
-          file_size: 45678,
-          content_type: 'text/plain',
-          knowledge_base_id: 2,
-          created_at: '2024-03-20T16:00:00Z',
-          updated_at: '2024-03-20T16:05:00Z',
-          processing_tasks: []
-        }
-      ]
-    },
-    {
-      id: 3,
-      name: '药物数据库',
-      description: '药品说明书、药物相互作用、副作用和用法用量信息',
-      created_at: '2024-02-20T16:00:00Z',
-      updated_at: '2024-03-19T13:30:00Z',
-      document_count: 234,
-      chunk_count: 35100,
-      documents: []
-    }
-  ]
-
-  loading.value = false
+  try {
+    knowledgeBases.value = await knowledgeBaseApi.getKnowledgeBases()
+  } catch (err: any) {
+    error.value = err.response?.data?.message || 'Failed to load knowledge bases'
+  } finally {
+    loading.value = false
+  }
 }
 
-// 创建知识库
 const handleCreateKnowledgeBase = () => {
   editingKnowledgeBase.value = null
-  knowledgeBaseForm.value = {
-    name: '',
-    description: ''
-  }
+  knowledgeBaseForm.value = { name: '', description: '' }
   createModalVisible.value = true
 }
 
-// 提交知识库表单（静态演示）
 const handleSubmitKnowledgeBase = async () => {
   if (!knowledgeBaseForm.value.name) {
     message.error('Please enter a name')
     return
   }
-
   isLoading.value = true
-
-  // 模拟API延迟
-  await new Promise(resolve => setTimeout(resolve, 500))
-
-  if (editingKnowledgeBase.value) {
-    // 编辑现有知识库
-    const index = knowledgeBases.value.findIndex(kb => kb.id === editingKnowledgeBase.value!.id)
-    if (index !== -1) {
-      knowledgeBases.value[index] = {
-        ...knowledgeBases.value[index],
+  try {
+    if (editingKnowledgeBase.value) {
+      const updated = await knowledgeBaseApi.updateKnowledgeBase(editingKnowledgeBase.value.id, {
         name: knowledgeBaseForm.value.name,
         description: knowledgeBaseForm.value.description,
-        updated_at: new Date().toISOString()
-      }
+      })
+      const index = knowledgeBases.value.findIndex(kb => kb.id === editingKnowledgeBase.value!.id)
+      if (index !== -1) knowledgeBases.value[index] = updated
+      message.success('Knowledge base updated successfully')
+    } else {
+      const newKb = await knowledgeBaseApi.createKnowledgeBase({
+        name: knowledgeBaseForm.value.name,
+        description: knowledgeBaseForm.value.description,
+      })
+      knowledgeBases.value.push(newKb)
+      message.success('Knowledge base created successfully')
     }
-    message.success('Knowledge base updated successfully')
-  } else {
-    // 创建新知识库
-    const newKB: KnowledgeBase = {
-      id: Date.now(),
-      name: knowledgeBaseForm.value.name,
-      description: knowledgeBaseForm.value.description,
-      documents: [],
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      document_count: 0,
-      chunk_count: 0
-    }
-
-    knowledgeBases.value.push(newKB)
-    message.success('Knowledge base created successfully')
+    createModalVisible.value = false
+  } catch (err: any) {
+    message.error(err.response?.data?.message || 'Operation failed')
+  } finally {
+    isLoading.value = false
   }
-
-  isLoading.value = false
-  createModalVisible.value = false
 }
 
-// 编辑知识库
 const handleEdit = (kb: KnowledgeBase) => {
   editingKnowledgeBase.value = kb
-  knowledgeBaseForm.value = {
-    name: kb.name,
-    description: kb.description || ''
-  }
+  knowledgeBaseForm.value = { name: kb.name, description: kb.description || '' }
   createModalVisible.value = true
 }
 
-// 取消编辑
 const handleCancelKnowledgeBase = () => {
   createModalVisible.value = false
   editingKnowledgeBase.value = null
 }
 
-// 删除知识库（静态演示）
-const handleDelete = (kb: KnowledgeBase) => {
-  // 静态演示：删除知识库
-  knowledgeBases.value = knowledgeBases.value.filter(item => item.id !== kb.id)
-  message.success('Knowledge base deleted successfully')
+const handleDelete = async (kb: KnowledgeBase) => {
+  try {
+    await knowledgeBaseApi.deleteKnowledgeBase(kb.id)
+    knowledgeBases.value = knowledgeBases.value.filter(item => item.id !== kb.id)
+    message.success('Knowledge base deleted successfully')
+  } catch (err: any) {
+    message.error(err.response?.data?.message || 'Failed to delete knowledge base')
+  }
 }
 
-// 查看知识库详情
 const handleViewKnowledgeBase = (kb: KnowledgeBase) => {
   router.push(`/knowledge-base/${kb.id}`)
 }
 
-// 测试检索
-const handleTestRetrieval = (kb: KnowledgeBase) => {
-  router.push(`/knowledge-base/${kb.id}/test`)
-}
-
-// 查看文档详情
 const handleViewDocument = (kb: KnowledgeBase, doc: Document) => {
   router.push(`/knowledge-base/${kb.id}/document/${doc.id}`)
 }
 
-// 工具函数
-const isPDF = (contentType: string): boolean => {
-  return contentType.toLowerCase().includes('pdf')
-}
-
-const isWord = (contentType: string): boolean => {
-  return contentType.toLowerCase().includes('word') ||
-         contentType.toLowerCase().includes('docx')
-}
-
-const formatDate = (dateString: string): string => {
-  const date = new Date(dateString)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffSecs = Math.floor(diffMs / 1000)
-  const diffMins = Math.floor(diffSecs / 60)
-  const diffHours = Math.floor(diffMins / 60)
-  const diffDays = Math.floor(diffHours / 24)
-
-  if (diffSecs < 60) return 'just now'
-  if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`
-  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`
-  if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`
-
-  return date.toLocaleDateString()
-}
-
-// 初始化
 onMounted(() => {
   fetchKnowledgeBases()
 })
@@ -554,7 +428,14 @@ onMounted(() => {
 .card-documents {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  min-height: 0;
+}
+
+.documents-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .documents-title {
@@ -564,61 +445,59 @@ onMounted(() => {
   color: var(--text-primary);
 }
 
-.documents-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+.documents-more {
+  font-size: 12px;
+  color: var(--link-color);
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
-.document-item {
+.documents-more:hover {
+  text-decoration: underline;
+}
+
+.documents-empty {
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 8px 0;
+}
+
+.documents-list {
   display: flex;
   flex-direction: column;
+  gap: 4px;
+}
+
+.document-row {
+  display: flex;
   align-items: center;
-  justify-content: center;
   gap: 8px;
-  padding: 16px 8px;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
   background: var(--bg-secondary);
   cursor: pointer;
-  transition: all 0.2s ease;
-  min-height: 100px;
+  transition: background 0.15s ease;
+  min-width: 0;
 }
 
-.document-item:hover {
+.document-row:hover {
   background: color-mix(in srgb, var(--link-color) 10%, transparent);
-  border-color: var(--link-color);
 }
 
-.document-item.view-all {
-  background: color-mix(in srgb, var(--link-color) 12%, transparent);
-  border-color: var(--link-color);
-}
-
-.document-item.view-all:hover {
-  background: color-mix(in srgb, var(--link-color) 20%, transparent);
-}
-
-.document-icon {
-  font-size: 24px;
+.document-row-icon {
+  font-size: 14px;
   color: var(--link-color);
+  flex-shrink: 0;
 }
 
-.document-name {
-  font-size: 12px;
+.document-row-name {
+  font-size: 13px;
   color: var(--text-primary);
-  text-align: center;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  width: 100%;
-  line-height: 1.2;
-}
-
-.document-count {
-  font-size: 10px;
-  color: var(--text-secondary);
-  font-weight: 500;
+  flex: 1;
+  min-width: 0;
 }
 
 /* 响应式设计 */

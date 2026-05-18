@@ -22,6 +22,7 @@ from .clinical_tools.CodeAgentController import CodeAgentController
 from .ConversationController import ConversationController
 from .DatasetController import DatasetController
 from .FileController import FileController
+from .KnowledgeBaseController import KnowledgeBaseController
 from .ModelController import ModelController
 from .SkillController import SkillController
 from .TaskController import TaskController
@@ -100,6 +101,10 @@ async def lifespan(app: FastAPI):
     from src.server_agent.mapper.CodeAgentMapper import CodeAgentMapper
     code_agent_mapper = CodeAgentMapper()
     await code_agent_mapper.init()
+    # 初始化知识库数据库表（PostgreSQL）
+    from src.server_agent.mapper.KnowledgeBaseMapper import KnowledgeBaseMapper
+    kb_mapper = KnowledgeBaseMapper()
+    await kb_mapper.init()
     app.state.code_agent_mapper = code_agent_mapper
     # 从 DB 恢复 skill 任务（刷新页面后 Work Flow 面板不丢失）
     from src.server_agent.service.SkillTaskManager import get_skill_task_manager
@@ -167,6 +172,7 @@ def create_app() -> FastAPI:
     task_controller = TaskController()
     dataset_controller = DatasetController()
     code_agent_controller = CodeAgentController()
+    knowledge_base_controller = KnowledgeBaseController()
 
     # 注册路由
     app.include_router(file_controller.router)
@@ -177,6 +183,7 @@ def create_app() -> FastAPI:
     app.include_router(task_controller.router)
     app.include_router(dataset_controller.router)
     app.include_router(code_agent_controller.router)
+    app.include_router(knowledge_base_controller.router)
     # 设置异常处理器
     setup_exception_handlers(app)
 
@@ -194,4 +201,5 @@ __all__ = [
     "TaskController",
     "DatasetController",
     "CodeAgentController",
+    "KnowledgeBaseController",
 ]

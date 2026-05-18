@@ -21,13 +21,37 @@
       </div>
     </div>
 
-    <a-table
-      v-else
-      :columns="columns"
-      :data-source="documents"
-      :pagination="{ pageSize: 10 }"
-      :row-key="(record: Document) => record.id"
-    >
+    <template v-else>
+      <transition name="toolbar-slide">
+        <div v-if="selectedRowKeys.length > 0" class="batch-toolbar">
+          <div class="batch-toolbar-left">
+            <div class="batch-count-badge">{{ selectedRowKeys.length }}</div>
+            <span class="batch-info">document{{ selectedRowKeys.length > 1 ? 's' : '' }} selected</span>
+          </div>
+          <div class="batch-toolbar-right">
+            <a-button class="batch-cancel-btn" size="small" @click="selectedRowKeys = []">Cancel</a-button>
+            <a-popconfirm
+              :title="`Permanently delete ${selectedRowKeys.length} document(s)?`"
+              ok-text="Delete"
+              ok-type="danger"
+              @confirm="handleBatchDelete"
+            >
+              <a-button class="batch-delete-btn" size="small" :loading="batchDeleting">
+                <template #icon><DeleteOutlined /></template>
+                Delete Selected
+              </a-button>
+            </a-popconfirm>
+          </div>
+        </div>
+      </transition>
+
+      <a-table
+        :columns="columns"
+        :data-source="documents"
+        :pagination="{ pageSize: 10 }"
+        :row-key="(record: Document) => record.id"
+        :row-selection="rowSelection"
+      >
       <template #bodyCell="{ column, record }: { column: any; record: Document }">
         
         <template v-if="column.key === 'name'">
@@ -77,6 +101,7 @@
 
       </template>
     </a-table>
+    </template>
   </div>
 </template>
 
@@ -90,6 +115,7 @@ import {
 } from '@ant-design/icons-vue'
 import { formatDistanceToNow } from 'date-fns'
 import type { Document } from '../../types/knowledge-base'
+import { knowledgeBaseApi } from '../../apis/knowledgeBase'
 
 interface Props {
   knowledgeBaseId: number
@@ -108,6 +134,13 @@ const emit = defineEmits<{
 const documents = ref<Document[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
+const selectedRowKeys = ref<number[]>([])
+const batchDeleting = ref(false)
+
+const rowSelection = {
+  selectedRowKeys,
+  onChange: (keys: number[]) => { selectedRowKeys.value = keys },
+}
 
 const columns = [
   { title: 'Name', key: 'name', width: '40%' },
@@ -120,120 +153,46 @@ const columns = [
 const fetchDocuments = async () => {
   loading.value = true
   error.value = null
-
-  // 模拟API延迟
-  await new Promise(resolve => setTimeout(resolve, 800))
-
-  // 静态演示数据
-  documents.value = [
-    {
-      id: 1,
-      file_name: '心血管疾病诊疗指南2024.pdf',
-      file_path: '/uploads/cardio_guidelines_2024.pdf',
-      file_size: 2458624,
-      content_type: 'application/pdf',
-      knowledge_base_id: props.knowledgeBaseId,
-      created_at: '2024-03-15T10:30:00Z',
-      updated_at: '2024-03-20T14:22:00Z',
-      processing_tasks: [
-        {
-          id: 1,
-          status: 'completed',
-          error_message: null,
-          created_at: '2024-03-15T10:31:00Z',
-          updated_at: '2024-03-15T10:35:00Z'
-        }
-      ]
-    },
-    {
-      id: 2,
-      file_name: '糖尿病管理手册.docx',
-      file_path: '/uploads/diabetes_manual.docx',
-      file_size: 1524288,
-      content_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      knowledge_base_id: props.knowledgeBaseId,
-      created_at: '2024-03-18T09:15:00Z',
-      updated_at: '2024-03-19T11:45:00Z',
-      processing_tasks: [
-        {
-          id: 2,
-          status: 'completed',
-          error_message: null,
-          created_at: '2024-03-18T09:16:00Z',
-          updated_at: '2024-03-18T09:20:00Z'
-        }
-      ]
-    },
-    {
-      id: 3,
-      file_name: '高血压治疗方案.txt',
-      file_path: '/uploads/hypertension_treatment.txt',
-      file_size: 45678,
-      content_type: 'text/plain',
-      knowledge_base_id: props.knowledgeBaseId,
-      created_at: '2024-03-20T16:00:00Z',
-      updated_at: '2024-03-20T16:05:00Z',
-      processing_tasks: [
-        {
-          id: 3,
-          status: 'processing',
-          error_message: null,
-          created_at: '2024-03-20T16:01:00Z',
-          updated_at: '2024-03-20T16:05:00Z'
-        }
-      ]
-    },
-    {
-      id: 4,
-      file_name: '肿瘤免疫治疗进展.pdf',
-      file_path: '/uploads/oncology_immunotherapy.pdf',
-      file_size: 3245678,
-      content_type: 'application/pdf',
-      knowledge_base_id: props.knowledgeBaseId,
-      created_at: '2024-03-21T08:30:00Z',
-      updated_at: '2024-03-21T08:35:00Z',
-      processing_tasks: [
-        {
-          id: 4,
-          status: 'failed',
-          error_message: 'PDF parsing failed: encrypted document',
-          created_at: '2024-03-21T08:31:00Z',
-          updated_at: '2024-03-21T08:35:00Z'
-        }
-      ]
-    },
-    {
-      id: 5,
-      file_name: '神经科学研究报告.md',
-      file_path: '/uploads/neuroscience_research.md',
-      file_size: 128945,
-      content_type: 'text/markdown',
-      knowledge_base_id: props.knowledgeBaseId,
-      created_at: '2024-03-22T13:45:00Z',
-      updated_at: '2024-03-22T13:50:00Z',
-      processing_tasks: [
-        {
-          id: 5,
-          status: 'completed',
-          error_message: null,
-          created_at: '2024-03-22T13:46:00Z',
-          updated_at: '2024-03-22T13:50:00Z'
-        }
-      ]
-    }
-  ]
-
-  loading.value = false
+  try {
+    const kb = await knowledgeBaseApi.getKnowledgeBase(props.knowledgeBaseId)
+    documents.value = kb.documents
+  } catch (err: any) {
+    error.value = err.response?.data?.message || 'Failed to load documents'
+  } finally {
+    loading.value = false
+  }
 }
 
 const handleDelete = async (document: Document) => {
   try {
-    // await knowledgeBaseApi.deleteDocument(props.knowledgeBaseId, document.id)
+    await knowledgeBaseApi.deleteDocument(props.knowledgeBaseId, document.id)
     message.success('Document deleted successfully')
     emit('documentDeleted', document)
     await fetchDocuments()
   } catch (err: any) {
-    message.error(err.response?.data?.detail || 'Failed to delete document')
+    message.error(err.response?.data?.message || 'Failed to delete document')
+  }
+}
+
+const handleBatchDelete = async () => {
+  if (selectedRowKeys.value.length === 0) return
+  batchDeleting.value = true
+  const ids = [...selectedRowKeys.value]
+  try {
+    const results = await Promise.allSettled(
+      ids.map(id => knowledgeBaseApi.deleteDocument(props.knowledgeBaseId, id))
+    )
+    const failed = results.filter(r => r.status === 'rejected').length
+    const succeeded = ids.length - failed
+    if (failed === 0) {
+      message.success(`${succeeded} document(s) deleted`)
+    } else {
+      message.warning(`${succeeded} deleted, ${failed} failed`)
+    }
+    selectedRowKeys.value = []
+    await fetchDocuments()
+  } finally {
+    batchDeleting.value = false
   }
 }
 
@@ -299,6 +258,77 @@ onMounted(() => {
   width: 100%;
   background: var(--bg-primary);
   border-radius: 8px;
+}
+
+.batch-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--link-color) 10%, var(--bg-primary)),
+    color-mix(in srgb, var(--link-color) 5%, var(--bg-primary))
+  );
+  border: 1px solid color-mix(in srgb, var(--link-color) 25%, transparent);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--link-color) 12%, transparent);
+  animation: toolbar-in 0.2s ease;
+}
+
+@keyframes toolbar-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.batch-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.batch-count-badge {
+  min-width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--link-color);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+}
+
+.batch-info {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.batch-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.batch-cancel-btn {
+  border-radius: 6px !important;
+  color: var(--text-secondary) !important;
+  border-color: var(--border-color) !important;
+}
+
+.batch-delete-btn {
+  border-radius: 6px !important;
+  background: #ef4444 !important;
+  border-color: #ef4444 !important;
+  color: #fff !important;
+}
+
+.batch-delete-btn:hover {
+  background: #dc2626 !important;
+  border-color: #dc2626 !important;
 }
 
 /* 状态样式 */

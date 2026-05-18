@@ -179,8 +179,8 @@
                   <div class="file-details">
                     <p class="file-name">{{ fileStatus.file.name }}</p>
                     <p class="file-size">{{ formatFileSize(fileStatus.file.size) }}</p>
-                    <p v-if="getTaskStatus(fileStatus.uploadId)" class="task-status-text mt-1">
-                      Status: {{ getTaskStatus(fileStatus.uploadId)?.status || 'pending' }}
+                    <p v-if="fileStatus.uploadId && getTaskStatus(fileStatus.uploadId)" class="task-status-text mt-1">
+                      Status: {{ getTaskStatus(fileStatus.uploadId!)?.status || 'pending' }}
                     </p>
                   </div>
                 </div>
@@ -190,7 +190,7 @@
                 </div>
               </div>
 
-              <div v-if="isProcessing(fileStatus.uploadId) || getTaskStatus(fileStatus.uploadId)?.status === 'pending'" class="mt-4">
+              <div v-if="fileStatus.uploadId && (isProcessing(fileStatus.uploadId) || getTaskStatus(fileStatus.uploadId)?.status === 'pending')" class="mt-4">
                 <a-progress
                   :percent="isProcessing(fileStatus.uploadId) ? 50 : 25"
                   :show-info="false"
@@ -230,6 +230,7 @@ import {
 } from '@ant-design/icons-vue'
 import FileDropzone from './FileDropzone.vue'
 import type { FileUploadStatus, PreviewChunk } from '../../types/knowledge-base'
+import { knowledgeBaseApi } from '../../apis/knowledgeBase'
 
 interface Props {
   knowledgeBaseId?: number
@@ -341,101 +342,47 @@ const removeFile = (index: number) => {
   files.value.splice(index, 1)
 }
 
-// 上传文件（静态演示）
+const resetState = () => {
+  files.value = []
+  currentStep.value = 1
+  isLoading.value = false
+  selectedDocumentId.value = null
+  previewChunks.value = []
+  taskStatuses.value = {}
+}
+
 const handleUpload = async () => {
   isLoading.value = true
+  try {
+    const formData = new FormData()
+    files.value.filter(f => f.status === 'pending').forEach(f => {
+      formData.append('files', f.file)
+    })
 
-  // 模拟上传过程
-  await new Promise(resolve => setTimeout(resolve, 1500))
+    await knowledgeBaseApi.uploadDocuments(props.knowledgeBaseId!, formData)
 
-  // 更新文件状态
-  files.value.forEach(file => {
-    if (file.status === 'pending') {
-      file.status = 'uploaded'
-      file.uploadId = file.uploadId || Date.now() + Math.random()
-      file.taskId = Date.now() + Math.random()
-    }
-  })
-
-  isLoading.value = false
-  currentStep.value = 2
-  message.success('Files uploaded successfully')
-}
-
-// 预览文档（静态演示）
-const handlePreview = async () => {
-  if (!selectedDocumentId.value) return
-
-  isLoading.value = true
-
-  // 模拟预览生成
-  await new Promise(resolve => setTimeout(resolve, 1000))
-
-  // 静态预览数据
-  previewChunks.value = [
-    {
-      content: `第一章：心血管疾病的概述\n\n心血管疾病是全球范围内导致死亡和残疾的主要原因之一。根据世界卫生组织的统计，每年约有1790万人死于心血管疾病，占全球总死亡人数的31%。\n\n主要的风险因素包括高血压、高胆固醇、吸烟、糖尿病、肥胖、缺乏运动和不健康的饮食。这些因素共同作用，加速了动脉粥样硬化的发展进程。`,
-      metadata: { chunk_id: 1, tokens: 156 }
-    },
-    {
-      content: `第二章：诊断方法\n\n现代医学提供了多种诊断心血管疾病的方法：\n\n1. 心电图（ECG）：记录心脏电活动，检测心律失常和心肌缺血。\n2. 超声心动图：使用超声波创建心脏图像，评估心脏结构和功能。\n3. 冠状动脉造影：通过X射线检查冠状动脉，诊断冠心病。\n4. CT和MRI：提供详细的心脏和血管图像，用于复杂病例的诊断。`,
-      metadata: { chunk_id: 2, tokens: 142 }
-    },
-    {
-      content: `第三章：治疗策略\n\n心血管疾病的治疗需要综合考虑患者的具体情况：\n\n药物治疗：\n- 抗血小板药物：如阿司匹林，预防血栓形成\n- 他汀类药物：降低胆固醇水平\n- β受体阻滞剂：控制心率和血压\n- ACE抑制剂：改善心脏功能\n\n介入治疗：\n- 冠脉支架植入术\n- 起搏器植入\n- 心脏搭桥手术`,
-      metadata: { chunk_id: 3, tokens: 138 }
-    }
-  ]
-
-  isLoading.value = false
-  message.success('Preview generated successfully')
-}
-
-// 处理文档（静态演示）
-const handleProcess = async () => {
-  isLoading.value = true
-
-  // 初始化任务状态
-  uploadedFiles.value.forEach(file => {
-    if (file.uploadId) {
-      taskStatuses.value[file.uploadId] = { status: 'pending' }
-    }
-  })
-
-  // 模拟处理过程
-  for (let i = 0; i < uploadedFiles.value.length; i++) {
-    const file = uploadedFiles.value[i]
-    if (file.uploadId) {
-      // 开始处理
-      taskStatuses.value[file.uploadId] = { status: 'processing' }
-      await new Promise(resolve => setTimeout(resolve, 2000))
-
-      // 随机成功或失败
-      const success = Math.random() > 0.2 // 80%成功率
-      if (success) {
-        taskStatuses.value[file.uploadId] = { status: 'completed' }
-        file.status = 'completed'
-      } else {
-        taskStatuses.value[file.uploadId] = {
-          status: 'failed',
-          error: 'Processing failed due to unexpected error'
-        }
-        file.status = 'error'
-        file.error = 'Processing failed due to unexpected error'
+    message.success('Files uploaded successfully')
+    resetState()
+    emit('complete')
+  } catch (err: any) {
+    files.value.forEach(f => {
+      if (f.status === 'pending') {
+        f.status = 'error'
+        f.error = 'Upload failed'
       }
-    }
+    })
+    message.error(err.response?.data?.message || 'Upload failed')
+  } finally {
+    isLoading.value = false
   }
+}
 
-  isLoading.value = false
+const handlePreview = async () => {
+  message.info('Chunk preview is not available in this version')
+}
 
-  const successCount = uploadedFiles.value.filter(f => f.status === 'completed').length
-  const totalCount = uploadedFiles.value.length
-
-  if (successCount === totalCount) {
-    message.success('All documents processed successfully')
-  } else {
-    message.warning(`${successCount}/${totalCount} documents processed successfully`)
-  }
+const handleProcess = async () => {
+  emit('complete')
 }
 </script>
 
@@ -663,7 +610,7 @@ const handleProcess = async () => {
 /* --- 6. Preview 容器样式 --- */
 .preview-container { margin-top: 1rem; }
 .preview-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-.chunks-list { height: 400px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 0.5rem; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.chunks-list { max-height: 300px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 0.5rem; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
 .chunk-item { padding: 1rem; background-color: var(--bg-secondary); border-radius: 0.5rem; }
 .chunk-label { font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem; }
 .chunk-content { margin: 0; white-space: pre-wrap; font-size: 0.875rem; color: var(--text-primary); font-family: inherit; }
