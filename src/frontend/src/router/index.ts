@@ -49,24 +49,6 @@ const routes: RouteRecordRaw[] = [
         }
     },
     {
-        path: '/tasks',
-        name: 'Tasks',
-        component: () => import('@/views/dataset/TaskManageView.vue'),
-        meta: {
-            title: 'MediAgent - Tasks',
-            requiresAuth: true
-        }
-    },
-    {
-        path: '/datasets',
-        name: 'Datasets',
-        component: () => import('@/views/dataset/DatasetManageView.vue'),
-        meta: {
-            title: 'MediAgent - Datasets',
-            requiresAuth: true
-        }
-    },
-    {
         path: '/settings',
         name: 'Settings',
         component: () => import('@/views/settings/SettingsView.vue'),

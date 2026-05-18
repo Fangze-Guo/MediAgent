@@ -8,8 +8,6 @@ from .services import (
     get_conversation_service,
     get_code_agent_service,
     get_file_service,
-    get_dataset_service,
-    get_task_service,
     get_model_config_service
 )
 
@@ -22,7 +20,5 @@ __all__ = [
     "get_conversation_service",
     "get_code_agent_service",
     "get_file_service",
-    "get_dataset_service",
-    "get_task_service",
     "get_model_config_service",
 ]

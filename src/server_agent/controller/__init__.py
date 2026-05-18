@@ -20,12 +20,10 @@ from src.server_new.mediagent.paths import DATA_DIR, in_data, in_mediagent
 
 from .clinical_tools.CodeAgentController import CodeAgentController
 from .ConversationController import ConversationController
-from .DatasetController import DatasetController
 from .FileController import FileController
 from .KnowledgeBaseController import KnowledgeBaseController
 from .ModelController import ModelController
 from .SkillController import SkillController
-from .TaskController import TaskController
 from .UserController import UserController
 
 logger = logging.getLogger(__name__)
@@ -169,8 +167,6 @@ def create_app() -> FastAPI:
     conversation_controller = ConversationController()
     model_controller = ModelController()
     skill_controller = SkillController()
-    task_controller = TaskController()
-    dataset_controller = DatasetController()
     code_agent_controller = CodeAgentController()
     knowledge_base_controller = KnowledgeBaseController()
 
@@ -180,8 +176,6 @@ def create_app() -> FastAPI:
     app.include_router(conversation_controller.router)
     app.include_router(model_controller.router)
     app.include_router(skill_controller.router)
-    app.include_router(task_controller.router)
-    app.include_router(dataset_controller.router)
     app.include_router(code_agent_controller.router)
     app.include_router(knowledge_base_controller.router)
     # 设置异常处理器
@@ -198,8 +192,6 @@ __all__ = [
     "ConversationController",
     "ModelController",
     "SkillController",
-    "TaskController",
-    "DatasetController",
     "CodeAgentController",
     "KnowledgeBaseController",
 ]
