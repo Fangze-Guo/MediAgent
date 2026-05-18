@@ -1,4 +1,4 @@
-import pathlib
+from src.server_agent.mapper.paths import in_data
 
-DATASET_PATH = str(pathlib.Path(__file__).parent.parent.parent / "server_new" / "data" / "files")
+DATASET_PATH = str(in_data("files"))
 

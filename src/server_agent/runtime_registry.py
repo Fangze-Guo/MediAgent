@@ -1,72 +1,28 @@
 import logging
 from typing import Optional
 
-from src.server_new.mediagent.agents.chat_plan_agent import AgentAConfig
-from src.server_new.mediagent.agents.task_create_agent import AgentBConfig, TaskCreationAgentB
+from src.server_agent.agent.conversation_agent import AgentConfig, ConversationAgent
 from src.server_agent.configs.config_provider import ModelSnapshot
+
+logger = logging.getLogger(__name__)
 
 
 class RuntimeRegistry:
-    """管理当前运行态实例：cfg_a/cfg_b/executor/agent。"""
+    """管理当前运行态的 ConversationAgent 实例。"""
 
-    def __init__(self, *, task_manager, conversation_manager, database_path: str, stream_id: str) -> None:
-        self._tm = task_manager
-        self._cm = conversation_manager
-        self._database_path = database_path
-        self._stream_id = stream_id
+    def __init__(self, agent: ConversationAgent) -> None:
+        self._agent = agent
 
-        self.cfg_a: Optional[AgentAConfig] = None
-        self.cfg_b: Optional[AgentBConfig] = None
-        self.executor: Optional[TaskCreationAgentB] = None
-        self.agent = None
-
-    def refresh_runtime(self, snapshot: ModelSnapshot) -> None:
-        """根据快照原子重建运行实例。"""
+    def refresh_runtime(self, snapshot: Optional[ModelSnapshot]) -> None:
+        """根据新的模型快照热更新 agent 配置。"""
         if snapshot is None:
             return
-
-        new_cfg_b = AgentBConfig(
+        self._agent.update_config(
             model=snapshot.current_model_id,
             api_key=snapshot.api_key,
             base_url=snapshot.base_url,
-            max_retries=3,
-            allowed_tools=None,
-            allowed_datasets=None,
-            prompt_tools_limit=20,
         )
-        new_executor = TaskCreationAgentB(task_manager=self._tm, config=new_cfg_b)
+        logger.info("RuntimeRegistry: agent config refreshed — model=%s", snapshot.current_model_id)
 
-        new_cfg_a = AgentAConfig(
-            model=snapshot.current_model_id,
-            api_key=snapshot.api_key,
-            base_url=snapshot.base_url,
-            request_timeout=60.0,
-        )
-
-        # 延迟导入，避免循环
-        from src.server_new.mediagent.agents.chat_plan_agent import DialogueAgentA
-        new_agent = DialogueAgentA(
-            new_executor, new_cfg_a,
-            cm=self._cm,
-            stream_id=self._stream_id,
-            task_manager=self._tm,
-            db_path=self._database_path,
-            default_user_uid="6127016735"
-        )
-
-        old_model = getattr(self.cfg_a, "model", None) if self.cfg_a else None
-        old_base = getattr(self.cfg_a, "base_url", None) if self.cfg_a else None
-
-        self.cfg_a = new_cfg_a
-        self.cfg_b = new_cfg_b
-        self.executor = new_executor
-        self.agent = new_agent
-
-        print(f"🔄 模型配置刷新: {old_model} -> {snapshot.current_model_id}")
-        print(f"🔄 API端点: {old_base} -> {snapshot.base_url}")
-
-    def get_agent(self):
-        return self.agent
-
-    def get_executor(self):
-        return self.executor
+    def get_agent(self) -> ConversationAgent:
+        return self._agent

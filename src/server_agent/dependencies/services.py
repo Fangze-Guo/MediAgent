@@ -33,10 +33,7 @@ def get_conversation_service() -> ConversationService:
     """获取会话服务实例"""
     global _conversation_service
     if _conversation_service is None:
-        _conversation_service = ConversationService(
-            database_path="src/server_new/data/db/app.sqlite3",
-            conversation_root="src/server_agent/conversations"
-        )
+        _conversation_service = ConversationService()
     return _conversation_service
 
 

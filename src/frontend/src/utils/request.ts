@@ -110,6 +110,11 @@ const createAxiosInstance = (): AxiosInstance => {
       return response
     },
     (error: AxiosError) => {
+      // 取消的请求不记录日志，直接透传原始 CanceledError
+      if (axios.isCancel(error)) {
+        return Promise.reject(error)
+      }
+
       // 记录错误日志
       logger.logError(
         error.config?.method?.toUpperCase() || 'GET',

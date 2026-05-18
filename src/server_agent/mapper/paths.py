@@ -3,10 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 import os
 
-# 以当前文件（在 mapper 目录内）为基准，向上两级到 server_agent，再向上一级到 src，再向上一级到项目根目录
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
-# 默认 data 在 server_new/ 下；可用环境变量覆盖
+# 数据目录：优先读环境变量 MEDIAGENT_DATA_DIR，默认使用 src/server_new/data（实际数据所在位置）
 DATA_DIR = Path(os.getenv("MEDIAGENT_DATA_DIR", str(_PROJECT_ROOT / "src" / "server_new" / "data"))).resolve()
 
 def in_data(*parts: str | os.PathLike) -> Path:

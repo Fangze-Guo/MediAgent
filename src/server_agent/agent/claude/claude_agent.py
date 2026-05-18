@@ -12,6 +12,8 @@ import time
 from pathlib import Path
 from typing import Any, AsyncGenerator, Optional
 
+from src.server_agent.mapper.paths import in_data
+
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 from claude_agent_sdk.types import (
     HookMatcher,
@@ -64,7 +66,7 @@ SYSTEM_PROMPT_TEMPLATE = """
 
 【数据目录】
 5. 当用户询问或查找数据时，直接去以下目录查找：
-   /home/fetters/project/MediAgent/src/server_new/data/files/private/{user_id}/dataset
+   {data_files_root}/private/{user_id}/dataset
 
 【任务执行前的强制规划规则】
 6. 在执行任何任务前，必须先完成完整的输出规划，包括：
@@ -99,7 +101,7 @@ SYSTEM_PROMPT_TEMPLATE = """
 10. 输出目录规则：
 
    输出根目录：
-   /home/fetters/project/MediAgent/src/server_new/data/files/private/{user_id}/
+   {data_files_root}/private/{user_id}/
 
    每次任务必须创建独立任务目录：
 
@@ -187,7 +189,12 @@ SYSTEM_PROMPT_TEMPLATE = """
 def get_system_prompt(user_id: Optional[int] = None) -> str:
     """根据 user_id 生成 system prompt"""
     uid = str(user_id) if user_id is not None else "unknown"
-    return SYSTEM_PROMPT_TEMPLATE.replace("{user_id}", uid)
+    data_files_root = str(in_data("files"))
+    return (
+        SYSTEM_PROMPT_TEMPLATE
+        .replace("{user_id}", uid)
+        .replace("{data_files_root}", data_files_root)
+    )
 
 class MessageKind:
     """消息类型常量 - 与参考项目一致"""

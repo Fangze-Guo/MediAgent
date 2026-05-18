@@ -1,305 +1,118 @@
-# conversation_manager.py
 from __future__ import annotations
 
-import asyncio
-import json
 import logging
-import secrets
-import string
-from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
-import aiosqlite
-
-from src.server_new.mediagent.modules.conversation_manager import ConversationManager
-from src.server_agent.exceptions import NotFoundError, ServiceError, AuthorizationError, handle_service_exception
+from src.server_agent.agent.conversation_agent import ConversationAgent
+from src.server_agent.exceptions import NotFoundError, AuthorizationError, handle_service_exception
+from src.server_agent.mapper.ConversationMapper import ConversationMapper
 
 logger = logging.getLogger(__name__)
 
 
 class ConversationService:
-    """会话服务类"""
+    """会话服务类（PostgreSQL 版本，无本地文件 I/O）"""
 
-    def __init__(self, database_path: str, conversation_root: str):
-        """
-        :param database_path: SQLite 数据库文件路径（如: src/server_new/data/db/app.sqlite3）
-        :param conversation_root: 对话文件根目录（如: src/server_new/data/conversations）
-        """
-        self.database_path = Path(database_path)
-        self.conversation_root = Path(conversation_root)
-        self.conversation_root.mkdir(parents=True, exist_ok=True)
-        self.conversationManager = ConversationManager(database_path, conversation_root)
-        
-        # 延迟导入以避免循环导入
-        self._dialogueAgentA = None
+    def __init__(self) -> None:
+        pass
 
-        # 同一对话的文件级锁：conversation_uid -> asyncio.Lock
-        self._locks: Dict[str, asyncio.Lock] = {}
-    
-    def _get_dialogue_agent(self, request=None):
-        """返回当前运行态的 DialogueAgentA（由 RuntimeRegistry 维护）。"""
-        # 优先从 FastAPI 的 app.state.runtime_registry 获取
-        if request is not None:
-            try:
-                registry = request.app.state.runtime_registry
-                agent = registry.get_agent()
-                if agent is None:
-                    # 若尚未构建，尝试用最新快照刷新一次
-                    provider = request.app.state.config_provider
-                    registry.refresh_runtime(provider.get_snapshot())
-                    agent = registry.get_agent()
-                if agent is not None:
-                    # 缓存一份，作为无 request 时的兜底
-                    self._dialogueAgentA = agent
-                    return agent
-            except Exception:
-                pass
+    # ---------------------- 私有：从 app.state 获取依赖 ----------------------
 
-        # 无法获取运行态时抛错，提示调用方在有 request 的上下文中使用
-        raise RuntimeError("Runtime agent is not available. Ensure to call within a FastAPI request context.")
+    def _get_mapper(self, request) -> ConversationMapper:
+        return request.app.state.conv_mapper
 
-    # ---------------------- 基础工具 ----------------------
+    def _get_agent(self, request) -> ConversationAgent:
+        return request.app.state.runtime_registry.get_agent()
 
-    async def _user_exists(self, uid: str) -> bool:
-        """检查用户是否存在：users(uid)"""
-        async with aiosqlite.connect(self.database_path) as db:
-            async with db.execute("SELECT 1 FROM users WHERE uid=? LIMIT 1", (uid,)) as cur:
-                return (await cur.fetchone()) is not None
-
-    async def _conversation_uid_exists(self, conversation_uid: str) -> bool:
-        """检查对话UID是否已存在：conversations(conversation_uid)"""
-        async with aiosqlite.connect(self.database_path) as db:
-            async with db.execute(
-                    "SELECT 1 FROM conversations WHERE conversation_uid=? LIMIT 1",
-                    (conversation_uid,),
-            ) as cur:
-                return (await cur.fetchone()) is not None
-
-    def _generate_conversation_uid(self) -> str:
-        """生成 10 位 [a-zA-Z0-9] 的随机对话UID"""
-        alphabet = string.ascii_letters + string.digits
-        return "".join(secrets.choice(alphabet) for _ in range(10))
-
-    def _get_lock(self, conversation_uid: str) -> asyncio.Lock:
-        """获取（或创建）该对话的文件锁"""
-        lock = self._locks.get(conversation_uid)
-        if lock is None:
-            lock = asyncio.Lock()
-            self._locks[conversation_uid] = lock
-        return lock
-
-    # ---------------------- 对外功能 ----------------------
+    # ---------------------- 对话管理 ----------------------
 
     @handle_service_exception
-    async def create_conversation(self, owner_uid: str) -> str:
-        """
-        创建新对话：
-          1) 校验用户是否存在
-          2) 生成唯一对话UID（10位字母数字）
-          3) 在 CONVERSATION_FILE_ROOT/<UID>/main_chat.json 初始化
-          4) 向 conversations 表插入记录 (conversation_uid, owner_uid)
-
-        Returns:
-            conversation_uid: 对话UID
-        """
-        # 1) 用户存在性
-        if not await self._user_exists(owner_uid):
-            raise NotFoundError(
-                resource_type="user",
-                resource_id=owner_uid,
-                detail="用户不存在"
-            )
-
-        # 2) 生成唯一对话UID
-        while True:
-            conversation_uid = self._generate_conversation_uid()
-            if not await self._conversation_uid_exists(conversation_uid):
-                break
-
-        # 3) 创建目录与 main_chat.json
-        conv_dir = self.conversation_root / conversation_uid
-        conv_dir.mkdir(parents=True, exist_ok=False)
-        main_chat_file = conv_dir / "main_chat.json"
-
-        init_payload = {"conversation_uid": conversation_uid, "messages": []}
-        text = json.dumps(init_payload, ensure_ascii=False, indent=2)
-        await asyncio.to_thread(main_chat_file.write_text, text, "utf-8")
-
-        # 4) 插入数据库
-        async with aiosqlite.connect(self.database_path) as db:
-            await db.execute(
-                "INSERT INTO conversations (conversation_uid, owner_uid) VALUES (?, ?)",
-                (conversation_uid, owner_uid),
-            )
-            await db.commit()
-
-        logger.info(f"对话创建成功: {conversation_uid}")
-        return conversation_uid
+    async def create_conversation(self, request, owner_uid: str) -> str:
+        """创建新对话，返回 uid"""
+        mapper = self._get_mapper(request)
+        uid = await mapper.create_conversation(owner_uid)
+        logger.info("对话创建成功: %s", uid)
+        return uid
 
     @handle_service_exception
-    async def add_message_to_agentA(self, request, conversation_uid: str, content: str) -> str:
-        """向AgentA添加消息并获取响应"""
-        dialogue_agent = self._get_dialogue_agent(request)
-        return await dialogue_agent.converse(conversation_uid, content)
+    async def get_messages(
+        self,
+        request,
+        conversation_uid: str,
+        user_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """获取对话全量消息；可选校验所有权"""
+        mapper = self._get_mapper(request)
 
-    @handle_service_exception
-    async def get_messages(self, conversation_uid: str, target: str, user_id: str = None) -> List[Dict[str, Any]]:
-        """
-        获取目标消息流（target.json）的 messages 内容。
-
-        Args:
-            conversation_uid: 会话UID
-            target: 目标消息流（如 main_chat）
-            user_id: 可选的用户ID，用于验证会话所有权
-
-        Returns:
-            messages: 消息列表
-        """
-        if not await self._conversation_uid_exists(conversation_uid):
+        if not await mapper.conversation_exists(conversation_uid):
             raise NotFoundError(
                 resource_type="conversation",
                 resource_id=conversation_uid,
-                detail="该对话UID不存在"
+                detail="该对话不存在",
             )
 
-        # 验证用户是否为会话所有者
-        if user_id:
-            async with aiosqlite.connect(self.database_path) as db:
-                async with db.execute(
-                    "SELECT owner_uid FROM conversations WHERE conversation_uid=?",
-                    (conversation_uid,)
-                ) as cur:
-                    row = await cur.fetchone()
-                    if not row or row[0] != user_id:
-                        raise AuthorizationError(
-                            detail="无权访问该会话",
-                            context={"conversation_uid": conversation_uid, "user_id": user_id}
-                        )
+        if user_id and not await mapper.user_owns_conversation(conversation_uid, user_id):
+            raise AuthorizationError(
+                detail="无权访问该会话",
+                context={"conversation_uid": conversation_uid, "user_id": user_id},
+            )
 
-        conv_dir = self.conversation_root / conversation_uid
-        target_file = conv_dir / f"{target}.json"
-
-        lock = self._get_lock(conversation_uid)
-        async with lock:
-            if not target_file.exists():
-                raise NotFoundError(
-                    resource_type="message_flow",
-                    resource_id=target,
-                    detail="该对话不存在该目标消息流"
-                )
-
-            try:
-                raw = await asyncio.to_thread(target_file.read_text, "utf-8")
-                data = json.loads(raw)
-                messages = data.get("messages")
-                if not isinstance(messages, list):
-                    raise ServiceError(
-                        detail="消息流格式错误",
-                        service_name="conversation_service",
-                        context={"conversation_uid": conversation_uid, "target": target}
-                    )
-
-                return messages
-
-            except json.JSONDecodeError as e:
-                raise ServiceError(
-                    detail="消息流JSON格式错误",
-                    service_name="conversation_service",
-                    context={"conversation_uid": conversation_uid, "target": target, "error": str(e)}
-                )
-            except Exception as e:
-                raise ServiceError(
-                    detail="获取消息失败",
-                    service_name="conversation_service",
-                    context={"conversation_uid": conversation_uid, "target": target, "error": str(e)}
-                )
+        return await mapper.get_messages(conversation_uid)
 
     @handle_service_exception
-    async def get_user_conversation_uids(self, user_id: str) -> List[str]:
-        """
-        获取用户的所有会话ID列表
-        
-        Args:
-            user_id: 用户ID
-            
-        Returns:
-            List[str]: 会话ID列表
-        """
-        # 验证用户是否存在
-        if not await self._user_exists(user_id):
-            raise NotFoundError(
-                resource_type="user",
-                resource_id=user_id,
-                detail="用户不存在"
-            )
-
-        try:
-            async with aiosqlite.connect(self.database_path) as db:
-                async with db.execute(
-                    "SELECT conversation_uid FROM conversations WHERE owner_uid=? ORDER BY conversation_uid",
-                    (user_id,)
-                ) as cur:
-                    rows = await cur.fetchall()
-                    conversation_uids = [row[0] for row in rows]
-                    return conversation_uids
-        except Exception as e:
-            raise ServiceError(
-                detail="获取用户会话列表失败",
-                service_name="conversation_service",
-                context={"user_id": user_id, "error": str(e)}
-            )
+    async def get_user_conversation_uids(self, request, user_id: str) -> List[str]:
+        """获取用户所有对话 uid 列表"""
+        mapper = self._get_mapper(request)
+        return await mapper.get_conversations_by_owner(user_id)
 
     @handle_service_exception
-    async def delete_conversation(self, conversation_uid: str) -> bool:
-        """
-        删除会话：
-          1) 验证会话是否存在
-          2) 删除会话文件目录
-          3) 删除数据库记录
-        
-        Args:
-            conversation_uid: 会话ID
-            
-        Returns:
-            bool: 删除成功返回True
-        """
-        # 验证会话是否存在
-        if not await self._conversation_uid_exists(conversation_uid):
+    async def delete_conversation(self, request, conversation_uid: str) -> bool:
+        """删除对话（消息随 ON DELETE CASCADE 一并删除）"""
+        mapper = self._get_mapper(request)
+
+        if not await mapper.conversation_exists(conversation_uid):
             raise NotFoundError(
                 resource_type="conversation",
                 resource_id=conversation_uid,
-                detail="该会话不存在"
+                detail="该会话不存在",
             )
 
-        try:
-            # 1) 删除文件目录
-            conv_dir = self.conversation_root / conversation_uid
-            if conv_dir.exists():
-                import shutil
-                await asyncio.to_thread(shutil.rmtree, conv_dir)
-                logger.info(f"已删除会话文件目录: {conv_dir}")
+        deleted = await mapper.delete_conversation(conversation_uid)
+        logger.info("会话删除成功: %s", conversation_uid)
+        return deleted
 
-            # 2) 删除数据库记录
-            async with aiosqlite.connect(self.database_path) as db:
-                cursor = await db.execute(
-                    "DELETE FROM conversations WHERE conversation_uid=?",
-                    (conversation_uid,)
-                )
-                await db.commit()
-                
-                if cursor.rowcount == 0:
-                    raise NotFoundError(
-                        resource_type="conversation",
-                        resource_id=conversation_uid,
-                        detail="会话记录不存在"
-                    )
+    # ---------------------- 消息发送 ----------------------
 
-            logger.info(f"会话删除成功: {conversation_uid}")
-            return True
+    @handle_service_exception
+    async def send_message(
+        self, request, conversation_uid: str, content: str
+    ) -> str:
+        """同步发送：等待完整回复后返回"""
+        mapper = self._get_mapper(request)
+        agent = self._get_agent(request)
 
-        except Exception as e:
-            raise ServiceError(
-                detail="删除会话失败",
-                service_name="conversation_service",
-                context={"conversation_uid": conversation_uid, "error": str(e)}
-            )
+        history = await mapper.get_messages(conversation_uid)
+        reply = await agent.converse(content, history)
+
+        await mapper.add_message(conversation_uid, "user", content)
+        await mapper.add_message(conversation_uid, "assistant", reply)
+
+        return reply
+
+    async def stream_message(
+        self, request, conversation_uid: str, content: str
+    ) -> AsyncGenerator[str, None]:
+        """流式发送：逐 token yield，完成后持久化完整回复"""
+        mapper = self._get_mapper(request)
+        agent = self._get_agent(request)
+
+        history = await mapper.get_messages(conversation_uid)
+
+        await mapper.add_message(conversation_uid, "user", content)
+
+        full_reply: List[str] = []
+        async for token in agent.stream(content, history):
+            full_reply.append(token)
+            yield token
+
+        await mapper.add_message(conversation_uid, "assistant", "".join(full_reply))

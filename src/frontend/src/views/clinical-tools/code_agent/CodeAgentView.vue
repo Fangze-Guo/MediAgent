@@ -188,7 +188,7 @@
             </div>
 
             <div
-              v-if="messages.length === 0 && currentProjectId === 'nice-bcx'"
+              v-if="messages.length === 0 && !loadingConversationDetail && currentProjectId === 'nice-bcx'"
               class="conversation-empty-intro"
             >
               <p
@@ -1364,6 +1364,8 @@ const selectConversation = async (conversation: ConversationInfo) => {
   selectedConversationId.value = conversation.conversation_id
   selectedConversation.value = conversation
 
+  loadingConversationDetail.value = true
+
   // 先清空消息列表
   messages.value = []
   await nextTick()
@@ -1372,11 +1374,10 @@ const selectConversation = async (conversation: ConversationInfo) => {
     messagesContainer.value.scrollTop = 0
   }
 
-  loadingConversationDetail.value = true
-
   // 加载会话详情和消息
+  const thisConversationId = conversation.conversation_id
   try {
-    const response = await getConversationDetail(conversation.conversation_id, currentAbortController.signal)
+    const response = await getConversationDetail(thisConversationId, currentAbortController.signal)
     if (response.code === 200 && response.data) {
       messages.value = response.data.messages || []
 
@@ -1392,14 +1393,16 @@ const selectConversation = async (conversation: ConversationInfo) => {
     }
   } catch (error: any) {
     // 忽略被取消的请求错误
-    if (error?.name === 'AbortError' || error?.code === 'ERR_CANCELED') {
+    if (error?.name === 'AbortError' || error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') {
       console.log('会话详情请求被取消')
       return
     }
     console.error('加载会话详情失败:', error)
     message.error(t('views_CodeAgentView.messages.loadDetailFailed'))
   } finally {
-    loadingConversationDetail.value = false
+    if (selectedConversationId.value === thisConversationId) {
+      loadingConversationDetail.value = false
+    }
     currentAbortController = null
   }
 }

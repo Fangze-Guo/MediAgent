@@ -11,12 +11,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from src.server_agent.agent.conversation_agent import AgentConfig, ConversationAgent
 from src.server_agent.configs.config_provider import ConfigProvider
 from src.server_agent.exceptions import setup_exception_handlers
 from src.server_agent.runtime_registry import RuntimeRegistry
-from src.server_new.mediagent.modules.conversation_manager import ConversationManager
-from src.server_new.mediagent.modules.task_manager import AsyncTaskManager
-from src.server_new.mediagent.paths import DATA_DIR, in_data, in_mediagent
 
 from .clinical_tools.CodeAgentController import CodeAgentController
 from .ConversationController import ConversationController
@@ -29,108 +27,60 @@ from .UserController import UserController
 logger = logging.getLogger(__name__)
 
 
-class Settings:
-    """最简单的配置容器：不做校验、不自动读取 .env，仅存放数值。"""
-
-    def __init__(self):
-        # 环境相关（可选：保留 None）
-        self.MODEL_URL = os.getenv("MODEL_URL")  # 或者写死: None
-        self.MODEL_API_KEY = os.getenv("MODEL_API_KEY")
-        self.MODEL = os.getenv("MODEL")
-
-        # 供 Services 使用的路径
-        self.data_dir: Path = DATA_DIR
-
-        # TaskManager 需要的路径/文件
-        self.PUBLIC_DATASETS_ROOT: Path = in_data("files")
-        self.WORKSPACE_ROOT: Path = in_data("files", "private")
-        self.DATABASE_FILE: Path = in_data("db", "app.sqlite3")
-        self.MCPSERVER_FILE: Path = in_mediagent("mcp_server_tools", "mcp_server.py")
-
-
-class Services:
-    def __init__(self, settings: Settings):
-        self.settings = settings
-        # 轻量：路径/日志器/纯内存对象等
-        self.paths = {"incoming": settings.data_dir / "incoming"}
-        self.logger = None  # 例如：structlog.get_logger(__name__)
-
-        # 重资源句柄先置空，ainit 里真正创建
-        self.db = None
-        self.redis = None
-        self.llm = None
-        self.bg_task = None
-
-        # 新增：唯一 TaskManager 实例占位
-        self.tm: AsyncTaskManager | None = None
-
-    async def ainit(self):
-        # 重/异步初始化
-
-        self.tm = AsyncTaskManager(
-            public_datasets_source_root=self.settings.PUBLIC_DATASETS_ROOT,
-            workspace_root=self.settings.WORKSPACE_ROOT,
-            database_file=self.settings.DATABASE_FILE,
-            mcpserver_file=self.settings.MCPSERVER_FILE,
-        )
-
-        await self.tm.astart()
-
-    async def aclose(self):
-        # 统一释放
-
-        if self.tm is not None:
-            await self.tm.aclose()
-            self.tm = None
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    在应用启动期间创建"全局唯一"的 ConfigProvider 与 RuntimeRegistry，
-    并挂载到 app.state，供所有路由按需使用
+    启动期间初始化所有全局单例并挂载到 app.state。
     """
-    settings = Settings()
-    services = Services(settings)
-    app.state.settings = settings
-    app.state.services = services
-    await services.ainit()  # ✅ 重/异步初始化放这里
-    # 初始化 CodeAgentMapper（数据库表结构）
+    # ---- Mappers ----
     from src.server_agent.mapper.CodeAgentMapper import CodeAgentMapper
+    from src.server_agent.mapper.ConversationMapper import ConversationMapper
+    from src.server_agent.mapper.KnowledgeBaseMapper import KnowledgeBaseMapper
+
     code_agent_mapper = CodeAgentMapper()
     await code_agent_mapper.init()
-    # 初始化知识库数据库表（PostgreSQL）
-    from src.server_agent.mapper.KnowledgeBaseMapper import KnowledgeBaseMapper
+
+    conv_mapper = ConversationMapper()
+    await conv_mapper.init()
+
     kb_mapper = KnowledgeBaseMapper()
     await kb_mapper.init()
+
     app.state.code_agent_mapper = code_agent_mapper
-    # 从 DB 恢复 skill 任务（刷新页面后 Work Flow 面板不丢失）
+    app.state.conv_mapper = conv_mapper
+
+    # ---- Skill task manager ----
     from src.server_agent.service.SkillTaskManager import get_skill_task_manager
+
     skill_task_manager = get_skill_task_manager()
-    skill_task_manager._mapper = code_agent_mapper  # 复用已初始化的 mapper
+    skill_task_manager._mapper = code_agent_mapper
     await skill_task_manager.restore_from_db()
-    # 配置提供者与运行态注册器
+
+    # ---- Model config provider ----
     provider = ConfigProvider()
     app.state.config_provider = provider
-    registry = RuntimeRegistry(
-        task_manager=services.tm,
-        conversation_manager=ConversationManager(
-            str(settings.DATABASE_FILE), str("src/server_agent/conversations")
-        ),
-        database_path=str(settings.DATABASE_FILE),
-        stream_id="agentA_internal_stream",
+
+    # ---- Conversation agent ----
+    snapshot = provider.get_snapshot()
+    agent_cfg = AgentConfig(
+        model=snapshot.current_model_id if snapshot else os.getenv("MODEL", "qwen3-30b-a3b"),
+        api_key=snapshot.api_key if snapshot else os.getenv("MODEL_API_KEY"),
+        base_url=snapshot.base_url if snapshot else os.getenv("MODEL_URL"),
     )
+    agent = ConversationAgent(agent_cfg)
+    registry = RuntimeRegistry(agent)
     app.state.runtime_registry = registry
-    # 首次刷新运行实例
-    registry.refresh_runtime(provider.get_snapshot())
+
+    logger.info("[LIFESPAN] Application startup completed")
+
     try:
         yield
     finally:
         logger.info("[LIFESPAN] Application shutdown started")
         from src.server_agent.agent.claude.claude_agent import shutdown_all_agents
         await shutdown_all_agents()
-        await services.aclose()  # ✅ 对应释放
         await code_agent_mapper.close()
+        await conv_mapper.close()
         logger.info("[LIFESPAN] Application shutdown completed")
 
 
