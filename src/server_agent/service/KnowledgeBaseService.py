@@ -2,6 +2,7 @@
 知识库服务层
 处理知识库和文档相关的业务逻辑
 """
+import asyncio
 import logging
 import mimetypes
 import pathlib
@@ -21,6 +22,7 @@ from src.server_agent.mapper.KnowledgeBaseMapper import KnowledgeBaseMapper
 from src.server_agent.model.entity.KbDocumentInfo import KbDocumentInfo
 from src.server_agent.model.entity.KnowledgeBaseInfo import KnowledgeBaseInfo
 from src.server_agent.model.vo.KnowledgeBaseVO import KbDocumentVO, KnowledgeBaseVO
+from src.server_agent.service.EmbeddingService import EmbeddingService
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +47,7 @@ class KnowledgeBaseService:
 
     def __init__(self):
         self.mapper = KnowledgeBaseMapper()
+        self.embedding = EmbeddingService()
 
     # ==================== 知识库 CRUD ====================
 
@@ -84,6 +87,7 @@ class KnowledgeBaseService:
                 description=kb.description,
                 documents=doc_vos,
                 document_count=len(doc_vos),
+                chunk_count=sum(d.chunk_count for d in docs),
                 created_at=kb.created_at,
                 updated_at=kb.updated_at,
             ))
@@ -104,6 +108,7 @@ class KnowledgeBaseService:
             description=kb.description,
             documents=doc_vos,
             document_count=len(doc_vos),
+            chunk_count=sum(d.chunk_count for d in docs),
             created_at=kb.created_at,
             updated_at=kb.updated_at,
         )
@@ -146,6 +151,7 @@ class KnowledgeBaseService:
             logger.error(f"Failed to delete KB folder: {e}")
 
         await self.mapper.delete_kb(kb_id)
+        await self.embedding.delete_kb_embeddings(kb_id)
         return True
 
     # ==================== 文档操作 ====================
@@ -190,14 +196,30 @@ class KnowledgeBaseService:
                 file_path=rel_path,
                 file_size=len(content),
                 content_type=content_type,
-                status="completed",
+                status="processing",
             )
             doc_id = await self.mapper.create_document(doc)
             doc.id = doc_id
             uploaded.append(self._doc_to_vo(doc))
             logger.info(f"Uploaded document: {target}")
 
+            # 后台异步 embedding，不阻塞上传响应
+            asyncio.create_task(
+                self._embed_and_update(doc_id, kb_id, target)
+            )
+
         return uploaded
+
+    async def _embed_and_update(self, doc_id: int, kb_id: int, file_path: pathlib.Path) -> None:
+        """后台任务：embedding 完成后更新状态和 chunk 数。"""
+        try:
+            count = await self.embedding.embed_document(doc_id, kb_id, file_path)
+            await self.mapper.update_document_chunk_count(doc_id, count)
+            await self.mapper.update_document_status(doc_id, "completed")
+            logger.info(f"Embedding done: doc {doc_id}, {count} chunks")
+        except Exception as exc:
+            logger.error(f"Embedding failed for doc {doc_id}: {exc}")
+            await self.mapper.update_document_status(doc_id, "failed")
 
     @handle_service_exception
     async def delete_document(self, kb_id: int, doc_id: int) -> bool:
@@ -218,7 +240,16 @@ class KnowledgeBaseService:
             logger.error(f"Failed to delete document file: {e}")
 
         await self.mapper.delete_document(doc_id)
+        await self.embedding.delete_document_embeddings(doc_id, kb_id)
         return True
+
+    @handle_service_exception
+    async def search_kb(self, kb_id: int, query: str, top_k: int = 5) -> List[dict]:
+        """语义检索知识库，返回最相关的 top_k 个 chunk。"""
+        kb = await self.mapper.get_kb_by_id(kb_id)
+        if not kb:
+            raise NotFoundError(detail="知识库不存在", context={"kb_id": kb_id})
+        return await self.embedding.search(kb_id, query, top_k)
 
     @handle_service_exception
     async def get_document_preview(self, kb_id: int, doc_id: int) -> dict:
@@ -243,9 +274,11 @@ class KnowledgeBaseService:
 
         # PDF — 直接给前端 URL，浏览器内嵌预览
         if suffix == ".pdf":
+            from urllib.parse import quote
+            encoded_path = quote(doc.file_path, safe="/")
             return {
                 "type": "url",
-                "serve_url": f"/files/serve/{doc.file_path}",
+                "serve_url": f"/files/serve/{encoded_path}",
                 "file_name": doc.file_name,
                 "content_type": doc.content_type,
             }

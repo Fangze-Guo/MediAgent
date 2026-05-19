@@ -79,7 +79,10 @@ class ConversationAgent:
         logger.info("ConversationAgent: LLM config reloaded — model=%s", model)
 
     def _build_messages(
-        self, user_input: str, history: List[Dict[str, str]]
+        self,
+        user_input: str,
+        history: List[Dict[str, str]],
+        rag_context: str = "",
     ) -> List[BaseMessage]:
         messages: List[BaseMessage] = [SystemMessage(content=SYSTEM_PROMPT)]
         for msg in history:
@@ -89,6 +92,8 @@ class ConversationAgent:
                 messages.append(HumanMessage(content=content))
             elif role == "assistant":
                 messages.append(AIMessage(content=content))
+        if rag_context:
+            messages.append(SystemMessage(content=rag_context))
         messages.append(HumanMessage(content=user_input))
         return messages
 
@@ -96,11 +101,12 @@ class ConversationAgent:
         self,
         user_input: str,
         history: List[Dict[str, str]],
+        rag_context: str = "",
     ) -> str:
         """Single-turn: wait for full reply and return it."""
         try:
             response: AIMessage = await self._llm.ainvoke(
-                self._build_messages(user_input, history)
+                self._build_messages(user_input, history, rag_context)
             )
             return (response.content or "").strip() or "（空回复）"
         except Exception as exc:
@@ -111,11 +117,12 @@ class ConversationAgent:
         self,
         user_input: str,
         history: List[Dict[str, str]],
+        rag_context: str = "",
     ) -> AsyncGenerator[str, None]:
         """Streaming: yield text tokens progressively via astream."""
         try:
             async for chunk in self._llm.astream(
-                self._build_messages(user_input, history)
+                self._build_messages(user_input, history, rag_context)
             ):
                 token: str = chunk.content or ""
                 if token:

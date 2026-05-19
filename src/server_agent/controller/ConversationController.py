@@ -36,10 +36,10 @@ class ConversationController(BaseController):
             conversation_id: str,
             content: str,
             conversation_service: ConversationService = Depends(get_conversation_service),
-        ) -> BaseResponse[str]:
-            """发送消息，等待完整回复"""
-            reply = await conversation_service.send_message(request, conversation_id, content)
-            return ResultUtils.success(reply)
+        ) -> BaseResponse[Dict[str, Any]]:
+            """发送消息，等待完整回复，返回 {reply, sources}"""
+            result = await conversation_service.send_message(request, conversation_id, content)
+            return ResultUtils.success(result)
 
         @self.router.post("/stream")
         async def streamMessage(

@@ -83,6 +83,10 @@
 
         <template v-else-if="column.key === 'action'">
           <a-space>
+            <a-button type="link" size="small" class="btn-view" @click="handleView(record)">
+              <EyeOutlined />
+              View
+            </a-button>
             <a-button type="link" size="small" @click="handleAnalyze(record)">
               <ThunderboltOutlined />
               Analyze
@@ -102,16 +106,77 @@
       </template>
     </a-table>
     </template>
+
+    <!-- 文档预览弹框 -->
+    <a-modal
+      v-model:open="showPreviewModal"
+      :title="previewData?.file_name || 'Document Preview'"
+      :footer="null"
+      width="860px"
+      :body-style="{ padding: '0', height: '76vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }"
+      destroy-on-close
+    >
+      <div v-if="previewLoading" class="preview-loading">
+        <a-spin size="large" />
+        <p>Loading preview...</p>
+      </div>
+
+      <template v-else-if="previewData">
+        <!-- PDF -->
+        <iframe
+          v-if="previewData.type === 'url'"
+          :src="previewData.serve_url"
+          class="preview-iframe"
+          frameborder="0"
+        />
+
+        <!-- 纯文本 -->
+        <div v-else-if="previewData.type === 'text'" class="preview-text-wrap">
+          <pre class="preview-text">{{ previewData.content }}</pre>
+        </div>
+
+        <!-- Excel 表格 -->
+        <div v-else-if="previewData.type === 'table'" class="preview-table-wrap">
+          <a-tabs v-if="previewData.sheets">
+            <a-tab-pane
+              v-for="(rows, sheetName) in previewData.sheets"
+              :key="sheetName"
+              :tab="sheetName"
+            >
+              <div class="sheet-scroll">
+                <table class="excel-table">
+                  <thead>
+                    <tr>
+                      <th v-for="(cell, ci) in rows[0]" :key="ci">{{ cell }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(row, ri) in rows.slice(1)" :key="ri">
+                      <td v-for="(cell, ci) in row" :key="ci">{{ cell }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </a-tab-pane>
+          </a-tabs>
+        </div>
+      </template>
+
+      <div v-else class="preview-loading">
+        <p>No preview available.</p>
+      </div>
+    </a-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, onBeforeUnmount } from 'vue'
 import { message } from 'ant-design-vue'
 import {
   FileTextOutlined,
   ThunderboltOutlined,
-  DeleteOutlined
+  DeleteOutlined,
+  EyeOutlined
 } from '@ant-design/icons-vue'
 import { formatDistanceToNow } from 'date-fns'
 import type { Document } from '../../types/knowledge-base'
@@ -136,6 +201,30 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 const selectedRowKeys = ref<number[]>([])
 const batchDeleting = ref(false)
+
+const showPreviewModal = ref(false)
+const previewLoading = ref(false)
+const previewData = ref<{
+  type: 'url' | 'text' | 'table'
+  serve_url?: string
+  content?: string
+  sheets?: Record<string, string[][]>
+  file_name: string
+} | null>(null)
+let _currentBlobUrl: string | null = null
+
+const revokeBlobUrl = () => {
+  if (_currentBlobUrl) {
+    URL.revokeObjectURL(_currentBlobUrl)
+    _currentBlobUrl = null
+  }
+}
+
+watch(showPreviewModal, (open) => {
+  if (!open) revokeBlobUrl()
+})
+
+onBeforeUnmount(revokeBlobUrl)
 
 const rowSelection = {
   selectedRowKeys,
@@ -193,6 +282,31 @@ const handleBatchDelete = async () => {
     await fetchDocuments()
   } finally {
     batchDeleting.value = false
+  }
+}
+
+const handleView = async (document: Document) => {
+  revokeBlobUrl()
+  showPreviewModal.value = true
+  previewLoading.value = true
+  previewData.value = null
+  try {
+    const preview = await knowledgeBaseApi.previewDocument(props.knowledgeBaseId, document.id)
+    if (preview.type === 'url' && preview.serve_url) {
+      // Fetch PDF as blob to bypass URL-encoding issues with special characters
+      const resp = await fetch(preview.serve_url)
+      if (!resp.ok) throw new Error(`Failed to fetch file: ${resp.status}`)
+      const blob = await resp.blob()
+      _currentBlobUrl = URL.createObjectURL(blob)
+      previewData.value = { ...preview, serve_url: _currentBlobUrl }
+    } else {
+      previewData.value = preview
+    }
+  } catch (err: any) {
+    message.error(err?.message || err?.response?.data?.message || 'Failed to load preview')
+    showPreviewModal.value = false
+  } finally {
+    previewLoading.value = false
   }
 }
 
@@ -410,6 +524,94 @@ onMounted(() => {
 .icon-word { background: linear-gradient(135deg, #3b82f6, #1d4ed8); } /* Tailwind Blue */
 .icon-text { background: linear-gradient(135deg, #94a3b8, #475569); } /* Tailwind Slate */
 .icon-default { background: linear-gradient(135deg, #cbd5e1, #64748b); }
+
+.btn-view {
+  color: #16a34a !important;
+}
+.btn-view:hover {
+  color: #15803d !important;
+}
+
+/* 预览弹框 */
+.preview-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 16px;
+  color: var(--text-secondary);
+}
+
+.preview-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+  flex: 1;
+}
+
+.preview-text-wrap {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  background: var(--bg-secondary);
+}
+
+.preview-text {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-primary);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.preview-table-wrap {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 0 16px 16px;
+}
+
+.sheet-scroll {
+  overflow: auto;
+  flex: 1;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.excel-table {
+  border-collapse: collapse;
+  width: max-content;
+  min-width: 100%;
+  font-size: 13px;
+}
+
+.excel-table th {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-weight: 600;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.excel-table td {
+  padding: 7px 12px;
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.excel-table tr:hover td {
+  background: var(--hover-bg);
+}
 
 /* 优化 Ant Design Table 的默认边框和背景 */
 :deep(.ant-table-thead > tr > th) {

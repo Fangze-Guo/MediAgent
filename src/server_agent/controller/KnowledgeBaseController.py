@@ -54,6 +54,23 @@ class KnowledgeBaseController(BaseController):
             except Exception as e:
                 return ResultUtils.error(400, f"获取知识库失败: {self._msg(e)}")
 
+        @self.router.post("/{kb_id}/search")
+        async def search_knowledge_base(
+            kb_id: int,
+            body: dict,
+            userVO: UserVO = Depends(self._get_current_user),
+        ) -> BaseResponse[list]:
+            """语义检索知识库，body: {query: str, top_k?: int}"""
+            try:
+                query = body.get("query", "").strip()
+                if not query:
+                    return ResultUtils.error(400, "query 不能为空")
+                top_k = int(body.get("top_k", 5))
+                results = await self.kb_service.search_kb(kb_id, query, top_k)
+                return ResultUtils.success(results)
+            except Exception as e:
+                return ResultUtils.error(400, f"检索失败: {self._msg(e)}")
+
         @self.router.get("/{kb_id}/documents/{doc_id}/preview")
         async def preview_document(
             kb_id: int,

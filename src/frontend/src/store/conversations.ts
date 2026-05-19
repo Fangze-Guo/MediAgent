@@ -5,7 +5,8 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { createConversation as createConversationAPI, addMessageToAgent, getMessages, getUserConversations as getUserConversationsAPI, deleteConversation as deleteConversationAPI } from '@/apis/conversation'
+import { createConversation as createConversationAPI, addMessageToAgent, streamMessageToAgent as streamMessageToAgentAPI, getMessages, getUserConversations as getUserConversationsAPI, deleteConversation as deleteConversationAPI } from '@/apis/conversation'
+import type { RagSource } from '@/apis/conversation'
 import { useAuthStore } from '@/store/auth'
 
 /**
@@ -21,6 +22,8 @@ export type ChatMessage = {
   typingComplete?: boolean
   /** 助手类型：用于标识不同的AI助手 */
   assistantType?: 'general' | 'medical' | 'data' | 'document'
+  /** RAG 来源引用 */
+  sources?: RagSource[]
 }
 
 /**
@@ -257,38 +260,81 @@ export const useConversationsStore = defineStore('conversations', () => {
       appendMessage(id, userMessage)
 
       // 添加加载中的助手消息
-      const assistantMessage: ChatMessage = {
+      appendMessage(id, {
         role: 'assistant',
         content: '',
         typingComplete: false
-      }
-      appendMessage(id, assistantMessage)
+      })
 
       // 调用后端API获取Agent响应
-      const response = await addMessageToAgent(id, content)
-      
-      // 更新助手消息
-      assistantMessage.content = response
-      assistantMessage.typingComplete = true
-      
-      // Agent响应后，从后端重新获取最新的会话数据
-      try {
-        console.log(`Agent响应完成，准备刷新会话 ${id} 的数据...`)
-        // 延迟一点时间确保后端数据已保存
-        await new Promise(resolve => setTimeout(resolve, 100))
-        await loadConversationMessages(id, 'main_chat', true) // 强制重新加载
-        console.log(`会话 ${id} 数据刷新完成`)
-      } catch (error) {
-        console.warn('刷新会话数据失败:', error)
-        // 即使刷新失败，也继续使用本地数据
-      }
-      
-      return response
+      const result = await addMessageToAgent(id, content)
+
+      // 用 splice 替换最后一条消息，确保 Pinia 响应式正确触发
+      const msgIdx = conversation.messages.length - 1
+      conversation.messages.splice(msgIdx, 1, {
+        role: 'assistant',
+        content: result.reply,
+        sources: result.sources?.length ? result.sources : undefined,
+        typingComplete: true
+      })
+
+      return result.reply
     } catch (error) {
       console.error('发送消息失败:', error)
       // 移除加载中的助手消息
       const lastMessage = conversation.messages[conversation.messages.length - 1]
       if (lastMessage && !lastMessage.typingComplete) {
+        conversation.messages.pop()
+      }
+      throw error
+    }
+  }
+
+  /**
+   * 流式发送消息到Agent，逐 token 更新 UI
+   */
+  async function streamMessageToAgent(id: string, content: string): Promise<void> {
+    const conversation = getConversation(id)
+    if (!conversation) throw new Error(`会话 ${id} 不存在`)
+
+    appendMessage(id, { role: 'user', content, typingComplete: true })
+    appendMessage(id, { role: 'assistant', content: '', typingComplete: false })
+
+    // rAF 批量更新：同一帧内的 token 合并后一次性写入，DOM 最多 60fps 刷新
+    let pendingTokens = ''
+    let rafId: number | null = null
+    const flushTokens = () => {
+      if (!pendingTokens) return
+      const idx = conversation.messages.length - 1
+      conversation.messages[idx].content += pendingTokens
+      pendingTokens = ''
+      rafId = null
+    }
+
+    try {
+      await streamMessageToAgentAPI(id, content, {
+        onToken(token) {
+          pendingTokens += token
+          if (rafId === null) {
+            rafId = requestAnimationFrame(flushTokens)
+          }
+        },
+        onSources(sources) {
+          const idx = conversation.messages.length - 1
+          conversation.messages[idx].sources = sources
+        },
+        onDone() {
+          // 立即刷新剩余 token，再标记完成
+          if (rafId !== null) cancelAnimationFrame(rafId)
+          flushTokens()
+          const idx = conversation.messages.length - 1
+          conversation.messages[idx].typingComplete = true
+        }
+      })
+    } catch (error) {
+      if (rafId !== null) cancelAnimationFrame(rafId)
+      const last = conversation.messages[conversation.messages.length - 1]
+      if (last?.role === 'assistant' && !last.typingComplete) {
         conversation.messages.pop()
       }
       throw error
@@ -454,6 +500,8 @@ export const useConversationsStore = defineStore('conversations', () => {
     appendMessage,
     /** 发送消息到Agent */
     sendMessageToAgent,
+    /** 流式发送消息到Agent（逐token更新） */
+    streamMessageToAgent,
     /** 设置当前活跃会话 */
     setCurrentConversation,
     /** 删除会话 */

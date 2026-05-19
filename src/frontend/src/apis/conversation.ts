@@ -67,6 +67,24 @@ interface BaseResponse<T> {
 }
 
 /**
+ * RAG 来源引用
+ */
+export interface RagSource {
+  kb_name: string
+  content: string
+  score: number
+  doc_id?: number
+}
+
+/**
+ * Agent 消息响应
+ */
+export interface AgentMessageResult {
+  reply: string
+  sources: RagSource[]
+}
+
+/**
  * 创建新对话
  * @param user_id 用户ID
  * @returns Promise<ConversationInfo> 返回创建的对话信息
@@ -85,11 +103,11 @@ export async function createConversation(user_id: string): Promise<ConversationI
  * 向Agent添加消息并获取响应
  * @param conversation_id 对话ID
  * @param content 消息内容
- * @returns Promise<string> 返回Agent的响应
+ * @returns Promise<AgentMessageResult> 返回回复内容和来源引用
  */
-export async function addMessageToAgent(conversation_id: string, content: string): Promise<string> {
+export async function addMessageToAgent(conversation_id: string, content: string): Promise<AgentMessageResult> {
   try {
-    const response = await post<BaseResponse<string>>(`/conversation/add?conversation_id=${conversation_id}&content=${content}`)
+    const response = await post<BaseResponse<AgentMessageResult>>(`/conversation/add?conversation_id=${conversation_id}&content=${encodeURIComponent(content)}`)
     return response.data.data
   } catch (error) {
     console.error('发送消息失败:', error)
@@ -141,6 +159,52 @@ export async function deleteConversation(conversation_id: string): Promise<boole
     console.error('删除会话失败:', error)
     throw new Error('删除会话失败，请稍后再试')
   }
+}
+
+/**
+ * 流式发送消息（SSE），逐 token 回调，结束时触发 onSources / onDone
+ */
+export async function streamMessageToAgent(
+  conversation_id: string,
+  content: string,
+  callbacks: {
+    onToken: (token: string) => void
+    onSources: (sources: RagSource[]) => void
+    onDone: () => void
+    onError?: (err: Error) => void
+  },
+  signal?: AbortSignal
+): Promise<void> {
+  const url = `/api/conversation/stream?conversation_id=${conversation_id}&content=${encodeURIComponent(content)}`
+  const response = await fetch(url, { method: 'POST', signal })
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+
+  const reader = response.body!.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const data = line.slice(6).trim()
+        if (data === '[DONE]') { callbacks.onDone(); return }
+        if (data.startsWith('[SOURCES]')) {
+          try { callbacks.onSources(JSON.parse(data.slice(9))) } catch { /* ignore */ }
+          continue
+        }
+        if (data) callbacks.onToken(data)
+      }
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  callbacks.onDone()
 }
 
 /**

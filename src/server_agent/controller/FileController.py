@@ -51,11 +51,36 @@ class FileController(BaseController):
                 if not file_path.exists() or not file_path.is_file():
                     return ResultUtils.error(404, "File not found")
                 
-                # 返回文件 - FastAPI 会自动设置 Content-Type
-                return FileResponse(
-                    path=file_path,
-                    filename=file_path.name
-                )
+                # 判断是否可在浏览器内联预览
+                import mimetypes as _mt
+                content_type, _ = _mt.guess_type(str(file_path))
+                if content_type is None:
+                    content_type = "application/octet-stream"
+
+                INLINE_TYPES = {
+                    "application/pdf",
+                    "text/plain",
+                    "text/markdown",
+                    "text/csv",
+                    "image/jpeg",
+                    "image/png",
+                    "image/gif",
+                    "image/webp",
+                    "image/svg+xml",
+                }
+
+                if content_type in INLINE_TYPES:
+                    return FileResponse(
+                        path=file_path,
+                        media_type=content_type,
+                        headers={"Content-Disposition": "inline"},
+                    )
+                else:
+                    return FileResponse(
+                        path=file_path,
+                        filename=file_path.name,
+                        media_type=content_type,
+                    )
             except Exception as e:
                 return ResultUtils.error(500, f"Error serving file: {str(e)}")
 

@@ -198,7 +198,7 @@
             <template v-if="column.key === 'name'">
               <div class="model-name-cell">
                 <a-avatar 
-                  :src="providers[record.provider]?.avatar"
+                  :src="getAvatarUrl(providers[record.provider]?.avatar)"
                   :style="!providers[record.provider]?.avatar ? { backgroundColor: getProviderColor(record.provider) } : {}" 
                   size="small"
                 >
@@ -332,6 +332,14 @@ import {
 import ModelCard from '@/components/model/ModelCard.vue'
 import ModelFormModal from '@/components/model/ModelFormModal.vue'
 import { getCategoryColor, getProviderColor } from '@/utils/colors'
+
+const _API_BASE = 'http://localhost:8000'
+const getAvatarUrl = (avatar?: string) => {
+  if (!avatar) return undefined
+  if (avatar.startsWith('http://') || avatar.startsWith('https://')) return avatar
+  if (avatar.startsWith('/')) return `${_API_BASE}${avatar}`
+  return avatar
+}
 
 // ==================== 响应式数据 ====================
 const loading = ref(false)

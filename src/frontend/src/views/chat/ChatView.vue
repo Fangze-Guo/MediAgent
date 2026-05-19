@@ -46,15 +46,43 @@
                   </div>
                   <!-- 原始内容（如果没有解析出思考过程） -->
                   <div v-else>
-                    <MarkdownRenderer :content="m.content" />
+                    <!-- 流式等待中：空内容 → 显示打字动画 -->
+                    <div v-if="m.role === 'assistant' && !m.typingComplete && !m.content" class="typing-indicator">
+                      <span></span><span></span><span></span>
+                    </div>
+                    <!-- 流式输出中或输出完成：统一用 StreamingMarkdownRenderer，streaming prop 随 typingComplete 切换 -->
+                    <StreamingMarkdownRenderer
+                      v-else-if="m.role === 'assistant'"
+                      :content="m.content"
+                      :streaming="!m.typingComplete"
+                      :animate="false"
+                    />
+                    <!-- 用户消息直接显示 -->
+                    <MarkdownRenderer v-else :content="m.content" />
+                  </div>
+                  <!-- RAG 来源引用 -->
+                  <div v-if="m.role === 'assistant' && m.sources && m.sources.length > 0" class="rag-sources">
+                    <div class="rag-sources-header">
+                      <span class="rag-icon">📚</span>
+                      <span>参考来源</span>
+                    </div>
+                    <div
+                      v-for="(src, si) in m.sources"
+                      :key="si"
+                      class="rag-source-item"
+                    >
+                      <span class="rag-source-index">[{{ si + 1 }}]</span>
+                      <span class="rag-source-kb">{{ src.kb_name }}</span>
+                      <span class="rag-source-score">{{ Math.round((1 - src.score) * 100) }}% 相关</span>
+                    </div>
                   </div>
                 </div>
                 <div v-if="m.role === 'user'" class="avatar user-avatar">
                   <UserOutlined />
                 </div>
               </div>
-              <!-- 加载状态 -->
-              <div v-if="sending" class="loading-message">
+              <!-- 加载状态：仅在没有未完成消息时显示（避免与气泡内 typing dots 重复） -->
+              <div v-if="sending && !currentMessages.some(m => m.role === 'assistant' && !m.typingComplete)" class="loading-message">
                 <div class="message-content">
                   <a-spin size="small" />
                   <span style="margin-left: 8px;">{{ t('views_ChatView.aiThinking') }}</span>
@@ -215,6 +243,8 @@ import { useI18n } from 'vue-i18n'
 import { useConversationsStore } from '@/store/conversations'
 import FileUpload from '@/components/file/FileUpload.vue'
 import MarkdownRenderer from '@/components/markdown/MarkdownRenderer.vue'
+import StreamingMarkdownRenderer from '@/components/markdown/StreamingMarkdownRenderer.vue'
+import { marked } from 'marked'
 import ModelSelector from '@/components/model/ModelSelector.vue'
 import { type FileInfo } from '@/apis/files'
 import {
@@ -462,6 +492,15 @@ const formatTime = (timeString: string): string => {
 /** 思考过程显示状态 */
 const thinkingStates = ref<Record<string, boolean>>({})
 
+/** 流式输出中直接调用 marked 渲染，绕过组件 buffer */
+const renderStreamingMd = (content: string): string => {
+  if (!content) return ''
+  try { return marked(content) as string } catch { return content }
+}
+
+/** parsedContent 缓存：key = `convId-index:content`，避免每次 token 都重跑正则 */
+const parsedContentCache = new Map<string, ReturnType<typeof parseMessageContent>>()
+
 // 计算属性
 /** 当前活跃的会话对象 */
 const currentConversation = computed(() => conversationsStore.getConversation(activeId.value) || null)
@@ -470,7 +509,18 @@ const currentMessages = computed(() => {
   const messages = currentConversation.value?.messages || []
   return messages.map((msg, index) => {
     const messageKey = `${activeId.value}-${index}`
-    const parsedContent = parseMessageContent(msg.content)
+
+    // 显式读取 content，确保流式期间 Vue 也能追踪到该响应式属性
+    const msgContent = msg.content
+    // 流式输出中不解析（避免每 token 都重跑正则），完成后使用缓存
+    let parsedContent = null
+    if (msg.typingComplete && msgContent) {
+      const cacheKey = `${messageKey}:${msgContent.length}`
+      if (!parsedContentCache.has(cacheKey)) {
+        parsedContentCache.set(cacheKey, parseMessageContent(msgContent))
+      }
+      parsedContent = parsedContentCache.get(cacheKey)!
+    }
 
     // 为多个思考过程生成显示状态
     let showThinkingList = null
@@ -484,8 +534,8 @@ const currentMessages = computed(() => {
     return {
       ...msg,
       parsedContent,
-      showThinking: thinkingStates.value[messageKey] || false, // 保持向后兼容
-      showThinkingList, // 新增：多个思考过程的显示状态
+      showThinking: thinkingStates.value[messageKey] || false,
+      showThinkingList,
     }
   })
 })
@@ -633,8 +683,7 @@ const sendMessageToAI = async (messageText: string) => {
   sending.value = true
 
   try {
-    // 使用新的conversation API发送消息
-    await conversationsStore.sendMessageToAgent(currentConversation.value.id, messageText)
+    await conversationsStore.streamMessageToAgent(currentConversation.value.id, messageText)
   } catch (error) {
     console.error('发送消息失败:', error)
     message.error('发送消息失败，请稍后再试')
@@ -1135,6 +1184,130 @@ const getAssistantAvatarStyle = () => {
   font-size: 14px;
   line-height: 1.6;
   color: var(--text-primary);
+}
+
+/* 流式 Markdown 容器（直接 v-html 渲染） */
+.streaming-md {
+  line-height: 1.7;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.streaming-md :deep(h1), .streaming-md :deep(h2), .streaming-md :deep(h3),
+.streaming-md :deep(h4), .streaming-md :deep(h5), .streaming-md :deep(h6) {
+  margin: 12px 0 6px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.streaming-md :deep(p)   { margin: 6px 0; }
+.streaming-md :deep(ul), .streaming-md :deep(ol) { margin: 6px 0; padding-left: 22px; }
+.streaming-md :deep(li)  { margin: 3px 0; }
+.streaming-md :deep(code) {
+  background: var(--bg-secondary);
+  border-radius: 3px;
+  padding: 2px 5px;
+  font-size: 0.88em;
+  color: #d73a49;
+}
+.streaming-md :deep(pre) {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 12px 16px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+.streaming-md :deep(pre code) { background: none; padding: 0; color: inherit; }
+.streaming-md :deep(blockquote) {
+  border-left: 4px solid var(--link-color);
+  padding: 6px 12px;
+  margin: 8px 0;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--link-color) 5%, transparent);
+}
+.streaming-md :deep(table) { border-collapse: collapse; margin: 8px 0; width: 100%; }
+.streaming-md :deep(th), .streaming-md :deep(td) {
+  border: 1px solid var(--border-color);
+  padding: 6px 10px;
+}
+.streaming-md :deep(th) { background: var(--bg-secondary); font-weight: 600; }
+.streaming-md :deep(strong) { font-weight: 600; }
+.streaming-md :deep(hr) { border: none; border-top: 1px solid var(--border-color); margin: 12px 0; }
+
+/* 打字等待指示器 */
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 2px;
+}
+
+.typing-indicator span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  animation: typing-bounce 1.2s infinite ease-in-out;
+}
+
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typing-bounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40%           { transform: scale(1);   opacity: 1;   }
+}
+
+/* RAG 来源引用 */
+.rag-sources {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--link-color) 6%, var(--bg-primary));
+  border: 1px solid color-mix(in srgb, var(--link-color) 20%, transparent);
+  font-size: 12px;
+}
+
+.rag-sources-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.rag-icon { font-size: 13px; }
+
+.rag-source-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  color: var(--text-secondary);
+}
+
+.rag-source-index {
+  font-weight: 700;
+  color: var(--link-color);
+  min-width: 20px;
+}
+
+.rag-source-kb {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rag-source-score {
+  font-size: 11px;
+  color: #16a34a;
+  background: rgba(22, 163, 74, 0.1);
+  padding: 1px 6px;
+  border-radius: 10px;
+  white-space: nowrap;
 }
 
 /* 顶部工具栏 */

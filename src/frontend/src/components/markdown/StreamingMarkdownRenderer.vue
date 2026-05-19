@@ -23,12 +23,15 @@ interface Props {
   enableHighlight?: boolean
   streaming?: boolean
   streamingSpeed?: number
+  /** 是否启用逐字动画（默认 true）；传 false 时直接渲染，适合后端已逐 token 推送的场景 */
+  animate?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   enableHighlight: true,
   streaming: false,
-  streamingSpeed: 15
+  streamingSpeed: 15,
+  animate: true
 })
 
 const displayContent = ref('')
@@ -82,7 +85,7 @@ const clearStreaming = () => {
   }
 }
 
-// 监听内容变化 - 核心逻辑修复
+// 监听内容变化
 watch(() => props.content, (newContent) => {
   if (!newContent) {
     clearStreaming()
@@ -92,27 +95,21 @@ watch(() => props.content, (newContent) => {
     return
   }
 
-  // 如果是流式模式
   if (props.streaming) {
-    // 内容是新增的（长度变长）
-    if (newContent.length > displayContent.value.length) {
-      // 继续从当前位置流式输出，不重置 currentCharIndex
+    if (!props.animate) {
+      // animate=false：后端已逐 token 推送，直接更新，不需要二次动画
+      displayContent.value = newContent
+      currentCharIndex = newContent.length
+      isStreaming.value = true
+    } else if (newContent.length > displayContent.value.length) {
+      // animate=true（默认）：逐字播放动画
       if (!streamingTimer) {
         isStreaming.value = true
         animate()
       }
-    } else if (newContent.length === displayContent.value.length) {
-      // 内容相同，不做任何处理
-      return
-    } else {
-      // 内容缩短（不应该发生）- 重置
-      currentCharIndex = 0
-      displayContent.value = ''
-      isStreaming.value = true
-      animate()
     }
   } else {
-    // 非流式模式 - 立即显示完整内容
+    // 非流式模式（一次性显示历史消息）：直接渲染，不播放动画
     clearStreaming()
     displayContent.value = newContent
     currentCharIndex = newContent.length
@@ -120,10 +117,9 @@ watch(() => props.content, (newContent) => {
   }
 }, { immediate: true })
 
-// 监听流式状态变化 - 流式结束时完整显示
+// 监听流式状态变化 - 流式结束时完整显示并关闭光标
 watch(() => props.streaming, (streaming) => {
-  if (!streaming && streamingTimer) {
-    // 流式输出结束，立即显示完整内容
+  if (!streaming) {
     clearStreaming()
     displayContent.value = props.content
     currentCharIndex = props.content.length
@@ -137,7 +133,7 @@ const renderedMarkdown = computed(() => {
   if (!content) return ''
 
   try {
-    return marked(content)
+    return marked(content) as string
   } catch (error) {
     console.error('Markdown 渲染失败:', error)
     return content

@@ -10,6 +10,7 @@ class KbDocumentInfo(BaseModel):
     file_path: str
     file_size: int
     content_type: str
-    status: str = "completed"
+    status: str = "pending"
+    chunk_count: int = 0
     created_at: Optional[str] = None
     updated_at: Optional[str] = None

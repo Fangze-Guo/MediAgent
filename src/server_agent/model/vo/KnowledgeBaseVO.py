@@ -11,6 +11,7 @@ class KbDocumentVO(BaseModel):
     content_type: str
     knowledge_base_id: int
     status: str
+    chunk_count: int = 0
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
     processing_tasks: List[dict] = []
@@ -26,6 +27,7 @@ class KnowledgeBaseVO(BaseModel):
     description: Optional[str] = None
     documents: List[KbDocumentVO] = []
     document_count: int = 0
+    chunk_count: int = 0
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 

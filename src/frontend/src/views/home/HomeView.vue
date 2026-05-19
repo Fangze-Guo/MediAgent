@@ -107,15 +107,16 @@ const startConversation = async () => {
   try {
     // 创建新会话（调用后端API）
     const conv = await conversationsStore.createConversation()
-    
-    // 发送初始消息到Agent
-    await conversationsStore.sendMessageToAgent(conv.id, text)
-    
-    // 注意：不需要再次加载会话内容，因为sendMessageToAgent已经处理了消息
-    // await conversationsStore.loadConversationMessages(conv.id)
 
-    // 跳转到对话页面
+    // 先启动流式发送：同步部分（appendMessage）立刻把消息写入 store
+    // ChatView 加载后会看到 messages.length > 0，不会触发后端重载
+    const streamPromise = conversationsStore.streamMessageToAgent(conv.id, text)
+
+    // 立即跳转到对话页面，不等流式结束
     await router.push(`/conversation/${conv.id}`)
+
+    // 流式输出继续在后台运行，ChatView 响应式展示 token
+    streamPromise.catch(err => console.error('流式发送失败:', err))
   } catch (error) {
     console.error('创建会话失败:', error)
   } finally {

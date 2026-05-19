@@ -63,13 +63,18 @@ class KnowledgeBaseMapper:
                     file_path    TEXT NOT NULL,
                     file_size    BIGINT NOT NULL DEFAULT 0,
                     content_type VARCHAR(255) NOT NULL,
-                    status       VARCHAR(50) NOT NULL DEFAULT 'completed',
+                    status       VARCHAR(50) NOT NULL DEFAULT 'pending',
+                    chunk_count  INTEGER NOT NULL DEFAULT 0,
                     created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
             await conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_kb_documents_kb_id ON kb_documents(kb_id)
+            """)
+            await conn.execute("""
+                ALTER TABLE kb_documents
+                ADD COLUMN IF NOT EXISTS chunk_count INTEGER NOT NULL DEFAULT 0
             """)
         logger.info("Knowledge base tables ready")
 
@@ -193,6 +198,24 @@ class KnowledgeBaseMapper:
             await conn.execute("DELETE FROM kb_documents WHERE kb_id = $1", kb_id)
         return True
 
+    async def update_document_status(self, doc_id: int, status: str) -> None:
+        """更新文档处理状态"""
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE kb_documents SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
+                status, doc_id,
+            )
+
+    async def update_document_chunk_count(self, doc_id: int, chunk_count: int) -> None:
+        """更新文档 chunk 数量"""
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE kb_documents SET chunk_count = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
+                chunk_count, doc_id,
+            )
+
     # ==================== 内部工具 ====================
 
     @staticmethod
@@ -216,6 +239,7 @@ class KnowledgeBaseMapper:
             file_size=row["file_size"],
             content_type=row["content_type"],
             status=row["status"],
+            chunk_count=row["chunk_count"] if "chunk_count" in row.keys() else 0,
             created_at=str(row["created_at"]) if row["created_at"] else None,
             updated_at=str(row["updated_at"]) if row["updated_at"] else None,
         )

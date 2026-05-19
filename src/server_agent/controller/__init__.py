@@ -48,6 +48,7 @@ async def lifespan(app: FastAPI):
 
     app.state.code_agent_mapper = code_agent_mapper
     app.state.conv_mapper = conv_mapper
+    app.state.kb_mapper = kb_mapper
 
     # ---- Skill task manager ----
     from src.server_agent.service.SkillTaskManager import get_skill_task_manager
