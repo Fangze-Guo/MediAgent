@@ -7,14 +7,22 @@ import pathlib
 
 from fastapi import UploadFile, File, Form, Depends, Header
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from src.server_agent.common import BaseResponse
 from src.server_agent.common.ResultUtils import ResultUtils
 from src.server_agent.model import DeleteFileRequest, CreateFolderRequest, BatchDeleteFilesRequest, RenameFileRequest, FileInfo, FileListVO, UserVO
 from src.server_agent.service import FileService, UserService
+from src.server_agent.service.OssService import OssService
 from src.server_agent.exceptions import AuthenticationError
 from src.server_agent.constants.CommonConstants import DATASET_PATH
 from .base import BaseController
+
+
+class PresignRequest(BaseModel):
+    conversation_id: str
+    filename: str
+    content_type: str
 
 
 class FileController(BaseController):
@@ -24,10 +32,25 @@ class FileController(BaseController):
         super().__init__(prefix="/files", tags=[["文件管理"]])
         self.fileService = FileService()
         self.userService = UserService()
+        self.ossService = OssService()
         self._register_routes()
 
     def _register_routes(self):
         """注册所有路由"""
+
+        @self.router.post("/chat/presign")
+        async def getChatImagePresignUrl(
+            body: PresignRequest,
+            userVO: UserVO = Depends(self._get_current_user),
+        ) -> BaseResponse[dict]:
+            """生成聊天图片 OSS 预签名上传 URL（前端直传）"""
+            result = self.ossService.generate_presign_url(
+                user_id=str(userVO.uid),
+                conversation_id=body.conversation_id,
+                filename=body.filename,
+                content_type=body.content_type,
+            )
+            return ResultUtils.success(result)
 
         @self.router.get("/serve/{file_id:path}")
         async def serveFile(file_id: str):

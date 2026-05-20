@@ -63,8 +63,14 @@ class ConversationMapper:
                     conversation_uid TEXT NOT NULL REFERENCES conversations(uid) ON DELETE CASCADE,
                     role             TEXT NOT NULL,
                     content          TEXT NOT NULL,
+                    attachments      JSONB NOT NULL DEFAULT '[]'::jsonb,
                     created_at       TIMESTAMPTZ DEFAULT NOW()
                 )
+            """)
+            # 兼容旧表：若 attachments 列不存在则追加
+            await conn.execute("""
+                ALTER TABLE messages
+                ADD COLUMN IF NOT EXISTS attachments JSONB NOT NULL DEFAULT '[]'::jsonb
             """)
             await conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_messages_conversation_uid
@@ -139,26 +145,49 @@ class ConversationMapper:
 
     # ==================== Messages ====================
 
-    async def add_message(self, conversation_uid: str, role: str, content: str) -> None:
+    async def add_message(
+        self,
+        conversation_uid: str,
+        role: str,
+        content: str,
+        attachments: list | None = None,
+    ) -> None:
         """追加一条消息，并更新 conversation.updated_at"""
+        import json
+        attachments_json = json.dumps(attachments or [])
         pool = await self._get_pool()
         async with pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(
-                    "INSERT INTO messages (conversation_uid, role, content) VALUES ($1, $2, $3)",
-                    conversation_uid, role, content,
+                    "INSERT INTO messages (conversation_uid, role, content, attachments) VALUES ($1, $2, $3, $4::jsonb)",
+                    conversation_uid, role, content, attachments_json,
                 )
                 await conn.execute(
                     "UPDATE conversations SET updated_at=NOW() WHERE uid=$1",
                     conversation_uid,
                 )
 
-    async def get_messages(self, conversation_uid: str) -> List[Dict[str, str]]:
+    async def get_messages(self, conversation_uid: str) -> List[Dict]:
         """获取对话全量消息，按 id 升序"""
+        import json
         pool = await self._get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT role, content FROM messages WHERE conversation_uid=$1 ORDER BY id ASC",
+                "SELECT role, content, attachments FROM messages WHERE conversation_uid=$1 ORDER BY id ASC",
                 conversation_uid,
             )
-            return [{"role": r["role"], "content": r["content"]} for r in rows]
+            result = []
+            for r in rows:
+                raw = r["attachments"]
+                if isinstance(raw, str):
+                    attachments = json.loads(raw)
+                elif raw is None:
+                    attachments = []
+                else:
+                    attachments = list(raw)
+                result.append({
+                    "role": r["role"],
+                    "content": r["content"],
+                    "attachments": attachments,
+                })
+            return result

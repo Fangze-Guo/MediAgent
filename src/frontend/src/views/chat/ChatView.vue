@@ -68,7 +68,18 @@
                       :streaming="false"
                     />
                     <!-- 用户消息直接显示 -->
-                    <MarkdownRenderer v-else :content="m.content" />
+                    <template v-else>
+                      <div v-if="m.images && m.images.length" class="message-images">
+                        <img
+                          v-for="(img, imgIdx) in m.images"
+                          :key="imgIdx"
+                          :src="img"
+                          class="message-image-thumb"
+                          @click="selectedPreviewImage = img"
+                        />
+                      </div>
+                      <MarkdownRenderer v-if="m.content" :content="m.content" />
+                    </template>
                   </div>
                   <!-- RAG 来源引用（输出完成后显示） -->
                   <div v-if="m.role === 'assistant' && m.sources && m.sources.length > 0" class="rag-sources">
@@ -153,7 +164,22 @@
             </div>
             
             <!-- 输入容器 -->
-            <div class="input-container">
+            <div
+              class="input-container"
+              :class="{ 'drag-active': isDragging }"
+              @dragover="handleDragOver"
+              @dragleave="handleDragLeave"
+              @drop="handleDrop"
+            >
+              <!-- 隐藏的文件选择器 -->
+              <input
+                ref="fileInputRef"
+                type="file"
+                accept="image/*,text/plain,text/csv,.md,.txt,.csv"
+                multiple
+                style="display: none"
+                @change="handleFileSelect"
+              />
               <!-- 顶部工具栏 -->
               <div class="input-toolbar">
                 <div class="toolbar-left">
@@ -165,7 +191,7 @@
                   />
                   <!-- 功能图标 -->
                   <div class="toolbar-icons">
-                    <a-button type="text" class="toolbar-icon" @click="handleUploadClick"
+                    <a-button type="text" class="toolbar-icon" @click="handleAttachClick"
                               :title="t('views_ChatView.uploadFile')">
                       <PaperClipOutlined />
                     </a-button>
@@ -192,6 +218,26 @@
                   </a-button>
                 </div>
               </div>
+              <!-- 待发送附件预览 -->
+              <div v-if="pendingAttachments.length > 0" class="pending-attachments">
+                <div v-for="att in pendingAttachments" :key="att.id" class="attachment-item">
+                  <template v-if="att.type === 'image'">
+                    <img :src="att.dataUrl" class="attachment-thumb" :alt="att.name" />
+                    <div v-if="att.uploading" class="attachment-uploading">
+                      <span class="upload-spinner" />
+                    </div>
+                  </template>
+                  <template v-else>
+                    <div class="attachment-file">
+                      <FileTextOutlined class="attachment-file-icon" />
+                      <span class="attachment-name">{{ att.name }}</span>
+                    </div>
+                  </template>
+                  <button class="attachment-remove" @click="removeAttachment(att.id)" title="移除">
+                    <CloseOutlined />
+                  </button>
+                </div>
+              </div>
               <!-- 输入框 -->
               <div class="input-field">
                 <textarea 
@@ -200,6 +246,7 @@
                   :placeholder="t('views_ChatView.inputPlaceholder')" 
                   @keydown="handleKeyDown"
                   @input="adjustTextareaHeight"
+                  @paste="handlePaste"
                   rows="1"
                   ref="textareaRef"
                 ></textarea>
@@ -211,7 +258,7 @@
                 </div>
                 <div class="send-group">
                   <a-button type="primary" class="send-btn" :loading="sending" @click="sendMessage"
-                            :disabled="!inputMessage.trim()">
+                            :disabled="!inputMessage.trim() && pendingAttachments.length === 0">
                     {{ t('views_ChatView.send') }}
                   </a-button>
                 </div>
@@ -238,6 +285,18 @@
           @batch-use-complete="handleBatchUseComplete"
       />
     </a-modal>
+
+    <!-- 图片预览 Lightbox -->
+    <div
+      v-if="selectedPreviewImage"
+      class="image-lightbox"
+      @click="selectedPreviewImage = null"
+    >
+      <img :src="selectedPreviewImage" class="lightbox-img" @click.stop />
+      <button class="lightbox-close" @click="selectedPreviewImage = null">
+        <CloseOutlined />
+      </button>
+    </div>
   </div>
 </template>
 
@@ -257,14 +316,17 @@ import StreamingMarkdownRenderer from '@/components/markdown/StreamingMarkdownRe
 import RagSearchProgress from '@/components/chat/RagSearchProgress.vue'
 import { marked } from 'marked'
 import ModelSelector from '@/components/model/ModelSelector.vue'
-import { type FileInfo } from '@/apis/files'
+import { type FileInfo, getChatImagePresignUrl, uploadToOss } from '@/apis/files'
 import {
   AppstoreOutlined,
   AudioOutlined,
   BarChartOutlined,
+  CloseOutlined,
   DeleteOutlined,
   DownOutlined,
   ExpandOutlined,
+  FileImageOutlined,
+  FileOutlined,
   FileTextOutlined,
   MedicineBoxOutlined,
   PaperClipOutlined,
@@ -304,6 +366,32 @@ const selectedModel = ref('QWen-Plus')
 const userScrolled = ref(false)
 /** 自动滚动是否启用 */
 const autoScrollEnabled = ref(true)
+
+/** 待发送附件 */
+interface PendingAttachment {
+  id: string
+  name: string
+  type: 'image' | 'text'
+  /** 本地预览 URL（ObjectURL，仅显示用） */
+  dataUrl: string
+  /** OSS 永久访问 URL（上传完成后填入） */
+  ossUrl?: string
+  /** 是否正在上传到 OSS */
+  uploading?: boolean
+  textContent?: string
+  size: number
+  mimeType: string
+}
+const pendingAttachments = ref<PendingAttachment[]>([])
+/** 文件选择器 input 引用 */
+const fileInputRef = ref<HTMLInputElement | null>(null)
+/** 拖拽悬停状态 */
+const isDragging = ref(false)
+/** 当前预览大图的 URL */
+const selectedPreviewImage = ref<string | null>(null)
+
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024  // 10 MB
+const MAX_ATTACHMENTS = 6
 
 
 /**
@@ -393,6 +481,134 @@ const handleScroll = () => {
   }
 }
 
+
+/**
+ * 处理附件文件
+ * - 图片：立即生成本地预览，异步上传到 OSS 拿到永久 URL
+ * - 文本：读取内容到内存
+ */
+const processFiles = (files: FileList | File[]) => {
+  const arr = Array.from(files)
+  for (const file of arr) {
+    if (pendingAttachments.value.length >= MAX_ATTACHMENTS) {
+      message.warning(`最多支持 ${MAX_ATTACHMENTS} 个附件`)
+      break
+    }
+    const isImage = file.type.startsWith('image/')
+    const isText = file.type.startsWith('text/') || /\.(txt|csv|md)$/i.test(file.name)
+    if (!isImage && !isText) {
+      message.warning(`不支持的文件类型: ${file.name}，仅支持图片和文本文件`)
+      continue
+    }
+    if (isImage && file.size > MAX_IMAGE_SIZE) {
+      message.warning(`图片 "${file.name}" 超过 10MB 限制`)
+      continue
+    }
+
+    const id = crypto.randomUUID()
+
+    if (isImage) {
+      // 立即生成本地预览（ObjectURL，低内存消耗）
+      const localUrl = URL.createObjectURL(file)
+      pendingAttachments.value.push({
+        id, name: file.name, type: 'image',
+        dataUrl: localUrl,
+        ossUrl: undefined,
+        uploading: true,
+        size: file.size, mimeType: file.type,
+      })
+
+      // 异步上传到 OSS
+      const conversationId = currentConversation.value?.id ?? 'unknown'
+      getChatImagePresignUrl(conversationId, file.name, file.type)
+        .then(async ({ put_url, signed_headers, access_url }) => {
+          await uploadToOss(put_url, file, signed_headers)
+          const idx = pendingAttachments.value.findIndex(a => a.id === id)
+          if (idx !== -1) {
+            pendingAttachments.value[idx] = {
+              ...pendingAttachments.value[idx],
+              ossUrl: access_url,
+              uploading: false,
+            }
+          }
+        })
+        .catch(err => {
+          console.error('OSS 上传失败:', err)
+          message.error(`图片 "${file.name}" 上传失败，请重试`)
+          pendingAttachments.value = pendingAttachments.value.filter(a => a.id !== id)
+        })
+    } else {
+      const reader = new FileReader()
+      reader.onload = () => {
+        pendingAttachments.value.push({
+          id, name: file.name, type: 'text',
+          dataUrl: '', textContent: reader.result as string,
+          size: file.size, mimeType: file.type,
+        })
+      }
+      reader.readAsText(file)
+    }
+  }
+}
+
+/**
+ * 处理粘贴事件（捕获剪贴板图片）
+ */
+const handlePaste = (event: ClipboardEvent) => {
+  const items = event.clipboardData?.items
+  if (!items) return
+  for (const item of items) {
+    if (item.kind === 'file' && item.type.startsWith('image/')) {
+      const file = item.getAsFile()
+      if (file) processFiles([file])
+    }
+  }
+}
+
+/**
+ * 拖拽事件
+ */
+const handleDragOver = (event: DragEvent) => {
+  event.preventDefault()
+  isDragging.value = true
+}
+const handleDragLeave = (event: DragEvent) => {
+  const target = event.currentTarget as HTMLElement
+  if (!target.contains(event.relatedTarget as Node)) {
+    isDragging.value = false
+  }
+}
+const handleDrop = (event: DragEvent) => {
+  event.preventDefault()
+  isDragging.value = false
+  const files = event.dataTransfer?.files
+  if (files && files.length > 0) processFiles(files)
+}
+
+/**
+ * 点击附件按钮 → 打开文件选择器
+ */
+const handleAttachClick = () => {
+  fileInputRef.value?.click()
+}
+
+/**
+ * 文件选择器 change 事件
+ */
+const handleFileSelect = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  if (input.files && input.files.length > 0) {
+    processFiles(input.files)
+    input.value = ''
+  }
+}
+
+/**
+ * 移除待发送附件
+ */
+const removeAttachment = (id: string) => {
+  pendingAttachments.value = pendingAttachments.value.filter(a => a.id !== id)
+}
 
 /**
  * 处理文件上传成功
@@ -690,14 +906,21 @@ onUnmounted(() => {
 /**
  * 发送消息给AI（内部函数）
  * @param messageText 要发送的消息内容
+ * @param images 图片 base64 列表（可选）
  */
-const sendMessageToAI = async (messageText: string) => {
+const sendMessageToAI = async (
+  messageText: string,
+  images?: string[],
+  attachments?: { type: string; url: string }[],
+) => {
   if (!currentConversation.value || sending.value) return
 
   sending.value = true
 
   try {
-    await conversationsStore.streamMessageToAgent(currentConversation.value.id, messageText)
+    await conversationsStore.streamMessageToAgent(
+      currentConversation.value.id, messageText, images, attachments
+    )
   } catch (error) {
     console.error('发送消息失败:', error)
     message.error('发送消息失败，请稍后再试')
@@ -761,21 +984,50 @@ const handleKeyDown = (event: KeyboardEvent) => {
 
 /**
  * 发送消息
- * 处理用户输入的消息，发送到后端并显示AI回复
+ * 处理用户输入的消息（含附件），发送到后端并显示AI回复
  */
 const sendMessage = async () => {
   const text = inputMessage.value.trim()
+  const hasAttachments = pendingAttachments.value.length > 0
 
   // 验证输入和状态
-  if (!text || sending.value) return
+  if ((!text && !hasAttachments) || sending.value) return
 
-  // 清空输入框并重置高度
+  // 构造最终文本：文本文件内容前置拼接
+  const textFiles = pendingAttachments.value.filter(a => a.type === 'text')
+  let finalContent = text
+  if (textFiles.length > 0) {
+    const fileBlocks = textFiles
+      .map(f => `[文件: ${f.name}]\n${f.textContent ?? ''}\n[/文件]`)
+      .join('\n\n')
+    finalContent = text ? `${fileBlocks}\n\n${text}` : fileBlocks
+  }
+
+  // 检查是否有图片还在上传
+  const uploading = pendingAttachments.value.some(a => a.uploading)
+  if (uploading) {
+    message.warning('图片正在上传中，请稍候再发送')
+    return
+  }
+
+  // 提取图片 OSS URL 和附件元数据
+  const imageAttachments = pendingAttachments.value.filter(a => a.type === 'image' && a.ossUrl)
+  const images = imageAttachments.map(a => a.ossUrl!)
+  const attachments: { type: string; url: string }[] = imageAttachments.map(a => ({
+    type: 'image',
+    url: a.ossUrl!,
+  }))
+
+  // 清空输入框和附件，revoke ObjectURL 释放内存
   inputMessage.value = ''
   adjustTextareaHeight()
+  const toRevoke = pendingAttachments.value.filter(a => a.dataUrl.startsWith('blob:'))
+  pendingAttachments.value = []
+  nextTick(() => toRevoke.forEach(a => URL.revokeObjectURL(a.dataUrl)))
 
   // 确保有当前会话，没有则创建
   if (!currentConversation.value) {
-    createNewConversation()
+    await createNewConversation()
   }
 
   // 重置滚动状态，确保新消息能正常滚动
@@ -785,8 +1037,12 @@ const sendMessage = async () => {
   // 滚动到底部显示用户消息
   await scrollToBottom()
 
-  // 发送消息给AI（sendMessageToAgent内部会处理用户消息的添加）
-  await sendMessageToAI(text)
+  // 发送消息给AI
+  await sendMessageToAI(
+    finalContent || '请分析这些内容',
+    images.length ? images : undefined,
+    attachments.length ? attachments : undefined,
+  )
 }
 
 /**
@@ -1503,6 +1759,178 @@ const getAssistantAvatarStyle = () => {
 
 .general-avatar {
   background: linear-gradient(135deg, #1890ff, #40a9ff);
+}
+
+/* ─── 附件预览区 ─── */
+.pending-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.attachment-item {
+  position: relative;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-primary);
+  flex-shrink: 0;
+}
+
+.attachment-thumb {
+  display: block;
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  cursor: pointer;
+}
+
+.attachment-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  max-width: 160px;
+  min-height: 40px;
+}
+
+.attachment-file-icon {
+  color: var(--link-color);
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.attachment-name {
+  font-size: 12px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+.attachment-remove {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  padding: 0;
+  line-height: 1;
+  transition: background 0.2s;
+}
+
+.attachment-remove:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+.attachment-uploading {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+.upload-spinner {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border: 3px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ─── 拖拽高亮 ─── */
+.input-container.drag-active {
+  border-color: var(--link-color);
+  background: color-mix(in srgb, var(--link-color) 6%, var(--bg-primary));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--link-color) 20%, transparent);
+}
+
+/* ─── 消息内图片展示 ─── */
+.message-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.message-image-thumb {
+  max-width: 240px;
+  max-height: 200px;
+  border-radius: 8px;
+  object-fit: contain;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  transition: opacity 0.2s;
+  display: block;
+}
+
+.message-image-thumb:hover {
+  opacity: 0.85;
+}
+
+/* ─── 图片 Lightbox ─── */
+.image-lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.82);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+}
+
+.lightbox-img {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 8px;
+  cursor: default;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  color: #fff;
+  font-size: 20px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 </style>

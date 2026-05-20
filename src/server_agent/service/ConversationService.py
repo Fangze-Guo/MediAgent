@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
@@ -7,6 +8,7 @@ from src.server_agent.agent.conversation_agent import ConversationAgent
 from src.server_agent.exceptions import NotFoundError, AuthorizationError, handle_service_exception
 from src.server_agent.mapper.ConversationMapper import ConversationMapper
 from src.server_agent.service.EmbeddingService import EmbeddingService
+from src.server_agent.service.OssService import OssService
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +195,7 @@ class ConversationService:
 
     @handle_service_exception
     async def delete_conversation(self, request, conversation_uid: str) -> bool:
-        """删除对话（消息随 ON DELETE CASCADE 一并删除）"""
+        """删除对话（消息随 ON DELETE CASCADE 一并删除，同步清理 OSS 图片）"""
         mapper = self._get_mapper(request)
 
         if not await mapper.conversation_exists(conversation_uid):
@@ -203,15 +205,35 @@ class ConversationService:
                 detail="该会话不存在",
             )
 
+        # 删库前先收集所有图片 URL，提取 object_key
+        oss_service = OssService()
+        messages = await mapper.get_messages(conversation_uid)
+        object_keys = [
+            key
+            for m in messages
+            for a in m.get("attachments", [])
+            if a.get("type") == "image" and a.get("url")
+            for key in [oss_service.extract_object_key(a["url"])]
+            if key
+        ]
+
         deleted = await mapper.delete_conversation(conversation_uid)
         logger.info("会话删除成功: %s", conversation_uid)
+
+        # 异步清理 OSS（不阻塞响应）
+        if deleted and object_keys:
+            logger.info("异步清理 OSS 对象 %d 个: %s", len(object_keys), conversation_uid)
+            asyncio.get_event_loop().run_in_executor(None, oss_service.delete_objects, object_keys)
+
         return deleted
 
     # ---------------------- 消息发送 ----------------------
 
     @handle_service_exception
     async def send_message(
-        self, request, conversation_uid: str, content: str
+        self, request, conversation_uid: str, content: str,
+        images: Optional[List[str]] = None,
+        attachments: Optional[List[dict]] = None,
     ) -> dict:
         """同步发送：等待完整回复后返回 {reply, sources}"""
         mapper = self._get_mapper(request)
@@ -219,15 +241,17 @@ class ConversationService:
 
         rag_context, sources = await self._fetch_rag_context(request, content)
         history = await mapper.get_messages(conversation_uid)
-        reply = await agent.converse(content, history, rag_context=rag_context)
+        reply = await agent.converse(content, history, rag_context=rag_context, images=images)
 
-        await mapper.add_message(conversation_uid, "user", content)
+        await mapper.add_message(conversation_uid, "user", content, attachments)
         await mapper.add_message(conversation_uid, "assistant", reply)
 
         return {"reply": reply, "sources": sources}
 
     async def stream_message(
-        self, request, conversation_uid: str, content: str
+        self, request, conversation_uid: str, content: str,
+        images: Optional[List[str]] = None,
+        attachments: Optional[List[dict]] = None,
     ) -> AsyncGenerator[str, None]:
         """流式发送：先逐 KB yield 检索进度，再逐 token yield，完成后持久化"""
         mapper = self._get_mapper(request)
@@ -245,10 +269,10 @@ class ConversationService:
                 yield event
 
         history = await mapper.get_messages(conversation_uid)
-        await mapper.add_message(conversation_uid, "user", content)
+        await mapper.add_message(conversation_uid, "user", content, attachments)
 
         full_reply: List[str] = []
-        async for token in agent.stream(content, history, rag_context=rag_context):
+        async for token in agent.stream(content, history, rag_context=rag_context, images=images):
             full_reply.append(token)
             yield token
 

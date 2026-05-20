@@ -348,3 +348,50 @@ export function isSupportedFileType(file: File): boolean {
         file.name.toLowerCase().endsWith('.dcm') ||
         !!file.name.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp|dcm|nii|nii\.gz)$/i)
 }
+
+// ─────────────────────────────────────────────
+// OSS 直传
+// ─────────────────────────────────────────────
+
+export interface PresignResult {
+  /** 前端直接 PUT 到这个 URL */
+  put_url: string
+  /** PUT 请求必须携带的额外 headers */
+  signed_headers: Record<string, string>
+  /** 上传成功后的永久访问 URL */
+  access_url: string
+  object_key: string
+}
+
+/**
+ * 向后端请求 OSS 预签名上传 URL
+ */
+export async function getChatImagePresignUrl(
+  conversationId: string,
+  filename: string,
+  contentType: string,
+): Promise<PresignResult> {
+  const res = await post<BaseResponse<PresignResult>>('/files/chat/presign', {
+    conversation_id: conversationId,
+    filename,
+    content_type: contentType,
+  })
+  return res.data.data
+}
+
+/**
+ * 使用预签名 URL 将文件直传到 OSS
+ */
+export async function uploadToOss(putUrl: string, file: File, signedHeaders: Record<string, string> = {}): Promise<void> {
+  const response = await fetch(putUrl, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': file.type,
+      ...signedHeaders,
+    },
+    body: file,
+  })
+  if (!response.ok) {
+    throw new Error(`OSS 上传失败: HTTP ${response.status}`)
+  }
+}

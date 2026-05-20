@@ -34,6 +34,8 @@ export type ChatMessage = {
   sources?: RagSource[]
   /** 实时检索进度（流式期间更新） */
   searchProgress?: SearchProgressItem[]
+  /** 图片附件 base64 列表（仅客户端，不持久化） */
+  images?: string[]
 }
 
 /**
@@ -199,12 +201,19 @@ export const useConversationsStore = defineStore('conversations', () => {
       const messages = await getMessages(id, target)
       console.log(`从后端获取到 ${messages.length} 条消息`)
       
-      // 转换消息格式，确保消息正确解析
-      conversation.messages = messages.map(msg => ({
-        role: msg.role as 'user' | 'assistant',
-        content: msg.content || '',
-        typingComplete: true
-      }))
+      // 转换消息格式，将 attachments 中的图片 URL 还原到 images 字段
+      conversation.messages = messages.map(msg => {
+        const attachments: { type: string; url: string }[] = msg.attachments ?? []
+        const images = attachments
+          .filter((a) => a.type === 'image' && a.url)
+          .map((a) => a.url)
+        return {
+          role: msg.role as 'user' | 'assistant',
+          content: msg.content || '',
+          typingComplete: true,
+          images: images.length ? images : undefined,
+        }
+      })
       
       // 如果没有标题且有消息，生成标题
       if (!conversation.title && conversation.messages.length > 0) {
@@ -303,11 +312,16 @@ export const useConversationsStore = defineStore('conversations', () => {
   /**
    * 流式发送消息到Agent，逐 token 更新 UI
    */
-  async function streamMessageToAgent(id: string, content: string): Promise<void> {
+  async function streamMessageToAgent(
+    id: string,
+    content: string,
+    images?: string[],
+    attachments?: { type: string; url: string }[],
+  ): Promise<void> {
     const conversation = getConversation(id)
     if (!conversation) throw new Error(`会话 ${id} 不存在`)
 
-    appendMessage(id, { role: 'user', content, typingComplete: true })
+    appendMessage(id, { role: 'user', content, typingComplete: true, images: images?.length ? images : undefined })
     appendMessage(id, { role: 'assistant', content: '', typingComplete: false })
 
     // rAF 批量更新：同一帧内的 token 合并后一次性写入，DOM 最多 60fps 刷新
@@ -353,7 +367,7 @@ export const useConversationsStore = defineStore('conversations', () => {
           const idx = conversation.messages.length - 1
           conversation.messages[idx].typingComplete = true
         }
-      })
+      }, undefined, images, attachments)
     } catch (error) {
       if (rafId !== null) cancelAnimationFrame(rafId)
       const last = conversation.messages[conversation.messages.length - 1]

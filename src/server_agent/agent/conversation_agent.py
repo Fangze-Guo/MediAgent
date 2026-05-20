@@ -83,6 +83,7 @@ class ConversationAgent:
         user_input: str,
         history: List[Dict[str, str]],
         rag_context: str = "",
+        images: Optional[List[str]] = None,
     ) -> List[BaseMessage]:
         messages: List[BaseMessage] = [SystemMessage(content=SYSTEM_PROMPT)]
         for msg in history:
@@ -94,7 +95,13 @@ class ConversationAgent:
                 messages.append(AIMessage(content=content))
         if rag_context:
             messages.append(SystemMessage(content=rag_context))
-        messages.append(HumanMessage(content=user_input))
+        if images:
+            content_parts: List[dict] = [{"type": "text", "text": user_input}]
+            for img_url in images:
+                content_parts.append({"type": "image_url", "image_url": {"url": img_url}})
+            messages.append(HumanMessage(content=content_parts))
+        else:
+            messages.append(HumanMessage(content=user_input))
         return messages
 
     async def converse(
@@ -102,11 +109,12 @@ class ConversationAgent:
         user_input: str,
         history: List[Dict[str, str]],
         rag_context: str = "",
+        images: Optional[List[str]] = None,
     ) -> str:
         """Single-turn: wait for full reply and return it."""
         try:
             response: AIMessage = await self._llm.ainvoke(
-                self._build_messages(user_input, history, rag_context)
+                self._build_messages(user_input, history, rag_context, images)
             )
             return (response.content or "").strip() or "（空回复）"
         except Exception as exc:
@@ -118,11 +126,12 @@ class ConversationAgent:
         user_input: str,
         history: List[Dict[str, str]],
         rag_context: str = "",
+        images: Optional[List[str]] = None,
     ) -> AsyncGenerator[str, None]:
         """Streaming: yield text tokens progressively via astream."""
         try:
             async for chunk in self._llm.astream(
-                self._build_messages(user_input, history, rag_context)
+                self._build_messages(user_input, history, rag_context, images)
             ):
                 token: str = chunk.content or ""
                 if token:

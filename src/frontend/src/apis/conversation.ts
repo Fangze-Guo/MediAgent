@@ -25,6 +25,8 @@ export interface ConversationMessage {
   content: string
   /** 消息时间戳（可选，后端可能不提供） */
   timestamp?: string
+  /** 附件列表（图片 OSS URL 等） */
+  attachments?: { type: string; url: string }[]
 }
 
 /**
@@ -118,9 +120,11 @@ export async function createConversation(user_id: string): Promise<ConversationI
  * @param content 消息内容
  * @returns Promise<AgentMessageResult> 返回回复内容和来源引用
  */
-export async function addMessageToAgent(conversation_id: string, content: string): Promise<AgentMessageResult> {
+export async function addMessageToAgent(conversation_id: string, content: string, images?: string[]): Promise<AgentMessageResult> {
   try {
-    const response = await post<BaseResponse<AgentMessageResult>>(`/conversation/add?conversation_id=${conversation_id}&content=${encodeURIComponent(content)}`)
+    const response = await post<BaseResponse<AgentMessageResult>>('/conversation/add', {
+      conversation_id, content, images: images ?? []
+    })
     return response.data.data
   } catch (error) {
     console.error('发送消息失败:', error)
@@ -188,10 +192,17 @@ export async function streamMessageToAgent(
     onDone: () => void
     onError?: (err: Error) => void
   },
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  images?: string[],
+  attachments?: { type: string; url: string }[]
 ): Promise<void> {
-  const url = `/api/conversation/stream?conversation_id=${conversation_id}&content=${encodeURIComponent(content)}`
-  const response = await fetch(url, { method: 'POST', signal })
+  const url = `/api/conversation/stream`
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ conversation_id, content, images: images ?? [], attachments: attachments ?? [] }),
+    signal,
+  })
   if (!response.ok) throw new Error(`HTTP ${response.status}`)
 
   const reader = response.body!.getReader()

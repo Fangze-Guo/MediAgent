@@ -1,6 +1,7 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, Request
+from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from src.server_agent.common import ResultUtils, BaseResponse
@@ -9,6 +10,20 @@ from src.server_agent.model.vo.UserVO import UserVO
 from src.server_agent.service.ConversationService import ConversationService
 from src.server_agent.dependencies import get_current_user, get_conversation_service
 from .base import BaseController
+
+
+class StreamMessageRequest(BaseModel):
+    conversation_id: str
+    content: str
+    images: Optional[List[str]] = None
+    attachments: Optional[List[dict]] = None
+
+
+class AddMessageRequest(BaseModel):
+    conversation_id: str
+    content: str
+    images: Optional[List[str]] = None
+    attachments: Optional[List[dict]] = None
 
 
 class ConversationController(BaseController):
@@ -32,26 +47,26 @@ class ConversationController(BaseController):
 
         @self.router.post("/add")
         async def sendMessage(
+            body: AddMessageRequest,
             request: Request,
-            conversation_id: str,
-            content: str,
             conversation_service: ConversationService = Depends(get_conversation_service),
         ) -> BaseResponse[Dict[str, Any]]:
             """发送消息，等待完整回复，返回 {reply, sources}"""
-            result = await conversation_service.send_message(request, conversation_id, content)
+            result = await conversation_service.send_message(
+                request, body.conversation_id, body.content, body.images, body.attachments
+            )
             return ResultUtils.success(result)
 
         @self.router.post("/stream")
         async def streamMessage(
+            body: StreamMessageRequest,
             request: Request,
-            conversation_id: str,
-            content: str,
             conversation_service: ConversationService = Depends(get_conversation_service),
         ):
             """流式发送消息，SSE 逐 token 返回；结束时发送 [DONE]"""
             async def generator():
                 async for token in conversation_service.stream_message(
-                    request, conversation_id, content
+                    request, body.conversation_id, body.content, body.images, body.attachments
                 ):
                     yield {"data": token}
                 yield {"data": "[DONE]"}
