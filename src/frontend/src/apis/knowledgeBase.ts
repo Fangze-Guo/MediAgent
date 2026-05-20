@@ -114,4 +114,17 @@ export const knowledgeBaseApi = {
   getDocument: async (kbId: number, docId: number): Promise<Document> => {
     return unwrap(await apiClient.get(`/knowledge-base/${kbId}/documents/${docId}`))
   },
+
+  // 触发文档 embedding（Analyze）
+  analyzeDocument: async (
+    kbId: number,
+    docId: number,
+    chunkSize?: number,
+    chunkOverlap?: number,
+  ): Promise<Document> => {
+    const body: Record<string, number> = {}
+    if (chunkSize !== undefined) body.chunk_size = chunkSize
+    if (chunkOverlap !== undefined) body.chunk_overlap = chunkOverlap
+    return unwrap(await apiClient.post(`/knowledge-base/${kbId}/documents/${docId}/analyze`, body))
+  },
 }

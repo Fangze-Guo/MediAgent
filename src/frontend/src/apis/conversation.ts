@@ -76,6 +76,19 @@ export interface RagSource {
   doc_id?: number
 }
 
+/** 知识库开始检索事件 */
+export interface SearchStartEvent {
+  kb: string
+  kb_id: number
+}
+
+/** 知识库检索完成事件 */
+export interface SearchResultEvent {
+  kb: string
+  kb_id: number
+  found: number
+}
+
 /**
  * Agent 消息响应
  */
@@ -169,6 +182,8 @@ export async function streamMessageToAgent(
   content: string,
   callbacks: {
     onToken: (token: string) => void
+    onSearchStart?: (data: SearchStartEvent) => void
+    onSearchResult?: (data: SearchResultEvent) => void
     onSources: (sources: RagSource[]) => void
     onDone: () => void
     onError?: (err: Error) => void
@@ -196,6 +211,14 @@ export async function streamMessageToAgent(
         if (data === '[DONE]') { callbacks.onDone(); return }
         if (data.startsWith('[SOURCES]')) {
           try { callbacks.onSources(JSON.parse(data.slice(9))) } catch { /* ignore */ }
+          continue
+        }
+        if (data.startsWith('[SEARCH_START]')) {
+          try { callbacks.onSearchStart?.(JSON.parse(data.slice(14))) } catch { /* ignore */ }
+          continue
+        }
+        if (data.startsWith('[SEARCH_RESULT]')) {
+          try { callbacks.onSearchResult?.(JSON.parse(data.slice(15))) } catch { /* ignore */ }
           continue
         }
         if (data) callbacks.onToken(data)

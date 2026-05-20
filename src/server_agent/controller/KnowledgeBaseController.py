@@ -144,6 +144,23 @@ class KnowledgeBaseController(BaseController):
             except Exception as e:
                 return ResultUtils.error(400, f"上传文档失败: {self._msg(e)}")
 
+        @self.router.post("/{kb_id}/documents/{doc_id}/analyze")
+        async def analyze_document(
+            kb_id: int,
+            doc_id: int,
+            body: dict = None,
+            userVO: UserVO = Depends(self._get_admin_user),
+        ) -> BaseResponse[KbDocumentVO]:
+            """手动触发文档 embedding（仅 admin）。body 可选: {chunk_size, chunk_overlap}"""
+            try:
+                body = body or {}
+                chunk_size = body.get("chunk_size")
+                chunk_overlap = body.get("chunk_overlap")
+                doc = await self.kb_service.analyze_document(kb_id, doc_id, chunk_size, chunk_overlap)
+                return ResultUtils.success(doc)
+            except Exception as e:
+                return ResultUtils.error(400, f"分析文档失败: {self._msg(e)}")
+
         @self.router.delete("/{kb_id}/documents/{doc_id}")
         async def delete_document(
             kb_id: int,

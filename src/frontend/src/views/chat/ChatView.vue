@@ -46,21 +46,31 @@
                   </div>
                   <!-- 原始内容（如果没有解析出思考过程） -->
                   <div v-else>
+                    <!-- 实时检索进度（流式期间） -->
+                    <RagSearchProgress
+                      v-if="m.role === 'assistant' && !m.typingComplete && m.searchProgress && m.searchProgress.length"
+                      :items="m.searchProgress"
+                    />
                     <!-- 流式等待中：空内容 → 显示打字动画 -->
                     <div v-if="m.role === 'assistant' && !m.typingComplete && !m.content" class="typing-indicator">
                       <span></span><span></span><span></span>
                     </div>
-                    <!-- 流式输出中或输出完成：统一用 StreamingMarkdownRenderer，streaming prop 随 typingComplete 切换 -->
+                    <!-- 流式输出中：直接用 streamingHtml computed，跳过组件链 -->
+                    <div
+                      v-else-if="m.role === 'assistant' && !m.typingComplete"
+                      class="streaming-md"
+                      v-html="streamingHtml"
+                    />
+                    <!-- 输出完成：交给 StreamingMarkdownRenderer 做最终渲染 -->
                     <StreamingMarkdownRenderer
                       v-else-if="m.role === 'assistant'"
                       :content="m.content"
-                      :streaming="!m.typingComplete"
-                      :animate="false"
+                      :streaming="false"
                     />
                     <!-- 用户消息直接显示 -->
                     <MarkdownRenderer v-else :content="m.content" />
                   </div>
-                  <!-- RAG 来源引用 -->
+                  <!-- RAG 来源引用（输出完成后显示） -->
                   <div v-if="m.role === 'assistant' && m.sources && m.sources.length > 0" class="rag-sources">
                     <div class="rag-sources-header">
                       <span class="rag-icon">📚</span>
@@ -244,6 +254,7 @@ import { useConversationsStore } from '@/store/conversations'
 import FileUpload from '@/components/file/FileUpload.vue'
 import MarkdownRenderer from '@/components/markdown/MarkdownRenderer.vue'
 import StreamingMarkdownRenderer from '@/components/markdown/StreamingMarkdownRenderer.vue'
+import RagSearchProgress from '@/components/chat/RagSearchProgress.vue'
 import { marked } from 'marked'
 import ModelSelector from '@/components/model/ModelSelector.vue'
 import { type FileInfo } from '@/apis/files'
@@ -492,11 +503,14 @@ const formatTime = (timeString: string): string => {
 /** 思考过程显示状态 */
 const thinkingStates = ref<Record<string, boolean>>({})
 
-/** 流式输出中直接调用 marked 渲染，绕过组件 buffer */
-const renderStreamingMd = (content: string): string => {
-  if (!content) return ''
-  try { return marked(content) as string } catch { return content }
-}
+/** 直接读取 store 中正在流式输出的消息内容并 render，绕过 currentMessages → props 链 */
+const streamingHtml = computed(() => {
+  const msgs = currentConversation.value?.messages
+  if (!msgs?.length) return ''
+  const last = msgs[msgs.length - 1]
+  if (!last || last.typingComplete || last.role !== 'assistant' || !last.content) return ''
+  try { return marked.parse(last.content, { breaks: true, gfm: true }) as string } catch { return last.content }
+})
 
 /** parsedContent 缓存：key = `convId-index:content`，避免每次 token 都重跑正则 */
 const parsedContentCache = new Map<string, ReturnType<typeof parseMessageContent>>()
@@ -1199,6 +1213,9 @@ const getAssistantAvatarStyle = () => {
   font-weight: 600;
   color: var(--text-primary);
 }
+.streaming-md :deep(h1) { font-size: 1.5em; border-bottom: 1px solid var(--border-color); padding-bottom: 6px; }
+.streaming-md :deep(h2) { font-size: 1.3em; }
+.streaming-md :deep(h3) { font-size: 1.1em; }
 
 .streaming-md :deep(p)   { margin: 6px 0; }
 .streaming-md :deep(ul), .streaming-md :deep(ol) { margin: 6px 0; padding-left: 22px; }

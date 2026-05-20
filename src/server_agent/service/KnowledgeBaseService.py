@@ -196,30 +196,64 @@ class KnowledgeBaseService:
                 file_path=rel_path,
                 file_size=len(content),
                 content_type=content_type,
-                status="processing",
+                status="uploaded",
             )
             doc_id = await self.mapper.create_document(doc)
             doc.id = doc_id
             uploaded.append(self._doc_to_vo(doc))
             logger.info(f"Uploaded document: {target}")
 
-            # 后台异步 embedding，不阻塞上传响应
-            asyncio.create_task(
-                self._embed_and_update(doc_id, kb_id, target)
-            )
-
         return uploaded
 
-    async def _embed_and_update(self, doc_id: int, kb_id: int, file_path: pathlib.Path) -> None:
+    async def _embed_and_update(
+        self,
+        doc_id: int,
+        kb_id: int,
+        file_path: pathlib.Path,
+        chunk_size: int = None,
+        chunk_overlap: int = None,
+    ) -> None:
         """后台任务：embedding 完成后更新状态和 chunk 数。"""
         try:
-            count = await self.embedding.embed_document(doc_id, kb_id, file_path)
+            kwargs = {}
+            if chunk_size is not None:
+                kwargs["chunk_size"] = chunk_size
+            if chunk_overlap is not None:
+                kwargs["chunk_overlap"] = chunk_overlap
+            count = await self.embedding.embed_document(doc_id, kb_id, file_path, **kwargs)
             await self.mapper.update_document_chunk_count(doc_id, count)
             await self.mapper.update_document_status(doc_id, "completed")
             logger.info(f"Embedding done: doc {doc_id}, {count} chunks")
         except Exception as exc:
             logger.error(f"Embedding failed for doc {doc_id}: {exc}")
             await self.mapper.update_document_status(doc_id, "failed")
+
+    @handle_service_exception
+    async def analyze_document(
+        self,
+        kb_id: int,
+        doc_id: int,
+        chunk_size: int = None,
+        chunk_overlap: int = None,
+    ) -> KbDocumentVO:
+        """手动触发文档 embedding（先清旧向量，再后台生成）。"""
+        doc = await self.mapper.get_document_by_id(doc_id)
+        if not doc:
+            raise NotFoundError(detail="文档不存在", context={"doc_id": doc_id})
+        if doc.kb_id != kb_id:
+            raise ValidationError(detail="文档不属于该知识库", context={"doc_id": doc_id, "kb_id": kb_id})
+
+        file_path = pathlib.Path(DATASET_PATH) / doc.file_path
+        if not file_path.exists():
+            raise ServiceError(detail="文件不存在于磁盘", context={"path": str(file_path)})
+
+        await self.embedding.delete_document_embeddings(doc_id, kb_id)
+        await self.mapper.update_document_status(doc_id, "processing")
+        asyncio.create_task(
+            self._embed_and_update(doc_id, kb_id, file_path, chunk_size, chunk_overlap)
+        )
+        doc.status = "processing"
+        return self._doc_to_vo(doc)
 
     @handle_service_exception
     async def delete_document(self, kb_id: int, doc_id: int) -> bool:
@@ -239,8 +273,8 @@ class KnowledgeBaseService:
         except Exception as e:
             logger.error(f"Failed to delete document file: {e}")
 
-        await self.mapper.delete_document(doc_id)
         await self.embedding.delete_document_embeddings(doc_id, kb_id)
+        await self.mapper.delete_document(doc_id)
         return True
 
     @handle_service_exception

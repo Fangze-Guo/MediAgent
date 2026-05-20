@@ -6,13 +6,21 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { createConversation as createConversationAPI, addMessageToAgent, streamMessageToAgent as streamMessageToAgentAPI, getMessages, getUserConversations as getUserConversationsAPI, deleteConversation as deleteConversationAPI } from '@/apis/conversation'
-import type { RagSource } from '@/apis/conversation'
+import type { RagSource, SearchStartEvent, SearchResultEvent } from '@/apis/conversation'
 import { useAuthStore } from '@/store/auth'
 
 /**
  * 聊天消息类型定义
  * 表示单条聊天消息的数据结构
  */
+/** 实时检索进度条目 */
+export type SearchProgressItem = {
+  kb: string
+  kb_id: number
+  status: 'searching' | 'found'
+  found?: number
+}
+
 export type ChatMessage = { 
   /** 消息角色：用户或AI助手 */
   role: 'user' | 'assistant'
@@ -24,6 +32,8 @@ export type ChatMessage = {
   assistantType?: 'general' | 'medical' | 'data' | 'document'
   /** RAG 来源引用 */
   sources?: RagSource[]
+  /** 实时检索进度（流式期间更新） */
+  searchProgress?: SearchProgressItem[]
 }
 
 /**
@@ -318,6 +328,19 @@ export const useConversationsStore = defineStore('conversations', () => {
           if (rafId === null) {
             rafId = requestAnimationFrame(flushTokens)
           }
+        },
+        onSearchStart(data: SearchStartEvent) {
+          const idx = conversation.messages.length - 1
+          const msg = conversation.messages[idx]
+          if (!msg.searchProgress) msg.searchProgress = []
+          msg.searchProgress.push({ kb: data.kb, kb_id: data.kb_id, status: 'searching' })
+        },
+        onSearchResult(data: SearchResultEvent) {
+          const idx = conversation.messages.length - 1
+          const msg = conversation.messages[idx]
+          if (!msg.searchProgress) return
+          const item = msg.searchProgress.find(p => p.kb_id === data.kb_id)
+          if (item) { item.status = 'found'; item.found = data.found }
         },
         onSources(sources) {
           const idx = conversation.messages.length - 1

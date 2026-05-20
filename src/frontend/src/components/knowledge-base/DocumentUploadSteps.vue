@@ -56,7 +56,7 @@
               </div>
               
               <div class="file-actions-right">
-                <span v-if="fileStatus.status === 'uploaded'" class="status-text text-success">Uploaded</span>
+                <span v-if="fileStatus.status === 'uploaded'" class="status-text text-success">{{ t('components_DocumentUploadSteps.statusUploaded') }}</span>
                 <span v-else-if="fileStatus.status === 'error'" class="status-text text-destructive">{{ fileStatus.error }}</span>
                 
                 <button class="icon-button" @click="removeFile(index)">
@@ -75,93 +75,74 @@
             @click="handleUpload"
           >
             <template #icon><UploadOutlined v-if="!isLoading" /></template>
-            {{ isLoading ? 'Uploading...' : 'Upload Files' }}
+            {{ isLoading ? t('components_DocumentUploadSteps.uploadingBtn') : t('components_DocumentUploadSteps.uploadBtn') }}
           </a-button>
         </div>
       </div>
 
       <div v-show="currentStep === 2" class="step-card fade-in">
-        <div class="card-body space-y-6">
-          <h3 class="shadcn-title">Select Document to Preview</h3>
-
-          <a-select
-            v-model:value="selectedDocumentId"
-            placeholder="Select a document to preview"
-            class="shadcn-select w-full"
-            size="large"
-            @change="handlePreview"
-          >
-            <a-select-option
+        <div class="card-body space-y-4">
+          <div v-if="uploadedFiles.length > 0" class="files-list">
+            <div
               v-for="fileStatus in uploadedFiles"
               :key="fileStatus.uploadId"
-              :value="fileStatus.uploadId"
+              class="shadcn-file-item"
             >
-              {{ fileStatus.file.name }}
-            </a-select-option>
-          </a-select>
-
-          <a-collapse class="shadcn-collapse" :bordered="false" expand-icon-position="right">
-            <a-collapse-panel key="1" header="Advanced Settings" class="shadcn-panel">
-              <div class="settings-grid pt-4">
-                <div class="setting-item">
-                  <label>Chunk Size (tokens)</label>
-                  <a-input-number
-                    v-model:value="chunkSize"
-                    :min="100" :max="5000" :step="100"
-                    class="w-full shadcn-input"
-                    @change="handlePreview"
-                  />
+              <div class="file-info-left">
+                <div class="file-icon-wrapper" :class="getFileTypeClass(fileStatus.file.name)">
+                  <span class="file-extension">{{ getExtension(fileStatus.file.name) }}</span>
                 </div>
-                <div class="setting-item">
-                  <label>Chunk Overlap (tokens)</label>
-                  <a-input-number
-                    v-model:value="chunkOverlap"
-                    :min="0" :max="1000" :step="50"
-                    class="w-full shadcn-input"
-                    @change="handlePreview"
-                  />
+                <div class="file-details">
+                  <p class="file-name">{{ fileStatus.file.name }}</p>
+                  <p class="file-size">{{ formatFileSize(fileStatus.file.size) }}</p>
                 </div>
               </div>
-            </a-collapse-panel>
-          </a-collapse>
-
-          <div class="flex space-x-4 mt-6">
-            <a-button
-              class="shadcn-btn-outline flex-1"
-              size="large"
-              :loading="isLoading"
-              :disabled="!selectedDocumentId"
-              @click="handlePreview"
-            >
-              Preview Chunks
-            </a-button>
-            <a-button 
-              class="shadcn-btn-secondary flex-1" 
-              size="large"
-              @click="currentStep = 3"
-            >
-              Continue
-            </a-button>
-          </div>
-
-          <div v-if="previewChunks && previewChunks.length > 0" class="preview-container">
-            <div class="preview-header">
-              <h4 class="font-medium text-slate-900">{{ selectedDocumentFile?.name }}</h4>
-              <span class="text-sm text-slate-500">{{ previewChunks.length }} chunks</span>
-            </div>
-            <div class="chunks-list">
-              <div
-                v-for="(chunk, index) in previewChunks"
-                :key="index"
-                class="chunk-item"
-              >
-                <div class="chunk-label">Chunk {{ index + 1 }}</div>
-                <pre class="chunk-content">{{ chunk.content }}</pre>
+              <div class="file-actions-right">
+                <a-button type="link" size="small" @click="handleView(fileStatus)">
+                  <EyeOutlined />
+                  {{ t('components_DocumentList.actionView') }}
+                </a-button>
               </div>
             </div>
           </div>
+
+          <a-button
+            class="shadcn-btn-secondary w-full mt-4"
+            size="large"
+            @click="currentStep = 3"
+          >
+            {{ t('components_DocumentUploadSteps.continueBtn') }}
+          </a-button>
         </div>
       </div>
+
+      <!-- 文档预览弹框 -->
+      <a-modal
+        v-model:open="showPreviewModal"
+        :title="previewData?.file_name || ''"
+        :footer="null"
+        width="860px"
+        :body-style="{ padding: '0', height: '76vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }"
+        destroy-on-close
+        @after-close="revokeBlobUrl"
+      >
+        <div v-if="previewLoading" class="preview-loading" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:16px">
+          <a-spin size="large" />
+          <p>{{ t('components_DocumentList.previewLoading') }}</p>
+        </div>
+        <template v-else-if="previewData">
+          <iframe
+            v-if="previewData.type === 'url'"
+            :src="previewData.serve_url"
+            style="width:100%;height:100%;border:none;"
+            frameborder="0"
+          />
+          <pre v-else-if="previewData.type === 'text'" style="padding:16px;overflow:auto;white-space:pre-wrap;word-break:break-all;">{{ previewData.content }}</pre>
+        </template>
+        <div v-else style="display:flex;align-items:center;justify-content:center;height:100%;">
+          <p>{{ t('components_DocumentList.previewNotAvailable') }}</p>
+        </div>
+      </a-modal>
 
       <div v-show="currentStep === 3" class="step-card fade-in">
         <div class="card-body space-y-4">
@@ -180,13 +161,13 @@
                     <p class="file-name">{{ fileStatus.file.name }}</p>
                     <p class="file-size">{{ formatFileSize(fileStatus.file.size) }}</p>
                     <p v-if="fileStatus.uploadId && getTaskStatus(fileStatus.uploadId)" class="task-status-text mt-1">
-                      Status: {{ getTaskStatus(fileStatus.uploadId!)?.status || 'pending' }}
+                      {{ t('components_DocumentUploadSteps.statusText', { status: getTaskStatus(fileStatus.uploadId!)?.status || 'pending' }) }}
                     </p>
                   </div>
                 </div>
                 
                 <div v-if="isFailed(fileStatus.uploadId)" class="text-destructive text-sm mt-1">
-                  {{ getTaskStatus(fileStatus.uploadId!)?.error || 'Failed' }}
+                  {{ getTaskStatus(fileStatus.uploadId!)?.error || t('components_DocumentUploadSteps.analyzeFailed') }}
                 </div>
               </div>
 
@@ -210,7 +191,7 @@
             @click="handleProcess"
           >
             <template #icon><SettingOutlined v-if="!isLoading" /></template>
-            {{ isLoading ? 'Processing...' : 'Process Documents' }}
+            {{ isLoading ? t('components_DocumentUploadSteps.analyzingBtn') : t('components_DocumentUploadSteps.analyzeBtn') }}
           </a-button>
         </div>
       </div>
@@ -222,14 +203,16 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { message } from 'ant-design-vue'
+import { useI18n } from 'vue-i18n'
 import {
   UploadOutlined,
   SettingOutlined,
   CloseOutlined,
-  FileTextOutlined
+  FileTextOutlined,
+  EyeOutlined
 } from '@ant-design/icons-vue'
 import FileDropzone from './FileDropzone.vue'
-import type { FileUploadStatus, PreviewChunk } from '../../types/knowledge-base'
+import type { FileUploadStatus } from '../../types/knowledge-base'
 import { knowledgeBaseApi } from '../../apis/knowledgeBase'
 
 interface Props {
@@ -245,12 +228,14 @@ const emit = defineEmits<{
   complete: []
 }>()
 
+const { t } = useI18n()
+
 // 步骤定义
-const steps = [
-  { number: 1, label: 'Upload', icon: UploadOutlined },
-  { number: 2, label: 'Preview', icon: FileTextOutlined },
-  { number: 3, label: 'Process', icon: SettingOutlined }
-]
+const steps = computed(() => [
+  { number: 1, label: t('components_DocumentUploadSteps.stepUpload'), icon: UploadOutlined },
+  { number: 2, label: t('components_DocumentUploadSteps.stepPreview'), icon: FileTextOutlined },
+  { number: 3, label: t('components_DocumentUploadSteps.stepProcess'), icon: SettingOutlined }
+])
 
 // 状态管理
 const currentStep = ref(1)
@@ -260,11 +245,18 @@ const isLoading = ref(false)
 const files = ref<FileUploadStatus[]>([])
 const uploadedFiles = computed(() => files.value.filter(f => f.status === 'uploaded'))
 
-// 预览设置
-const selectedDocumentId = ref<number | null>(null)
-const chunkSize = ref(1000)
-const chunkOverlap = ref(200)
-const previewChunks = ref<PreviewChunk[]>([])
+// 预览弹框
+const showPreviewModal = ref(false)
+const previewLoading = ref(false)
+const previewData = ref<{ type: 'url' | 'text' | 'table'; serve_url?: string; content?: string; file_name: string } | null>(null)
+let _currentBlobUrl = ''
+
+const revokeBlobUrl = () => {
+  if (_currentBlobUrl) {
+    URL.revokeObjectURL(_currentBlobUrl)
+    _currentBlobUrl = ''
+  }
+}
 
 // 任务状态
 const taskStatuses = ref<Record<number, { status: string; error?: string }>>({})
@@ -346,9 +338,8 @@ const resetState = () => {
   files.value = []
   currentStep.value = 1
   isLoading.value = false
-  selectedDocumentId.value = null
-  previewChunks.value = []
   taskStatuses.value = {}
+  revokeBlobUrl()
 }
 
 const handleUpload = async () => {
@@ -359,30 +350,81 @@ const handleUpload = async () => {
       formData.append('files', f.file)
     })
 
-    await knowledgeBaseApi.uploadDocuments(props.knowledgeBaseId!, formData)
+    const results = await knowledgeBaseApi.uploadDocuments(props.knowledgeBaseId!, formData)
 
-    message.success('Files uploaded successfully')
-    resetState()
-    emit('complete')
+    // 将服务端返回的 document_id 写回 files
+    results.forEach(result => {
+      const match = files.value.find(f => f.file.name === result.file_name && f.status === 'pending')
+      if (match) {
+        match.status = 'uploaded'
+        match.documentId = result.document_id
+      }
+    })
+
+    message.success(t('components_DocumentUploadSteps.uploadSuccess'))
+    currentStep.value = 2
   } catch (err: any) {
     files.value.forEach(f => {
       if (f.status === 'pending') {
         f.status = 'error'
-        f.error = 'Upload failed'
+        f.error = t('components_DocumentUploadSteps.uploadFailed')
       }
     })
-    message.error(err.response?.data?.message || 'Upload failed')
+    message.error(err.response?.data?.message || t('components_DocumentUploadSteps.uploadFailed'))
   } finally {
     isLoading.value = false
   }
 }
 
-const handlePreview = async () => {
-  message.info('Chunk preview is not available in this version')
+const handleView = async (fileStatus: FileUploadStatus) => {
+  if (!fileStatus.documentId) return
+  revokeBlobUrl()
+  showPreviewModal.value = true
+  previewLoading.value = true
+  previewData.value = null
+  try {
+    const preview = await knowledgeBaseApi.previewDocument(props.knowledgeBaseId!, fileStatus.documentId)
+    if (preview.type === 'url' && preview.serve_url) {
+      const resp = await fetch(preview.serve_url)
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      const blob = await resp.blob()
+      _currentBlobUrl = URL.createObjectURL(blob)
+      previewData.value = { ...preview, serve_url: _currentBlobUrl }
+    } else {
+      previewData.value = preview
+    }
+  } catch (err: any) {
+    message.error(err?.message || 'Failed to load preview')
+    showPreviewModal.value = false
+  } finally {
+    previewLoading.value = false
+  }
 }
 
 const handleProcess = async () => {
-  emit('complete')
+  isLoading.value = true
+  try {
+    const docs = uploadedFiles.value.filter(f => f.documentId)
+    await Promise.all(
+      docs.map(f =>
+        knowledgeBaseApi.analyzeDocument(
+          props.knowledgeBaseId!,
+          f.documentId!,
+          3000,
+          200,
+        ).then(() => {
+          taskStatuses.value[f.documentId!] = { status: 'processing' }
+        })
+      )
+    )
+    message.success(t('components_DocumentUploadSteps.analyzeStarted'))
+    resetState()
+    emit('complete')
+  } catch (err: any) {
+    message.error(err.response?.data?.message || t('components_DocumentUploadSteps.analyzeFailed'))
+  } finally {
+    isLoading.value = false
+  }
 }
 </script>
 

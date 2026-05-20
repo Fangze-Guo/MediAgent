@@ -7,14 +7,14 @@
           <template #icon>
             <ArrowLeftOutlined />
           </template>
-          Back
+          {{ t('views_RagKnowledgeBaseDetailView.back') }}
         </a-button>
         <div>
           <h2 class="page-title">
             <DatabaseOutlined />
             {{ knowledgeBase?.name }}
           </h2>
-          <p class="page-subtitle">{{ knowledgeBase?.description || 'No description' }}</p>
+          <p class="page-subtitle">{{ knowledgeBase?.description || t('views_RagKnowledgeBaseDetailView.noDescription') }}</p>
         </div>
       </div>
       <a-space>
@@ -22,13 +22,13 @@
           <template #icon>
             <EditOutlined />
           </template>
-          Edit
+          {{ t('views_RagKnowledgeBaseDetailView.edit') }}
         </a-button>
         <a-button type="primary" @click="() => { uploadKey++; showUploadModal = true }">
           <template #icon>
             <UploadOutlined />
           </template>
-          Upload Documents
+          {{ t('views_RagKnowledgeBaseDetailView.uploadDocuments') }}
         </a-button>
         <!-- uploadKey increments on open to force fresh component state -->
       </a-space>
@@ -40,21 +40,21 @@
         <FileTextOutlined class="stat-icon" />
         <div class="stat-content">
           <span class="stat-value">{{ knowledgeBase?.document_count || 0 }}</span>
-          <span class="stat-label">Documents</span>
+          <span class="stat-label">{{ t('views_RagKnowledgeBaseDetailView.statsDocuments') }}</span>
         </div>
       </div>
       <div class="stat-card">
         <DatabaseOutlined class="stat-icon" />
         <div class="stat-content">
           <span class="stat-value">{{ knowledgeBase?.chunk_count || 0 }}</span>
-          <span class="stat-label">Chunks</span>
+          <span class="stat-label">{{ t('views_RagKnowledgeBaseDetailView.statsChunks') }}</span>
         </div>
       </div>
       <div class="stat-card">
         <ClockCircleOutlined class="stat-icon" />
         <div class="stat-content">
           <span class="stat-value">{{ formatDate(knowledgeBase?.updated_at) }}</span>
-          <span class="stat-label">Last Updated</span>
+          <span class="stat-label">{{ t('views_RagKnowledgeBaseDetailView.statsLastUpdated') }}</span>
         </div>
       </div>
     </div>
@@ -64,13 +64,13 @@
       <div class="section-header">
         <h3 class="section-title">
           <FileTextOutlined />
-          Documents
+          {{ t('views_RagKnowledgeBaseDetailView.docSection') }}
         </h3>
         <a-button type="link" @click="handleRefresh">
           <template #icon>
             <ReloadOutlined />
           </template>
-          Refresh
+          {{ t('views_RagKnowledgeBaseDetailView.refresh') }}
         </a-button>
       </div>
 
@@ -80,7 +80,7 @@
     <!-- 文档上传模态框 -->
     <a-modal
       v-model:open="showUploadModal"
-      title="Upload Documents"
+      :title="t('views_RagKnowledgeBaseDetailView.uploadDocumentsModal')"
       :footer="null"
       width="800px"
       :body-style="{ maxHeight: '72vh', overflowY: 'auto', padding: '24px' }"
@@ -94,6 +94,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
+import { useI18n } from 'vue-i18n'
 import {
   DatabaseOutlined,
   ArrowLeftOutlined,
@@ -110,6 +111,7 @@ import { knowledgeBaseApi } from '../../../apis/knowledgeBase'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 const knowledgeBaseId = Number(route.params.id)
 
 const knowledgeBase = ref<KnowledgeBase | null>(null)
@@ -123,7 +125,7 @@ const handleGoBack = () => {
 }
 
 const handleEditKnowledgeBase = () => {
-  message.info('Edit functionality coming soon')
+  message.info(t('views_RagKnowledgeBaseDetailView.editComingSoon'))
 }
 
 const handleRefresh = () => {
@@ -138,13 +140,13 @@ const handleUploadComplete = () => {
 }
 
 const formatDate = (dateString?: string): string => {
-  if (!dateString) return 'Unknown'
+  if (!dateString) return t('views_RagKnowledgeBaseDetailView.unknown')
   const date = new Date(dateString)
   const now = new Date()
   const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
-  if (diffDays === 0) return 'Today'
-  if (diffDays === 1) return 'Yesterday'
-  if (diffDays < 7) return `${diffDays} days ago`
+  if (diffDays === 0) return t('views_RagKnowledgeBaseDetailView.today')
+  if (diffDays === 1) return t('views_RagKnowledgeBaseDetailView.yesterday')
+  if (diffDays < 7) return t('views_RagKnowledgeBaseDetailView.daysAgo', { n: diffDays })
   return date.toLocaleDateString()
 }
 

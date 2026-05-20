@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 CHROMA_DIR = in_data("chroma")
 CHROMA_DIR.mkdir(parents=True, exist_ok=True)
 
-_CHUNK_SIZE = 500
-_CHUNK_OVERLAP = 50
+_CHUNK_SIZE = 3000
+_CHUNK_OVERLAP = 200
 _SEPARATORS = ["\n\n", "\n", "。", "！", "？", ".", "!", "?", " ", ""]
 
 
@@ -218,16 +218,19 @@ def _embed_sync(
 
 
 def _delete_doc_sync(doc_id: int, kb_id: int) -> None:
+    import chromadb
+    client = chromadb.PersistentClient(path=str(CHROMA_DIR))
     try:
-        import chromadb
-        client = chromadb.PersistentClient(path=str(CHROMA_DIR))
         collection = client.get_collection(f"kb_{kb_id}")
-        results = collection.get(where={"doc_id": doc_id})
-        if results and results["ids"]:
-            collection.delete(ids=results["ids"])
-            logger.info("deleted %d chunks for doc %d", len(results["ids"]), doc_id)
-    except Exception as exc:
-        logger.warning("delete_doc_sync(doc=%d, kb=%d): %s", doc_id, kb_id, exc)
+    except Exception:
+        logger.info("collection kb_%d not found, nothing to delete for doc %d", kb_id, doc_id)
+        return
+    results = collection.get(where={"doc_id": doc_id})
+    if results and results["ids"]:
+        collection.delete(ids=results["ids"])
+        logger.info("deleted %d chunks for doc %d", len(results["ids"]), doc_id)
+    else:
+        logger.info("no chunks found for doc %d in kb_%d", doc_id, kb_id)
 
 
 def _delete_kb_sync(kb_id: int) -> None:

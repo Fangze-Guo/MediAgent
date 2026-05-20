@@ -84,6 +84,72 @@ class ConversationService:
             logger.warning("RAG 检索失败，降级到普通对话: %s", exc)
             return "", []
 
+    async def _stream_rag_context(
+        self, request, user_msg: str
+    ) -> AsyncGenerator[str, None]:
+        """逐知识库检索，边搜索边 yield 进度事件；最终 yield [SOURCES] 和 [RAG_CONTEXT] 事件。"""
+        import json
+
+        kb_mapper = self._get_kb_mapper(request)
+        if kb_mapper is None:
+            return
+
+        try:
+            kbs = await kb_mapper.get_all_kbs()
+        except Exception as exc:
+            logger.warning("获取知识库列表失败: %s", exc)
+            return
+
+        if not kbs:
+            return
+
+        embedding = EmbeddingService()
+        all_results: List[dict] = []
+
+        for kb in kbs:
+            yield f"[SEARCH_START]{json.dumps({'kb': kb.name, 'kb_id': kb.id}, ensure_ascii=False)}"
+            try:
+                results = await embedding.search(kb.id, user_msg, top_k=3)
+                for r in results:
+                    r["kb_name"] = kb.name
+                relevant = [r for r in results if r["score"] < 0.6]
+                all_results.extend(relevant)
+                yield f"[SEARCH_RESULT]{json.dumps({'kb': kb.name, 'kb_id': kb.id, 'found': len(relevant)}, ensure_ascii=False)}"
+            except Exception as e:
+                logger.warning("KB %d 检索失败: %s", kb.id, e)
+                yield f"[SEARCH_RESULT]{json.dumps({'kb': kb.name, 'kb_id': kb.id, 'found': 0}, ensure_ascii=False)}"
+
+        if not all_results:
+            return
+
+        all_results.sort(key=lambda x: x["score"])
+        top = all_results[:5]
+
+        lines = [
+            "<参考资料>",
+            "以下内容来自知识库，请结合参考回答用户问题，并在回答末尾注明参考来源编号：",
+            "",
+        ]
+        for i, r in enumerate(top, 1):
+            lines.append(f"[{i}] 知识库：{r['kb_name']}")
+            lines.append(r["content"])
+            lines.append("")
+        lines.append("</参考资料>")
+
+        sources = [
+            {
+                "kb_name": r["kb_name"],
+                "content": r["content"][:300],
+                "score": round(r["score"], 4),
+                "doc_id": r.get("doc_id"),
+            }
+            for r in top
+        ]
+        logger.info("RAG: found %d relevant chunks for query", len(top))
+        yield f"[SOURCES]{json.dumps(sources, ensure_ascii=False)}"
+        rag_context = json.dumps({"context": "\n".join(lines)}, ensure_ascii=False)
+        yield f"[RAG_CONTEXT]{rag_context}"
+
     # ---------------------- 对话管理 ----------------------
 
     @handle_service_exception
@@ -163,22 +229,27 @@ class ConversationService:
     async def stream_message(
         self, request, conversation_uid: str, content: str
     ) -> AsyncGenerator[str, None]:
-        """流式发送：逐 token yield，完成后发送 [SOURCES] 事件，再持久化完整回复"""
-        import json
+        """流式发送：先逐 KB yield 检索进度，再逐 token yield，完成后持久化"""
         mapper = self._get_mapper(request)
         agent = self._get_agent(request)
+        import json
 
-        rag_context, sources = await self._fetch_rag_context(request, content)
+        rag_context = ""
+        async for event in self._stream_rag_context(request, content):
+            if event.startswith("[RAG_CONTEXT]"):
+                try:
+                    rag_context = json.loads(event[13:])["context"]
+                except Exception:
+                    pass
+            else:
+                yield event
+
         history = await mapper.get_messages(conversation_uid)
-
         await mapper.add_message(conversation_uid, "user", content)
 
         full_reply: List[str] = []
         async for token in agent.stream(content, history, rag_context=rag_context):
             full_reply.append(token)
             yield token
-
-        if sources:
-            yield f"[SOURCES]{json.dumps(sources, ensure_ascii=False)}"
 
         await mapper.add_message(conversation_uid, "assistant", "".join(full_reply))

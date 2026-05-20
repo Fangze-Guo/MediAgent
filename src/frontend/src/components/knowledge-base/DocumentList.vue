@@ -2,7 +2,7 @@
   <div class="document-list">
     <div v-if="loading" class="loading-state">
       <a-spin size="large" />
-      <p class="loading-text">Loading documents...</p>
+      <p class="loading-text">{{ t('components_DocumentList.loading') }}</p>
     </div>
 
     <div v-else-if="error" class="error-state">
@@ -14,9 +14,9 @@
         <FileTextOutlined class="empty-icon" />
       </div>
       <div class="empty-text-content">
-        <h3 class="empty-title">No documents yet</h3>
+        <h3 class="empty-title">{{ t('components_DocumentList.emptyTitle') }}</h3>
         <p class="empty-description">
-          Upload your first document to start building your knowledge base.
+          {{ t('components_DocumentList.emptyDescription') }}
         </p>
       </div>
     </div>
@@ -26,19 +26,19 @@
         <div v-if="selectedRowKeys.length > 0" class="batch-toolbar">
           <div class="batch-toolbar-left">
             <div class="batch-count-badge">{{ selectedRowKeys.length }}</div>
-            <span class="batch-info">document{{ selectedRowKeys.length > 1 ? 's' : '' }} selected</span>
+            <span class="batch-info">{{ t('components_DocumentList.documentsSelected', { count: selectedRowKeys.length }) }}</span>
           </div>
           <div class="batch-toolbar-right">
-            <a-button class="batch-cancel-btn" size="small" @click="selectedRowKeys = []">Cancel</a-button>
+            <a-button class="batch-cancel-btn" size="small" @click="selectedRowKeys = []">{{ t('components_DocumentList.cancel') }}</a-button>
             <a-popconfirm
-              :title="`Permanently delete ${selectedRowKeys.length} document(s)?`"
-              ok-text="Delete"
+              :title="t('components_DocumentList.batchDeleteConfirm', { count: selectedRowKeys.length })"
+              :ok-text="t('components_DocumentList.actionDelete')"
               ok-type="danger"
               @confirm="handleBatchDelete"
             >
               <a-button class="batch-delete-btn" size="small" :loading="batchDeleting">
                 <template #icon><DeleteOutlined /></template>
-                Delete Selected
+                {{ t('components_DocumentList.deleteSelected') }}
               </a-button>
             </a-popconfirm>
           </div>
@@ -77,7 +77,7 @@
             :color="getStatusColor(record.processing_tasks[0].status)"
             class="status-tag"
           >
-            {{ record.processing_tasks[0].status.toUpperCase() }}
+            {{ getStatusLabel(record.processing_tasks[0].status) }}
           </a-tag>
         </template>
 
@@ -85,19 +85,24 @@
           <a-space>
             <a-button type="link" size="small" class="btn-view" @click="handleView(record)">
               <EyeOutlined />
-              View
+              {{ t('components_DocumentList.actionView') }}
             </a-button>
-            <a-button type="link" size="small" @click="handleAnalyze(record)">
-              <ThunderboltOutlined />
-              Analyze
+            <a-button
+              type="link"
+              size="small"
+              :loading="analyzingIds.has(record.id)"
+              @click="handleAnalyze(record)"
+            >
+              <template #icon><ThunderboltOutlined v-if="!analyzingIds.has(record.id)" /></template>
+              {{ t('components_DocumentList.actionAnalyze') }}
             </a-button>
             <a-popconfirm
-              title="Are you sure you want to delete this document?"
+              :title="t('components_DocumentList.deleteConfirm')"
               @confirm="handleDelete(record)"
             >
               <a-button type="link" danger size="small">
                 <DeleteOutlined />
-                Delete
+                {{ t('components_DocumentList.actionDelete') }}
               </a-button>
             </a-popconfirm>
           </a-space>
@@ -118,7 +123,7 @@
     >
       <div v-if="previewLoading" class="preview-loading">
         <a-spin size="large" />
-        <p>Loading preview...</p>
+        <p>{{ t('components_DocumentList.previewLoading') }}</p>
       </div>
 
       <template v-else-if="previewData">
@@ -163,15 +168,16 @@
       </template>
 
       <div v-else class="preview-loading">
-        <p>No preview available.</p>
+        <p>{{ t('components_DocumentList.previewNotAvailable') }}</p>
       </div>
     </a-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, watch, onBeforeUnmount } from 'vue'
 import { message } from 'ant-design-vue'
+import { useI18n } from 'vue-i18n'
 import {
   FileTextOutlined,
   ThunderboltOutlined,
@@ -191,6 +197,8 @@ const props = withDefaults(defineProps<Props>(), {
   refreshKey: 0
 })
 
+const { t } = useI18n()
+
 const emit = defineEmits<{
   documentDeleted: [document: Document]
   documentAnalyzed: [document: Document]
@@ -201,6 +209,7 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 const selectedRowKeys = ref<number[]>([])
 const batchDeleting = ref(false)
+const analyzingIds = ref<Set<number>>(new Set())
 
 const showPreviewModal = ref(false)
 const previewLoading = ref(false)
@@ -231,13 +240,13 @@ const rowSelection = {
   onChange: (keys: number[]) => { selectedRowKeys.value = keys },
 }
 
-const columns = [
-  { title: 'Name', key: 'name', width: '40%' },
-  { title: 'Size', key: 'size', width: '15%' },
-  { title: 'Created', key: 'created', width: '20%' },
-  { title: 'Status', key: 'status', width: '15%' },
-  { title: 'Action', key: 'action', width: '10%' }
-]
+const columns = computed(() => [
+  { title: t('components_DocumentList.colName'), key: 'name', width: '40%' },
+  { title: t('components_DocumentList.colSize'), key: 'size', width: '15%' },
+  { title: t('components_DocumentList.colCreated'), key: 'created', width: '20%' },
+  { title: t('components_DocumentList.colStatus'), key: 'status', width: '15%' },
+  { title: t('components_DocumentList.colAction'), key: 'action', width: '10%' }
+])
 
 const fetchDocuments = async () => {
   loading.value = true
@@ -246,7 +255,7 @@ const fetchDocuments = async () => {
     const kb = await knowledgeBaseApi.getKnowledgeBase(props.knowledgeBaseId)
     documents.value = kb.documents
   } catch (err: any) {
-    error.value = err.response?.data?.message || 'Failed to load documents'
+    error.value = err.response?.data?.message || t('components_DocumentList.loadFailed')
   } finally {
     loading.value = false
   }
@@ -255,11 +264,11 @@ const fetchDocuments = async () => {
 const handleDelete = async (document: Document) => {
   try {
     await knowledgeBaseApi.deleteDocument(props.knowledgeBaseId, document.id)
-    message.success('Document deleted successfully')
+    message.success(t('components_DocumentList.deleteSuccess'))
     emit('documentDeleted', document)
     await fetchDocuments()
   } catch (err: any) {
-    message.error(err.response?.data?.message || 'Failed to delete document')
+    message.error(err.response?.data?.message || t('components_DocumentList.deleteFailed'))
   }
 }
 
@@ -274,9 +283,9 @@ const handleBatchDelete = async () => {
     const failed = results.filter(r => r.status === 'rejected').length
     const succeeded = ids.length - failed
     if (failed === 0) {
-      message.success(`${succeeded} document(s) deleted`)
+      message.success(t('components_DocumentList.batchDeleteSuccess', { count: succeeded }))
     } else {
-      message.warning(`${succeeded} deleted, ${failed} failed`)
+      message.warning(t('components_DocumentList.batchDeletePartial', { succeeded, failed }))
     }
     selectedRowKeys.value = []
     await fetchDocuments()
@@ -310,8 +319,19 @@ const handleView = async (document: Document) => {
   }
 }
 
-const handleAnalyze = (document: Document) => {
-  emit('documentAnalyzed', document)
+const handleAnalyze = async (document: Document) => {
+  analyzingIds.value = new Set([...analyzingIds.value, document.id])
+  try {
+    await knowledgeBaseApi.analyzeDocument(props.knowledgeBaseId, document.id, 3000, 200)
+    message.success(t('components_DocumentList.analyzeStarted'))
+    await fetchDocuments()
+  } catch (err: any) {
+    message.error(err.response?.data?.message || t('components_DocumentList.analyzeFailed'))
+  } finally {
+    const next = new Set(analyzingIds.value)
+    next.delete(document.id)
+    analyzingIds.value = next
+  }
 }
 
 // --- 核心优化：图标与格式化逻辑 ---
@@ -347,13 +367,20 @@ const formatDate = (dateString: string): string => {
   }
 }
 
+const getStatusLabel = (status: string): string => {
+  const key = `components_DocumentList.status.${status.toLowerCase()}`
+  const label = t(key)
+  return label === key ? status : label
+}
+
 const getStatusColor = (status: string): string => {
   const statusLower = status.toLowerCase()
   const colors: Record<string, string> = {
+    uploaded: 'default',
+    processing: 'blue',
     completed: 'green',
     failed: 'red',
-    processing: 'blue',
-    pending: 'default'
+    pending: 'orange',
   }
   return colors[statusLower] || 'default'
 }
