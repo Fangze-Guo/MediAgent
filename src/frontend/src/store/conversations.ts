@@ -212,6 +212,7 @@ export const useConversationsStore = defineStore('conversations', () => {
           content: msg.content || '',
           typingComplete: true,
           images: images.length ? images : undefined,
+          sources: msg.sources?.length ? msg.sources : undefined,
         }
       })
       
@@ -472,11 +473,19 @@ export const useConversationsStore = defineStore('conversations', () => {
           const conversation: Conversation = {
             id,
             title,
-            messages: messages.map(msg => ({
-              role: msg.role as 'user' | 'assistant',
-              content: msg.content || '',
-              typingComplete: true
-            })),
+            messages: messages.map(msg => {
+              const attachments: { type: string; url: string }[] = msg.attachments ?? []
+              const images = attachments
+                .filter((a) => a.type === 'image' && a.url)
+                .map((a) => a.url)
+              return {
+                role: msg.role as 'user' | 'assistant',
+                content: msg.content || '',
+                typingComplete: true,
+                images: images.length ? images : undefined,
+                sources: msg.sources?.length ? msg.sources : undefined,
+              }
+            }),
             assistantType: 'general', // 默认为通用助手
             loading: false
           }

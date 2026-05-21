@@ -4,7 +4,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch, ref } from 'vue'
+import { computed } from 'vue'
 import { marked } from 'marked'
 import hljs from 'highlight.js/lib/core'
 import javascript from 'highlight.js/lib/languages/javascript'
@@ -35,13 +35,10 @@ const props = withDefaults(defineProps<Props>(), {
   streamingSpeed: 20
 })
 
-const displayContent = ref('')
-const lastRenderedContent = ref('')
-
 // 配置 marked
 marked.setOptions({
-  breaks: true, // 支持换行
-  gfm: true,    // 启用 GitHub 风格的 Markdown
+  breaks: true,
+  gfm: true,
 })
 
 // 自定义渲染器用于代码高亮
@@ -60,61 +57,21 @@ renderer.code = function(code: string, lang: string) {
 
 marked.use({ renderer })
 
-// 流式渲染动画处理
-let animationFrameId: number | null = null
-let charIndex = 0
-let accumulatedTime = 0
-
-const animateStreamingContent = () => {
-  if (charIndex < props.content.length) {
-    charIndex++
-    displayContent.value = props.content.substring(0, charIndex)
-    animationFrameId = requestAnimationFrame(animateStreamingContent)
-  } else {
-    // 完成后，使用完整内容
-    lastRenderedContent.value = props.content
-  }
+// 预处理：确保标题、列表、分隔线前有空行
+function preprocessMarkdown(raw: string): string {
+  raw = raw.replace(/([^\n])\n(#{1,6} )/g, '$1\n\n$2')
+  raw = raw.replace(/([^\n])\n([-*+] |\d+\. )/g, '$1\n\n$2')
+  raw = raw.replace(/([^\n])\n(---+|\*\*\*+|___+)(\n|$)/g, '$1\n\n$2\n\n')
+  return raw
 }
-
-// 监听内容变化，处理流式输出
-watch(() => props.content, (newContent) => {
-  if (!newContent) {
-    displayContent.value = ''
-    charIndex = 0
-    if (animationFrameId !== null) {
-      cancelAnimationFrame(animationFrameId)
-      animationFrameId = null
-    }
-    return
-  }
-
-  if (props.streaming && newContent.length > lastRenderedContent.value.length) {
-    // 流式模式，只处理新增的字符
-    if (charIndex === 0) {
-      charIndex = lastRenderedContent.value.length
-    }
-    if (animationFrameId === null) {
-      animationFrameId = requestAnimationFrame(animateStreamingContent)
-    }
-  } else {
-    // 非流式模式，直接显示
-    lastRenderedContent.value = newContent
-    displayContent.value = newContent
-    charIndex = 0
-    if (animationFrameId !== null) {
-      cancelAnimationFrame(animationFrameId)
-      animationFrameId = null
-    }
-  }
-}, { immediate: true })
 
 // 渲染 Markdown
 const renderedMarkdown = computed(() => {
-  const content = displayContent.value || ''
+  const content = props.content || ''
   if (!content) return ''
   
   try {
-    return marked(content)
+    return marked(preprocessMarkdown(content))
   } catch (error) {
     console.error('Markdown 渲染失败:', error)
     return content // 降级为纯文本
@@ -150,6 +107,11 @@ const renderedMarkdown = computed(() => {
 @keyframes cursor-blink {
   0%, 49% { opacity: 1; background-color: #1890ff; }
   50%, 100% { opacity: 0; background-color: transparent; }
+}
+
+/* 流式期间禁用所有入场动画，避免 v-html 替换 DOM 时反复触发闪烁 */
+.markdown-content.streaming-mode :deep(*) {
+  animation: none !important;
 }
 
 /* 标题 */

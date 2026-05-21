@@ -67,10 +67,14 @@ class ConversationMapper:
                     created_at       TIMESTAMPTZ DEFAULT NOW()
                 )
             """)
-            # 兼容旧表：若 attachments 列不存在则追加
+            # 兼容旧表：若 attachments / sources 列不存在则追加
             await conn.execute("""
                 ALTER TABLE messages
                 ADD COLUMN IF NOT EXISTS attachments JSONB NOT NULL DEFAULT '[]'::jsonb
+            """)
+            await conn.execute("""
+                ALTER TABLE messages
+                ADD COLUMN IF NOT EXISTS sources JSONB NOT NULL DEFAULT '[]'::jsonb
             """)
             await conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_messages_conversation_uid
@@ -151,16 +155,18 @@ class ConversationMapper:
         role: str,
         content: str,
         attachments: list | None = None,
+        sources: list | None = None,
     ) -> None:
         """追加一条消息，并更新 conversation.updated_at"""
         import json
         attachments_json = json.dumps(attachments or [])
+        sources_json = json.dumps(sources or [])
         pool = await self._get_pool()
         async with pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(
-                    "INSERT INTO messages (conversation_uid, role, content, attachments) VALUES ($1, $2, $3, $4::jsonb)",
-                    conversation_uid, role, content, attachments_json,
+                    "INSERT INTO messages (conversation_uid, role, content, attachments, sources) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb)",
+                    conversation_uid, role, content, attachments_json, sources_json,
                 )
                 await conn.execute(
                     "UPDATE conversations SET updated_at=NOW() WHERE uid=$1",
@@ -173,7 +179,7 @@ class ConversationMapper:
         pool = await self._get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT role, content, attachments FROM messages WHERE conversation_uid=$1 ORDER BY id ASC",
+                "SELECT role, content, attachments, sources FROM messages WHERE conversation_uid=$1 ORDER BY id ASC",
                 conversation_uid,
             )
             result = []
@@ -185,9 +191,17 @@ class ConversationMapper:
                     attachments = []
                 else:
                     attachments = list(raw)
+                raw_sources = r["sources"]
+                if isinstance(raw_sources, str):
+                    sources = json.loads(raw_sources)
+                elif raw_sources is None:
+                    sources = []
+                else:
+                    sources = list(raw_sources)
                 result.append({
                     "role": r["role"],
                     "content": r["content"],
                     "attachments": attachments,
+                    "sources": sources,
                 })
             return result

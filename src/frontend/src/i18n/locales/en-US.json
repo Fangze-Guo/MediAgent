@@ -912,7 +912,10 @@
     "previewLoading": "Loading preview...",
     "previewNotAvailable": "No preview available.",
     "analyzeStarted": "Analysis started. Document is being embedded in the background.",
-    "analyzeFailed": "Failed to start analysis"
+    "analyzeFailed": "Failed to start analysis",
+    "analyzeSelected": "Batch Analyze",
+    "batchAnalyzeSuccess": "Started analysis for {count} document(s)",
+    "batchAnalyzePartial": "{success} started, {fail} failed"
   },
   "components_DocumentUploadSteps": {
     "stepUpload": "Upload",

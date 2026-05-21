@@ -21,6 +21,11 @@
                 <div class="message-content">
                   <!-- 解析并展示思考过程和回复内容 -->
                   <div v-if="m.parsedContent">
+                    <!-- 实时检索进度（流式期间） -->
+                    <RagSearchProgress
+                      v-if="m.role === 'assistant' && !m.typingComplete && m.searchProgress && m.searchProgress.length"
+                      :items="m.searchProgress"
+                    />
                     <!-- 多个思考过程 -->
                     <div v-if="m.parsedContent.thinkingList && m.parsedContent.thinkingList.length > 0">
                       <div v-for="(thinking, thinkingIdx) in m.parsedContent.thinkingList" :key="thinkingIdx"
@@ -39,9 +44,17 @@
                         </div>
                       </div>
                     </div>
-                    <!-- 回复内容 -->
+                    <!-- 流式期间正在思考（<think> 未闭合） -->
+                    <div v-if="m.parsedContent.isThinking" class="thinking-section thinking-active">
+                      <div class="thinking-header">
+                        <a-icon type="bulb" />
+                        <span>{{ t('views_ChatView.thinkingProcess') }}</span>
+                        <span class="thinking-indicator"><span></span><span></span><span></span></span>
+                      </div>
+                    </div>
+                    <!-- 回复内容（统一使用 MarkdownRenderer，streaming 仅控制光标） -->
                     <div v-if="m.parsedContent.response" class="response-content">
-                      <MarkdownRenderer :content="m.parsedContent.response" />
+                      <MarkdownRenderer :content="m.parsedContent.response" :streaming="!m.typingComplete" />
                     </div>
                   </div>
                   <!-- 原始内容（如果没有解析出思考过程） -->
@@ -55,17 +68,11 @@
                     <div v-if="m.role === 'assistant' && !m.typingComplete && !m.content" class="typing-indicator">
                       <span></span><span></span><span></span>
                     </div>
-                    <!-- 流式输出中：直接用 streamingHtml computed，跳过组件链 -->
-                    <div
-                      v-else-if="m.role === 'assistant' && !m.typingComplete"
-                      class="streaming-md"
-                      v-html="streamingHtml"
-                    />
-                    <!-- 输出完成：交给 StreamingMarkdownRenderer 做最终渲染 -->
-                    <StreamingMarkdownRenderer
-                      v-else-if="m.role === 'assistant'"
+                    <!-- 助手消息：统一使用 MarkdownRenderer，streaming 仅控制光标 -->
+                    <MarkdownRenderer
+                      v-else-if="m.role === 'assistant' && m.content"
                       :content="m.content"
-                      :streaming="false"
+                      :streaming="!m.typingComplete"
                     />
                     <!-- 用户消息直接显示 -->
                     <template v-else>
@@ -94,6 +101,7 @@
                     >
                       <span class="rag-source-index">[{{ si + 1 }}]</span>
                       <span class="rag-source-kb">{{ src.kb_name }}</span>
+                      <span v-if="src.file_name" class="rag-source-file">· {{ src.file_name }}</span>
                       <span class="rag-source-score">{{ Math.round((1 - src.score) * 100) }}% 相关</span>
                     </div>
                   </div>
@@ -312,9 +320,7 @@ import { useI18n } from 'vue-i18n'
 import { useConversationsStore } from '@/store/conversations'
 import FileUpload from '@/components/file/FileUpload.vue'
 import MarkdownRenderer from '@/components/markdown/MarkdownRenderer.vue'
-import StreamingMarkdownRenderer from '@/components/markdown/StreamingMarkdownRenderer.vue'
 import RagSearchProgress from '@/components/chat/RagSearchProgress.vue'
-import { marked } from 'marked'
 import ModelSelector from '@/components/model/ModelSelector.vue'
 import { type FileInfo, getChatImagePresignUrl, uploadToOss } from '@/apis/files'
 import {
@@ -412,10 +418,47 @@ const parseMessageContent = (content: string) => {
 
     return {
       thinkingList, // 改为数组，支持多个思考过程
-      response: response || null
+      response: response || null,
+      isThinking: false,
     }
   }
   return null
+}
+
+/**
+ * 流式期间轻量解析：提取已闭合 <think> 块，检测未闭合的思考状态
+ * 不使用缓存（流式期间内容持续变化），但正则足够轻量
+ */
+const parseStreamingContent = (content: string) => {
+  // 提取已闭合的 <think>...</think> 块
+  const thinkMatches = content.match(/<think>(.*?)<\/think>/gs)
+  const thinkingList = thinkMatches
+    ? thinkMatches.map(match => match.replace(/<\/?think>/g, '').trim())
+    : []
+
+  // 移除已闭合的 <think> 块
+  let remaining = content.replace(/<think>.*?<\/think>/gs, '')
+
+  // 检测是否有未闭合的 <think>（正在思考中）
+  const unclosedIdx = remaining.lastIndexOf('<think>')
+  const isThinking = unclosedIdx !== -1
+  if (isThinking) {
+    // 去掉未闭合的 <think> 及其后面的内容（思考中，不展示）
+    remaining = remaining.substring(0, unclosedIdx)
+  }
+
+  const response = remaining.trim() || null
+
+  // 如果没有任何思考块且不在思考中，返回 null 让 fallback 渲染
+  if (thinkingList.length === 0 && !isThinking && !response) {
+    return null
+  }
+
+  return {
+    thinkingList,
+    response,
+    isThinking,
+  }
 }
 
 /**
@@ -719,14 +762,6 @@ const formatTime = (timeString: string): string => {
 /** 思考过程显示状态 */
 const thinkingStates = ref<Record<string, boolean>>({})
 
-/** 直接读取 store 中正在流式输出的消息内容并 render，绕过 currentMessages → props 链 */
-const streamingHtml = computed(() => {
-  const msgs = currentConversation.value?.messages
-  if (!msgs?.length) return ''
-  const last = msgs[msgs.length - 1]
-  if (!last || last.typingComplete || last.role !== 'assistant' || !last.content) return ''
-  try { return marked.parse(last.content, { breaks: true, gfm: true }) as string } catch { return last.content }
-})
 
 /** parsedContent 缓存：key = `convId-index:content`，避免每次 token 都重跑正则 */
 const parsedContentCache = new Map<string, ReturnType<typeof parseMessageContent>>()
@@ -742,7 +777,7 @@ const currentMessages = computed(() => {
 
     // 显式读取 content，确保流式期间 Vue 也能追踪到该响应式属性
     const msgContent = msg.content
-    // 流式输出中不解析（避免每 token 都重跑正则），完成后使用缓存
+    // 完成后使用缓存解析；流式期间也做轻量解析以剥离 <think> 标签
     let parsedContent = null
     if (msg.typingComplete && msgContent) {
       const cacheKey = `${messageKey}:${msgContent.length}`
@@ -750,6 +785,9 @@ const currentMessages = computed(() => {
         parsedContentCache.set(cacheKey, parseMessageContent(msgContent))
       }
       parsedContent = parsedContentCache.get(cacheKey)!
+    } else if (!msg.typingComplete && msgContent && msgContent.includes('<think>')) {
+      // 流式期间：只提取已闭合的 <think> 块，未闭合的部分隐藏（正在思考中）
+      parsedContent = parseStreamingContent(msgContent)
     }
 
     // 为多个思考过程生成显示状态
@@ -1456,58 +1494,6 @@ const getAssistantAvatarStyle = () => {
   color: var(--text-primary);
 }
 
-/* 流式 Markdown 容器（直接 v-html 渲染） */
-.streaming-md {
-  line-height: 1.7;
-  color: var(--text-primary);
-  word-break: break-word;
-}
-
-.streaming-md :deep(h1), .streaming-md :deep(h2), .streaming-md :deep(h3),
-.streaming-md :deep(h4), .streaming-md :deep(h5), .streaming-md :deep(h6) {
-  margin: 12px 0 6px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-.streaming-md :deep(h1) { font-size: 1.5em; border-bottom: 1px solid var(--border-color); padding-bottom: 6px; }
-.streaming-md :deep(h2) { font-size: 1.3em; }
-.streaming-md :deep(h3) { font-size: 1.1em; }
-
-.streaming-md :deep(p)   { margin: 6px 0; }
-.streaming-md :deep(ul), .streaming-md :deep(ol) { margin: 6px 0; padding-left: 22px; }
-.streaming-md :deep(li)  { margin: 3px 0; }
-.streaming-md :deep(code) {
-  background: var(--bg-secondary);
-  border-radius: 3px;
-  padding: 2px 5px;
-  font-size: 0.88em;
-  color: #d73a49;
-}
-.streaming-md :deep(pre) {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  padding: 12px 16px;
-  overflow-x: auto;
-  margin: 8px 0;
-}
-.streaming-md :deep(pre code) { background: none; padding: 0; color: inherit; }
-.streaming-md :deep(blockquote) {
-  border-left: 4px solid var(--link-color);
-  padding: 6px 12px;
-  margin: 8px 0;
-  color: var(--text-secondary);
-  background: color-mix(in srgb, var(--link-color) 5%, transparent);
-}
-.streaming-md :deep(table) { border-collapse: collapse; margin: 8px 0; width: 100%; }
-.streaming-md :deep(th), .streaming-md :deep(td) {
-  border: 1px solid var(--border-color);
-  padding: 6px 10px;
-}
-.streaming-md :deep(th) { background: var(--bg-secondary); font-weight: 600; }
-.streaming-md :deep(strong) { font-weight: 600; }
-.streaming-md :deep(hr) { border: none; border-top: 1px solid var(--border-color); margin: 12px 0; }
-
 /* 打字等待指示器 */
 .typing-indicator {
   display: flex;
@@ -1568,10 +1554,17 @@ const getAssistantAvatarStyle = () => {
 }
 
 .rag-source-kb {
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.rag-source-file {
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--text-secondary);
 }
 
 .rag-source-score {

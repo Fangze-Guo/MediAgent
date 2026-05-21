@@ -68,7 +68,7 @@ class ConversationController(BaseController):
                 async for token in conversation_service.stream_message(
                     request, body.conversation_id, body.content, body.images, body.attachments
                 ):
-                    yield {"data": token}
+                    yield {"data": token.replace("\n", "%0A")}
                 yield {"data": "[DONE]"}
 
             return EventSourceResponse(generator())

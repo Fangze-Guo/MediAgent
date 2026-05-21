@@ -30,6 +30,10 @@
           </div>
           <div class="batch-toolbar-right">
             <a-button class="batch-cancel-btn" size="small" @click="selectedRowKeys = []">{{ t('components_DocumentList.cancel') }}</a-button>
+            <a-button class="batch-analyze-btn" size="small" :loading="batchAnalyzing" @click="handleBatchAnalyze">
+              <template #icon><SyncOutlined /></template>
+              {{ t('components_DocumentList.analyzeSelected') }}
+            </a-button>
             <a-popconfirm
               :title="t('components_DocumentList.batchDeleteConfirm', { count: selectedRowKeys.length })"
               :ok-text="t('components_DocumentList.actionDelete')"
@@ -182,7 +186,8 @@ import {
   FileTextOutlined,
   ThunderboltOutlined,
   DeleteOutlined,
-  EyeOutlined
+  EyeOutlined,
+  SyncOutlined
 } from '@ant-design/icons-vue'
 import { formatDistanceToNow } from 'date-fns'
 import type { Document } from '../../types/knowledge-base'
@@ -209,6 +214,7 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 const selectedRowKeys = ref<number[]>([])
 const batchDeleting = ref(false)
+const batchAnalyzing = ref(false)
 const analyzingIds = ref<Set<number>>(new Set())
 
 const showPreviewModal = ref(false)
@@ -317,6 +323,29 @@ const handleView = async (document: Document) => {
   } finally {
     previewLoading.value = false
   }
+}
+
+const handleBatchAnalyze = async () => {
+  if (selectedRowKeys.value.length === 0) return
+  batchAnalyzing.value = true
+  const ids = [...selectedRowKeys.value]
+  let successCount = 0
+  let failCount = 0
+  await Promise.allSettled(
+    ids.map(id =>
+      knowledgeBaseApi.analyzeDocument(props.knowledgeBaseId, id, 3000, 200)
+        .then(() => { successCount++ })
+        .catch(() => { failCount++ })
+    )
+  )
+  batchAnalyzing.value = false
+  selectedRowKeys.value = []
+  if (failCount === 0) {
+    message.success(t('components_DocumentList.batchAnalyzeSuccess', { count: successCount }))
+  } else {
+    message.warning(t('components_DocumentList.batchAnalyzePartial', { success: successCount, fail: failCount }))
+  }
+  await fetchDocuments()
 }
 
 const handleAnalyze = async (document: Document) => {
@@ -458,6 +487,18 @@ onMounted(() => {
   border-radius: 6px !important;
   color: var(--text-secondary) !important;
   border-color: var(--border-color) !important;
+}
+
+.batch-analyze-btn {
+  border-radius: 6px !important;
+  background: #2563eb !important;
+  border-color: #2563eb !important;
+  color: #fff !important;
+}
+
+.batch-analyze-btn:hover {
+  background: #1d4ed8 !important;
+  border-color: #1d4ed8 !important;
 }
 
 .batch-delete-btn {

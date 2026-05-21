@@ -912,7 +912,10 @@
     "previewLoading": "加载预览中...",
     "previewNotAvailable": "暂无预览。",
     "analyzeStarted": "已开始分析，文档正在后台向量化中。",
-    "analyzeFailed": "启动分析失败"
+    "analyzeFailed": "启动分析失败",
+    "analyzeSelected": "批量分析",
+    "batchAnalyzeSuccess": "已启动 {count} 个文档的分析",
+    "batchAnalyzePartial": "成功启动 {success} 个，{fail} 个失败"
   },
   "components_DocumentUploadSteps": {
     "stepUpload": "上传",

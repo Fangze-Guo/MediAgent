@@ -59,6 +59,16 @@ class ConversationService:
             all_results.sort(key=lambda x: x["score"])
             top = all_results[:5]
 
+            doc_names: dict[int, str] = {}
+            for r in top:
+                doc_id = r.get("doc_id")
+                if doc_id and doc_id not in doc_names:
+                    try:
+                        doc = await kb_mapper.get_document_by_id(doc_id)
+                        doc_names[doc_id] = doc.file_name if doc else f"doc_{doc_id}"
+                    except Exception:
+                        doc_names[doc_id] = f"doc_{doc_id}"
+
             lines = [
                 "<参考资料>",
                 "以下内容来自知识库，请结合参考回答用户问题，并在回答末尾注明参考来源编号：",
@@ -73,6 +83,7 @@ class ConversationService:
             sources = [
                 {
                     "kb_name": r["kb_name"],
+                    "file_name": doc_names.get(r.get("doc_id"), ""),
                     "content": r["content"][:300],
                     "score": round(r["score"], 4),
                     "doc_id": r.get("doc_id"),
@@ -127,6 +138,17 @@ class ConversationService:
         all_results.sort(key=lambda x: x["score"])
         top = all_results[:5]
 
+        # 批量查文件名
+        doc_names: dict[int, str] = {}
+        for r in top:
+            doc_id = r.get("doc_id")
+            if doc_id and doc_id not in doc_names:
+                try:
+                    doc = await kb_mapper.get_document_by_id(doc_id)
+                    doc_names[doc_id] = doc.file_name if doc else f"doc_{doc_id}"
+                except Exception:
+                    doc_names[doc_id] = f"doc_{doc_id}"
+
         lines = [
             "<参考资料>",
             "以下内容来自知识库，请结合参考回答用户问题，并在回答末尾注明参考来源编号：",
@@ -141,6 +163,7 @@ class ConversationService:
         sources = [
             {
                 "kb_name": r["kb_name"],
+                "file_name": doc_names.get(r.get("doc_id"), ""),
                 "content": r["content"][:300],
                 "score": round(r["score"], 4),
                 "doc_id": r.get("doc_id"),
@@ -244,7 +267,7 @@ class ConversationService:
         reply = await agent.converse(content, history, rag_context=rag_context, images=images)
 
         await mapper.add_message(conversation_uid, "user", content, attachments)
-        await mapper.add_message(conversation_uid, "assistant", reply)
+        await mapper.add_message(conversation_uid, "assistant", reply, sources=sources)
 
         return {"reply": reply, "sources": sources}
 
@@ -259,12 +282,19 @@ class ConversationService:
         import json
 
         rag_context = ""
+        sources_data: list = []
         async for event in self._stream_rag_context(request, content):
             if event.startswith("[RAG_CONTEXT]"):
                 try:
                     rag_context = json.loads(event[13:])["context"]
                 except Exception:
                     pass
+            elif event.startswith("[SOURCES]"):
+                try:
+                    sources_data = json.loads(event[9:])
+                except Exception:
+                    pass
+                yield event
             else:
                 yield event
 
@@ -272,8 +302,9 @@ class ConversationService:
         await mapper.add_message(conversation_uid, "user", content, attachments)
 
         full_reply: List[str] = []
-        async for token in agent.stream(content, history, rag_context=rag_context, images=images):
-            full_reply.append(token)
-            yield token
-
-        await mapper.add_message(conversation_uid, "assistant", "".join(full_reply))
+        try:
+            async for token in agent.stream(content, history, rag_context=rag_context, images=images):
+                full_reply.append(token)
+                yield token
+        finally:
+            await mapper.add_message(conversation_uid, "assistant", "".join(full_reply), sources=sources_data)

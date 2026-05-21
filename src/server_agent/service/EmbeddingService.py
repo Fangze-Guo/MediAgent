@@ -175,6 +175,38 @@ def _extract_excel(path: pathlib.Path) -> str:
     return "\n".join(lines)
 
 
+def _clean_text(text: str) -> str:
+    """清理 PDF 提取文本的常见噪声：中文字符间空格、重复段落。"""
+    import re
+    # 1. 去除中文字符之间的空格（排版 PDF 常见问题）
+    text = re.sub(r'(?<=[\u4e00-\u9fff\uff00-\uffef])\s+(?=[\u4e00-\u9fff\uff00-\uffef])', '', text)
+    # 2. 去除中文字符与标点之间的空格
+    text = re.sub(r'(?<=[\u4e00-\u9fff])\s+(?=[，。！？；：、""''（）【】《》])', '', text)
+    text = re.sub(r'(?<=[，。！？；：、""''（）【】《》])\s+(?=[\u4e00-\u9fff])', '', text)
+    # 3. 修复数字中的空格：数字 . 数字 → 数字.数字，数字 % → 数字%
+    text = re.sub(r'(\d)\s+\.\s+(\d)', r'\1.\2', text)
+    text = re.sub(r'(\d)\s+%', r'\1%', text)
+    text = re.sub(r'(\d)\s+/\s+(\d)', r'\1/\2', text)
+    # 4. 去除独立页码行（单独一行只有数字，且数字在 1~9999 之间）
+    text = re.sub(r'(?m)^\s*\d{1,4}\s*$', '', text)
+    # 5. 去除重复段落（相同的行出现超过 1 次则去重）
+    paragraphs = text.split('\n')
+    seen: dict[str, int] = {}
+    deduped = []
+    for p in paragraphs:
+        key = p.strip()
+        if not key:
+            deduped.append(p)
+            continue
+        count = seen.get(key, 0)
+        if count < 1:
+            deduped.append(p)
+        seen[key] = count + 1
+    # 合并多余空行
+    result = re.sub(r'\n{3,}', '\n\n', '\n'.join(deduped))
+    return result
+
+
 def _embed_sync(
     doc_id: int,
     kb_id: int,
@@ -186,7 +218,7 @@ def _embed_sync(
     from langchain_text_splitters import RecursiveCharacterTextSplitter
     from langchain_chroma import Chroma
 
-    text = _extract_text(file_path)
+    text = _clean_text(_extract_text(file_path))
     if not text.strip():
         logger.warning("doc %d: no text extracted, skipping embedding", doc_id)
         return 0

@@ -127,13 +127,24 @@ watch(() => props.streaming, (streaming) => {
   }
 })
 
+// 预处理：确保标题、列表、分隔线前有空行（兼容 breaks:true 模式下 LLM 输出）
+function preprocessMarkdown(raw: string): string {
+  // 标题前加空行：非换行符后紧跟 \n# → 插入 \n
+  raw = raw.replace(/([^\n])\n(#{1,6} )/g, '$1\n\n$2')
+  // 无序/有序列表前加空行
+  raw = raw.replace(/([^\n])\n([-*+] |\d+\. )/g, '$1\n\n$2')
+  // 水平线前后加空行（单独一行的 --- / *** / ___）
+  raw = raw.replace(/([^\n])\n(---+|\*\*\*+|___+)(\n|$)/g, '$1\n\n$2\n\n')
+  return raw
+}
+
 // 渲染 Markdown
 const renderedMarkdown = computed(() => {
   const content = displayContent.value || ''
   if (!content) return ''
 
   try {
-    return marked(content) as string
+    return marked(preprocessMarkdown(content)) as string
   } catch (error) {
     console.error('Markdown 渲染失败:', error)
     return content
@@ -159,7 +170,7 @@ onBeforeUnmount(() => {
 
 .markdown-content {
   line-height: 1.6;
-  color: #333;
+  color: var(--text-primary, #333);
   word-break: break-word;
   overflow-wrap: break-word;
   transition: all 0.2s ease;

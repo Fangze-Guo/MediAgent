@@ -27,6 +27,8 @@ export interface ConversationMessage {
   timestamp?: string
   /** 附件列表（图片 OSS URL 等） */
   attachments?: { type: string; url: string }[]
+  /** RAG 来源引用 */
+  sources?: RagSource[]
 }
 
 /**
@@ -73,6 +75,7 @@ interface BaseResponse<T> {
  */
 export interface RagSource {
   kb_name: string
+  file_name?: string
   content: string
   score: number
   doc_id?: number
@@ -218,7 +221,8 @@ export async function streamMessageToAgent(
       buffer = lines.pop() ?? ''
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue
-        const data = line.slice(6).trim()
+        const rawData = line.slice(6).replace(/\r$/, '')  // 去除 CRLF 行尾残留的 \r
+        const data = rawData.trim()
         if (data === '[DONE]') { callbacks.onDone(); return }
         if (data.startsWith('[SOURCES]')) {
           try { callbacks.onSources(JSON.parse(data.slice(9))) } catch { /* ignore */ }
@@ -232,7 +236,9 @@ export async function streamMessageToAgent(
           try { callbacks.onSearchResult?.(JSON.parse(data.slice(15))) } catch { /* ignore */ }
           continue
         }
-        if (data) callbacks.onToken(data)
+        // 将后端用 %0A 转义的换行符还原
+        const decoded = rawData.replace(/%0A/g, '\n')
+        if (decoded) callbacks.onToken(decoded)
       }
     }
   } finally {
