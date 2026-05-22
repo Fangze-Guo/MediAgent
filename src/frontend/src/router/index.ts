@@ -62,7 +62,7 @@ const routes: RouteRecordRaw[] = [
         name: 'SkillStore',
         component: () => import('@/views/skill-store/SkillStoreView.vue'),
         meta: {
-            title: 'MedWiser - Skill Store',
+            title: 'MedWiser - Skill Repository',
             requiresAuth: true
         }
     },
@@ -100,6 +100,15 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/clinical-tools/code_agent/CodeAgentView.vue'),
         meta: {
             title: 'MedWiser - NICE-BCX Agent',
+            requiresAuth: true
+        }
+    },
+    {
+        path: '/clinical-agent/:agentId',
+        name: 'ClinicalAgent',
+        component: () => import('@/views/clinical-tools/code_agent/CodeAgentView.vue'),
+        meta: {
+            title: 'MedWiser - Clinical Agent',
             requiresAuth: true
         }
     },

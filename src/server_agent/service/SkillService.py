@@ -17,10 +17,10 @@ class SkillService:
         """
         初始化服务
         Args:
-            skills_dir: skills 目录路径，默认为 ~/.claude/skills
+            skills_dir: skills 目录路径，默认读取 GLOBAL_SKILLS_DIR 环境变量
         """
         if skills_dir is None:
-            skills_dir = os.path.expanduser("~/.claude/skills")
+            skills_dir = os.getenv("GLOBAL_SKILLS_DIR", os.path.expanduser("~/.claude/skills"))
         self.skills_dir = Path(skills_dir)
 
     @classmethod

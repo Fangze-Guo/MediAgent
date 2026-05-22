@@ -3,11 +3,14 @@ Skill 控制器
 提供从真实 ~/.claude/skills 目录读取 skill 的 API 接口
 """
 from typing import List, Optional
-from fastapi import Query
+from fastapi import Depends, Header, Query, Request, UploadFile, File
 
 from src.server_agent.common import ResultUtils, BaseResponse
 from src.server_agent.controller.base import BaseController
+from src.server_agent.exceptions import AuthenticationError, AuthorizationError
+from src.server_agent.model import UserVO
 from src.server_agent.service.SkillService import SkillService
+from src.server_agent.service.UserService import UserService
 from src.server_agent.exceptions.error_codes import ErrorCode
 
 
@@ -17,6 +20,7 @@ class SkillController(BaseController):
     def __init__(self):
         super().__init__(prefix="/skills", tags=["技能仓库"])
         self.default_skill_service = SkillService()
+        self.user_service = UserService()
         self._register_routes()
 
     def _get_service(self, project_id: Optional[str]) -> SkillService:
@@ -106,3 +110,68 @@ class SkillController(BaseController):
                 return ResultUtils.success(content)
             except Exception as e:
                 return ResultUtils.error(ErrorCode.SYSTEM_ERROR, f"获取文件内容失败: {str(e)}")
+
+        @self.router.post("/upload")
+        async def upload_skill(
+            request: Request,
+            file: UploadFile = File(..., description="Skill zip 包"),
+            userVO: UserVO = Depends(self._get_current_user),
+        ) -> BaseResponse[dict]:
+            try:
+                from src.server_agent.service.SkillRegistryService import SkillRegistryService
+                registry = SkillRegistryService(request.app.state.agent_mapper)
+                zip_bytes = await file.read()
+                record = await registry.upload_skill(zip_bytes, user_id=userVO.uid)
+                return ResultUtils.success(record)
+            except ValueError as e:
+                return ResultUtils.error(ErrorCode.INVALID_INPUT, str(e))
+            except Exception as e:
+                return ResultUtils.error(ErrorCode.INTERNAL_SERVER_ERROR, f"上传 Skill 失败: {str(e)}")
+
+        @self.router.delete("/{slug}")
+        async def delete_skill(
+            request: Request,
+            slug: str,
+            userVO: UserVO = Depends(self._get_current_admin_user),
+        ) -> BaseResponse[dict]:
+            try:
+                import shutil
+                from pathlib import Path
+                mapper = request.app.state.agent_mapper
+                record = await mapper.get_skill_by_slug(slug)
+                if not record:
+                    return ResultUtils.error(ErrorCode.NOT_FOUND, "Skill 不存在")
+                storage_path = Path(record["storage_path"])
+                if storage_path.exists():
+                    shutil.rmtree(storage_path)
+                await mapper.delete_skill(slug)
+                return ResultUtils.success({"deleted": slug})
+            except AuthorizationError:
+                raise
+            except Exception as e:
+                return ResultUtils.error(ErrorCode.SYSTEM_ERROR, f"删除失败: {str(e)}")
+
+    # ―――――――――――――――――――――――――――――――
+    # 辅助方法
+    # ―――――――――――――――――――――――――――――――
+
+    async def _get_current_user(self, authorization: str = Header(None)) -> UserVO:
+        if not authorization:
+            raise AuthenticationError(detail="Missing authorization header")
+        token = authorization[7:] if authorization.startswith("Bearer ") else authorization
+        user = await self.user_service.get_user_by_token(token)
+        if not user:
+            raise AuthenticationError(detail="Invalid or expired token")
+        return user
+
+    async def _get_current_admin_user(
+        self,
+        authorization: str = Header(None),
+    ) -> UserVO:
+        user = await self._get_current_user(authorization)
+        if user.role != "admin":
+            raise AuthorizationError(
+                detail="Admin access required",
+                context={"user_id": user.uid, "user_role": user.role},
+            )
+        return user
