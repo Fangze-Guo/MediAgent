@@ -8,10 +8,10 @@
           <!-- Logo 区域 -->
           <div class="logo-section">
             <div class="logo-icon">
-              <img src="../../public/MediAgent.png" alt="Logo" style="width: 60px; height: 60px" />
+              <img src="../../public/MedWiser.png" alt="Logo" style="width: 60px; height: 60px" />
             </div>
 
-            <h1 class="logo-text">MediAgent</h1>
+            <h1 class="logo-text">MedWiser</h1>
           </div>
 
           <!-- 欢迎文字 -->

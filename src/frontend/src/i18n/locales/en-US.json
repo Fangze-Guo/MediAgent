@@ -508,8 +508,8 @@
     "providedBy": "Provided by {author}",
     "ratings": "({count} ratings)",
     "users": "{count} users",
-    "installed": "Added to MediAgent",
-    "addToMediAgent": "Add to MediAgent",
+    "installed": "Added to MedWiser",
+    "addToMedWiser": "Add to MedWiser",
     "share": "Share",
     "overview": "Overview",
     "tags": "Tags",
@@ -524,7 +524,7 @@
     "category": "Category"
   },
   "views_AppStoreView": {
-    "logoText": "MediAgent Tool Repository",
+    "logoText": "MedWiser Tool Repository",
     "searchPlaceholder": "Search extensions, themes, etc.",
     "loading": "Loading apps...",
     "emptyText": "No related apps found",
@@ -533,7 +533,7 @@
     "resultsCount": "{count} apps",
     "users": "{count} users",
     "installed": "Installed",
-    "addToMediAgent": "Add to MediAgent",
+    "addToMedWiser": "Add to MedWiser",
     "allCategory": "All",
     "loadCategoriesFailed": "Failed to load categories",
     "loadAppsFailed": "Failed to load apps"
@@ -618,7 +618,7 @@
   },
   "views_SettingsView": {
     "title": "Settings",
-    "subtitle": "Manage your MediAgent preferences",
+    "subtitle": "Manage your MedWiser preferences",
     "chatSettings": "Chat Settings",
     "autoScroll": "Auto-scroll to Bottom",
     "messageTime": "Message Time Display",

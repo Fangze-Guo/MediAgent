@@ -2,7 +2,7 @@
   <div class="sidebar">
     <!-- ==================== 顶部标题区 ==================== -->
     <div class="sidebar-header">
-      <img src="/MediAgent.png" alt="MediAgent Logo" class="logo-image" />
+      <img src="/MedWiser.png" alt="MedWiser Logo" class="logo-image" />
       <h3>MedWiser Agent</h3>
     </div>
 

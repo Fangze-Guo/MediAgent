@@ -312,7 +312,7 @@ export async function streamChat(request: ChatRequest): Promise<ReadableStream<U
     const url = `${baseURL}/code-agent/taking`
 
     // 获取 token（如果需要认证）
-    const token = localStorage.getItem('mediagent_token')
+    const token = localStorage.getItem('medwiser_token')
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     }

@@ -508,8 +508,8 @@
     "providedBy": "由 {author} 提供",
     "ratings": "({count} 个评分)",
     "users": "{count} 位用户",
-    "installed": "已添加到 MediAgent",
-    "addToMediAgent": "添加至 MediAgent",
+    "installed": "已添加到 MedWiser",
+    "addToMedWiser": "添加至 MedWiser",
     "share": "分享",
     "overview": "概述",
     "tags": "标签",
@@ -524,7 +524,7 @@
     "category": "分类"
   },
   "views_AppStoreView": {
-    "logoText": "MediAgent 工具仓库",
+    "logoText": "MedWiser 工具仓库",
     "searchPlaceholder": "搜索应用、主题等",
     "loading": "正在加载应用...",
     "emptyText": "没有找到相关应用",
@@ -533,7 +533,7 @@
     "resultsCount": "{count} 个应用",
     "users": "{count} 位用户",
     "installed": "已安装",
-    "addToMediAgent": "添加至 MediAgent",
+    "addToMedWiser": "添加至 MedWiser",
     "allCategory": "全部",
     "loadCategoriesFailed": "加载分类失败",
     "loadAppsFailed": "加载应用失败"
@@ -618,7 +618,7 @@
   },
   "views_SettingsView": {
     "title": "设置",
-    "subtitle": "管理你的 MediAgent 偏好设置",
+    "subtitle": "管理你的 MedWiser 偏好设置",
     "chatSettings": "聊天设置",
     "autoScroll": "自动滚动到底部",
     "messageTime": "消息时间显示",

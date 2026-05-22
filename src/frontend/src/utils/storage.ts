@@ -124,6 +124,6 @@ export class SafeStorage {
  * 存储键常量
  */
 export const StorageKeys = {
-  TOKEN: 'mediagent_token',
-  USER: 'mediagent_user',
+  TOKEN: 'medwiser_token',
+  USER: 'medwiser_user',
 } as const

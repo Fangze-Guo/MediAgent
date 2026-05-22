@@ -17,7 +17,7 @@ const routes: RouteRecordRaw[] = [
         name: 'Login',
         component: () => import('@/views/auth/LoginView.vue'),
         meta: {
-            title: 'MediAgent - Login',
+            title: 'MedWiser - Login',
             requiresAuth: false
         }
     },
@@ -26,7 +26,7 @@ const routes: RouteRecordRaw[] = [
         name: 'Home',
         component: () => import('@/views/home/HomeView.vue'),
         meta: {
-            title: 'MediAgent - Home',
+            title: 'MedWiser - Home',
             requiresAuth: true
         }
     },
@@ -35,7 +35,7 @@ const routes: RouteRecordRaw[] = [
         name: 'Conversation',
         component: () => import('@/views/chat/ChatView.vue'),
         meta: {
-            title: 'MediAgent - Conversation',
+            title: 'MedWiser - Conversation',
             requiresAuth: true
         }
     },
@@ -44,7 +44,7 @@ const routes: RouteRecordRaw[] = [
         name: 'files',
         component: () => import('@/views/file/FileManageView.vue'),
         meta: {
-            title: 'MediAgent - Files',
+            title: 'MedWiser - Files',
             requiresAuth: true
         }
     },
@@ -53,7 +53,7 @@ const routes: RouteRecordRaw[] = [
         name: 'Settings',
         component: () => import('@/views/settings/SettingsView.vue'),
         meta: {
-            title: 'MediAgent - Settings',
+            title: 'MedWiser - Settings',
             requiresAuth: true
         }
     },
@@ -62,7 +62,7 @@ const routes: RouteRecordRaw[] = [
         name: 'SkillStore',
         component: () => import('@/views/skill-store/SkillStoreView.vue'),
         meta: {
-            title: 'MediAgent - Skill Store',
+            title: 'MedWiser - Skill Store',
             requiresAuth: true
         }
     },
@@ -71,7 +71,7 @@ const routes: RouteRecordRaw[] = [
         name: 'SkillDetail',
         component: () => import('@/views/skill-store/SkillDetailView.vue'),
         meta: {
-            title: 'MediAgent - Skill Detail',
+            title: 'MedWiser - Skill Detail',
             requiresAuth: true
         }
     },
@@ -80,7 +80,7 @@ const routes: RouteRecordRaw[] = [
         name: 'ModelConfig',
         component: () => import('@/views/model/ModelConfigView.vue'),
         meta: {
-            title: 'MediAgent - Model Config',
+            title: 'MedWiser - Model Config',
             requiresAuth: true,
             adminOnly: true
         }
@@ -90,7 +90,7 @@ const routes: RouteRecordRaw[] = [
         name: 'ClinicalTools',
         component: () => import('@/views/clinical-tools/ClinicalToolsView.vue'),
         meta: {
-            title: 'MediAgent - Clinical Tools',
+            title: 'MedWiser - Clinical Tools',
             requiresAuth: true
         }
     },
@@ -99,7 +99,7 @@ const routes: RouteRecordRaw[] = [
         name: 'NiceBcxAgent',
         component: () => import('@/views/clinical-tools/code_agent/CodeAgentView.vue'),
         meta: {
-            title: 'MediAgent - NICE-BCX Agent',
+            title: 'MedWiser - NICE-BCX Agent',
             requiresAuth: true
         }
     },
@@ -108,7 +108,7 @@ const routes: RouteRecordRaw[] = [
         name: 'NiceBcxWorkflow',
         component: () => import('@/views/clinical-tools/WorkflowView.vue'),
         meta: {
-            title: 'MediAgent - NICE-BCX Workflow',
+            title: 'MedWiser - NICE-BCX Workflow',
             requiresAuth: true
         }
     },
@@ -117,7 +117,7 @@ const routes: RouteRecordRaw[] = [
         name: 'NiceBcxKnowledgeBase',
         component: () => import('@/views/clinical-tools/rag/RagKnowledgeBaseView.vue'),
         meta: {
-            title: 'MediAgent - NICE-BCX Knowledge Base',
+            title: 'MedWiser - NICE-BCX Knowledge Base',
             requiresAuth: true
         }
     },
@@ -126,7 +126,7 @@ const routes: RouteRecordRaw[] = [
         name: 'KnowledgeBaseDetail',
         component: () => import('@/views/clinical-tools/rag/RagKnowledgeBaseDetailView.vue'),
         meta: {
-            title: 'MediAgent - Knowledge Base Detail',
+            title: 'MedWiser - Knowledge Base Detail',
             requiresAuth: true
         }
     },
@@ -135,7 +135,7 @@ const routes: RouteRecordRaw[] = [
         name: 'DocumentDetail',
         component: () => import('@/views/dataset/DocumentDetailView.vue'),
         meta: {
-            title: 'MediAgent - Document Detail',
+            title: 'MedWiser - Document Detail',
             requiresAuth: true
         }
     },
@@ -144,7 +144,7 @@ const routes: RouteRecordRaw[] = [
         name: 'NotFound',
         component: () => import('@/views/NotFoundView.vue'),
         meta: {
-            title: 'MediAgent - NotFound'
+            title: 'MedWiser - NotFound'
         }
     }
 ]

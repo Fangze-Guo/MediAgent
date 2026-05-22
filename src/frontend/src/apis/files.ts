@@ -170,7 +170,7 @@ export async function uploadFile(
             xhr.open('POST', `${baseURL}/files/upload`)
             
             // 添加认证头
-            const token = localStorage.getItem('mediagent_token')
+            const token = localStorage.getItem('medwiser_token')
             if (token) {
                 xhr.setRequestHeader('Authorization', `Bearer ${token}`)
             }

@@ -9,7 +9,7 @@ const API_BASE = (import.meta as any).env?.VITE_API_BASE || '/api'
 
 // 获取token
 const getAuthToken = () => {
-  return localStorage.getItem('mediagent_token') || ''
+  return localStorage.getItem('medwiser_token') || ''
 }
 
 // 创建axios实例
@@ -39,8 +39,8 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('mediagent_token')
-      localStorage.removeItem('mediagent_user')
+      localStorage.removeItem('medwiser_token')
+      localStorage.removeItem('medwiser_user')
       window.location.href = '/login'
     }
     return Promise.reject(error)
