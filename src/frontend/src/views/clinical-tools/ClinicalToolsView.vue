@@ -119,11 +119,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { SearchOutlined, RightOutlined, InboxOutlined } from '@ant-design/icons-vue'
 import { Icon } from '@iconify/vue'
+import { listClinicalAgents, type ClinicalAgent } from '@/apis/agents'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -158,42 +159,36 @@ interface Category {
 const searchKeyword = ref('')
 const selectedCategory = ref('all')
 const loading = ref(false)
+const dynamicAgents = ref<ClinicalAgent[]>([])
 
 // 分类列表
 const categories = computed<Category[]>(() => [
   { key: 'all', label: t('views_ClinicalToolsView.categories.all') },
   { key: 'segmentation', label: t('views_ClinicalToolsView.categories.segmentation') },
-  { key: 'neoadjuvant', label: t('views_ClinicalToolsView.categories.neoadjuvant') }
+  { key: 'neoadjuvant', label: t('views_ClinicalToolsView.categories.neoadjuvant') },
+  { key: 'agent', label: '临床智能体' }
 ])
 
-// 项目数据
-const projects = computed<Project[]>(() => [
-  {
-    id: 'nice-bcx',
-    name: t('views_ClinicalToolsView.projects.niceBcx.name'),
-    description: t('views_ClinicalToolsView.projects.niceBcx.description'),
-    icon: 'healthicons:medical-records',
-    category: 'neoadjuvant',
+// 项目列表 - 全部从接口动态拉取
+const projects = computed<Project[]>(() =>
+  dynamicAgents.value.map(agent => ({
+    id: agent.agent_id,
+    name: agent.name,
+    description: agent.description || '',
+    icon: 'carbon:bot-trained',
+    category: 'agent',
     tools: [
       {
-        id: 'nice-bcx-agent',
-        name: t('views_ClinicalToolsView.tools.niceBcxAgent.name'),
-        description: t('views_ClinicalToolsView.tools.niceBcxAgent.description'),
+        id: `${agent.agent_id}-chat`,
+        name: '智能对话',
+        description: agent.description || '进入该临床智能体进行对话',
         icon: 'carbon:bot',
-        iconColor: '#52c41a',
-        route: '/nice-bcx-agent'
-      },
-      {
-        id: 'nice-bcx-knowledge-base',
-        name: t('views_ClinicalToolsView.tools.niceBcxKnowledgeBase.name'),
-        description: t('views_ClinicalToolsView.tools.niceBcxKnowledgeBase.description'),
-        icon: 'healthicons:i-documents-accepted',
-        iconColor: '#faad14',
-        route: '/nice-bcx-knowledge-base'
+        iconColor: '#1677ff',
+        route: `/clinical-agent/${agent.agent_id}?name=${encodeURIComponent(agent.name)}`
       }
     ]
-  }
-])
+  }))
+)
 
 // 过滤后的项目列表
 const filteredProjects = computed(() => {
@@ -234,6 +229,21 @@ const selectCategory = (category: string) => {
 const navigateTo = (path: string) => {
   router.push(path)
 }
+
+// 加载动态临床智能体
+onMounted(async () => {
+  try {
+    loading.value = true
+    const res = await listClinicalAgents()
+    if (res.code === 200 && res.data) {
+      dynamicAgents.value = res.data
+    }
+  } catch (e) {
+    console.error('[ClinicalTools] Failed to load dynamic agents:', e)
+  } finally {
+    loading.value = false
+  }
+})
 </script>
 
 <style scoped>

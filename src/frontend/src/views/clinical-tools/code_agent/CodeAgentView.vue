@@ -520,12 +520,14 @@ const route = useRoute()
 // 根据当前路由判断项目标识
 const currentProjectId = computed(() => {
   if (route.name === 'NiceBcxAgent') return 'nice-bcx'
+  if (route.name === 'ClinicalAgent') return route.params.agentId as string
   return undefined
 })
 
 // 项目显示名称
 const projectDisplayName = computed(() => {
   if (currentProjectId.value === 'nice-bcx') return t('views_CodeAgentView.titleNiceBcx')
+  if (route.name === 'ClinicalAgent') return (route.query.name as string) || currentProjectId.value || t('views_CodeAgentView.title')
   return t('views_CodeAgentView.title')
 })
 
@@ -1719,7 +1721,7 @@ onUnmounted(() => {
 // 监听路由变化，切换项目时重新加载会话列表
 watch(() => route.name, (newRouteName, oldRouteName) => {
   // 只在 BC 和 Spine 页面之间切换时重新加载
-  const projectRoutes = ['NiceBcxAgent']
+  const projectRoutes = ['NiceBcxAgent', 'ClinicalAgent']
   if (projectRoutes.includes(newRouteName as string) &&
       projectRoutes.includes(oldRouteName as string) &&
       newRouteName !== oldRouteName) {
