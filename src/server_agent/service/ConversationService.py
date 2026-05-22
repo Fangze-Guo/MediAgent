@@ -27,6 +27,9 @@ class ConversationService:
     def _get_agent(self, request) -> ConversationAgent:
         return request.app.state.runtime_registry.get_agent()
 
+    def _get_react_agent(self, request):
+        return request.app.state.runtime_registry.get_react_agent()
+
     def _get_kb_mapper(self, request):
         return getattr(request.app.state, "kb_mapper", None)
 
@@ -276,35 +279,41 @@ class ConversationService:
         images: Optional[List[str]] = None,
         attachments: Optional[List[dict]] = None,
     ) -> AsyncGenerator[str, None]:
-        """流式发送：先逐 KB yield 检索进度，再逐 token yield，完成后持久化"""
-        mapper = self._get_mapper(request)
-        agent = self._get_agent(request)
+        """流式发送：ReAct agent 自主决策是否查知识库，逐 token yield，完成后持久化"""
         import json
-
-        rag_context = ""
-        sources_data: list = []
-        async for event in self._stream_rag_context(request, content):
-            if event.startswith("[RAG_CONTEXT]"):
-                try:
-                    rag_context = json.loads(event[13:])["context"]
-                except Exception:
-                    pass
-            elif event.startswith("[SOURCES]"):
-                try:
-                    sources_data = json.loads(event[9:])
-                except Exception:
-                    pass
-                yield event
-            else:
-                yield event
+        mapper = self._get_mapper(request)
+        react_agent = self._get_react_agent(request)
+        kb_mapper = self._get_kb_mapper(request)
 
         history = await mapper.get_messages(conversation_uid)
         await mapper.add_message(conversation_uid, "user", content, attachments)
 
+        sources_data: list = []
+        tool_calls_data: list = []
         full_reply: List[str] = []
         try:
-            async for token in agent.stream(content, history, rag_context=rag_context, images=images):
-                full_reply.append(token)
-                yield token
+            async for event in react_agent.stream(
+                content, history, kb_mapper=kb_mapper, images=images
+            ):
+                if event.startswith("[SOURCES]"):
+                    try:
+                        sources_data = json.loads(event[9:])
+                    except Exception:
+                        pass
+                    yield event
+                elif event.startswith("[TOOL_CALLS]"):
+                    try:
+                        tool_calls_data = json.loads(event[12:])
+                    except Exception:
+                        pass
+                elif event.startswith(("[SEARCH_START]", "[SEARCH_RESULT]")):
+                    yield event
+                else:
+                    full_reply.append(event)
+                    yield event
         finally:
-            await mapper.add_message(conversation_uid, "assistant", "".join(full_reply), sources=sources_data)
+            await mapper.add_message(
+                conversation_uid, "assistant", "".join(full_reply),
+                sources=sources_data,
+                tool_calls=tool_calls_data,
+            )

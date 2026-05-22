@@ -13,12 +13,13 @@ import { useAuthStore } from '@/store/auth'
  * 聊天消息类型定义
  * 表示单条聊天消息的数据结构
  */
-/** 实时检索进度条目 */
-export type SearchProgressItem = {
-  kb: string
-  kb_id: number
-  status: 'searching' | 'found'
+/** 工具调用链路条目（流式期间与完成后均显示） */
+export type ToolCallItem = {
+  name: string
+  query: string
+  status: 'running' | 'done'
   found?: number
+  expanded: boolean
 }
 
 export type ChatMessage = { 
@@ -32,10 +33,12 @@ export type ChatMessage = {
   assistantType?: 'general' | 'medical' | 'data' | 'document'
   /** RAG 来源引用 */
   sources?: RagSource[]
-  /** 实时检索进度（流式期间更新） */
-  searchProgress?: SearchProgressItem[]
+  /** 工具调用链路（流式期间与完成后均显示） */
+  toolCalls?: ToolCallItem[]
   /** 图片附件 base64 列表（仅客户端，不持久化） */
   images?: string[]
+  /** 消息时间（HH:MM） */
+  timestamp?: string
 }
 
 /**
@@ -202,17 +205,27 @@ export const useConversationsStore = defineStore('conversations', () => {
       console.log(`从后端获取到 ${messages.length} 条消息`)
       
       // 转换消息格式，将 attachments 中的图片 URL 还原到 images 字段
+      const fmtTs = (ts?: string) => ts ? new Date(ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }) : undefined
       conversation.messages = messages.map(msg => {
         const attachments: { type: string; url: string }[] = msg.attachments ?? []
         const images = attachments
           .filter((a) => a.type === 'image' && a.url)
           .map((a) => a.url)
+        const toolCalls = (msg.tool_calls ?? []).map((tc: any) => ({
+          name: tc.name,
+          query: tc.query ?? '',
+          status: 'done' as const,
+          found: tc.found,
+          expanded: false,
+        }))
         return {
           role: msg.role as 'user' | 'assistant',
           content: msg.content || '',
           typingComplete: true,
           images: images.length ? images : undefined,
           sources: msg.sources?.length ? msg.sources : undefined,
+          toolCalls: toolCalls.length ? toolCalls : undefined,
+          timestamp: fmtTs(msg.timestamp),
         }
       })
       
@@ -318,12 +331,14 @@ export const useConversationsStore = defineStore('conversations', () => {
     content: string,
     images?: string[],
     attachments?: { type: string; url: string }[],
+    signal?: AbortSignal,
   ): Promise<void> {
     const conversation = getConversation(id)
     if (!conversation) throw new Error(`会话 ${id} 不存在`)
 
-    appendMessage(id, { role: 'user', content, typingComplete: true, images: images?.length ? images : undefined })
-    appendMessage(id, { role: 'assistant', content: '', typingComplete: false })
+    const now = () => new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+    appendMessage(id, { role: 'user', content, typingComplete: true, images: images?.length ? images : undefined, timestamp: now() })
+    appendMessage(id, { role: 'assistant', content: '', typingComplete: false, timestamp: now() })
 
     // rAF 批量更新：同一帧内的 token 合并后一次性写入，DOM 最多 60fps 刷新
     let pendingTokens = ''
@@ -347,15 +362,15 @@ export const useConversationsStore = defineStore('conversations', () => {
         onSearchStart(data: SearchStartEvent) {
           const idx = conversation.messages.length - 1
           const msg = conversation.messages[idx]
-          if (!msg.searchProgress) msg.searchProgress = []
-          msg.searchProgress.push({ kb: data.kb, kb_id: data.kb_id, status: 'searching' })
+          if (!msg.toolCalls) msg.toolCalls = []
+          msg.toolCalls.push({ name: 'search_knowledge_base', query: data.query ?? '', status: 'running', expanded: false })
         },
         onSearchResult(data: SearchResultEvent) {
           const idx = conversation.messages.length - 1
           const msg = conversation.messages[idx]
-          if (!msg.searchProgress) return
-          const item = msg.searchProgress.find(p => p.kb_id === data.kb_id)
-          if (item) { item.status = 'found'; item.found = data.found }
+          if (!msg.toolCalls?.length) return
+          const item = msg.toolCalls[msg.toolCalls.length - 1]
+          if (item?.status === 'running') { item.status = 'done'; item.found = data.found }
         },
         onSources(sources) {
           const idx = conversation.messages.length - 1
@@ -368,9 +383,17 @@ export const useConversationsStore = defineStore('conversations', () => {
           const idx = conversation.messages.length - 1
           conversation.messages[idx].typingComplete = true
         }
-      }, undefined, images, attachments)
+      }, signal, images, attachments)
     } catch (error) {
       if (rafId !== null) cancelAnimationFrame(rafId)
+      if ((error as Error).name === 'AbortError') {
+        flushTokens()
+        const idx = conversation.messages.length - 1
+        if (conversation.messages[idx]?.role === 'assistant') {
+          conversation.messages[idx].typingComplete = true
+        }
+        return
+      }
       const last = conversation.messages[conversation.messages.length - 1]
       if (last?.role === 'assistant' && !last.typingComplete) {
         conversation.messages.pop()
@@ -474,16 +497,26 @@ export const useConversationsStore = defineStore('conversations', () => {
             id,
             title,
             messages: messages.map(msg => {
+              const fmtTs2 = (ts?: string) => ts ? new Date(ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }) : undefined
               const attachments: { type: string; url: string }[] = msg.attachments ?? []
               const images = attachments
                 .filter((a) => a.type === 'image' && a.url)
                 .map((a) => a.url)
+              const toolCalls = (msg.tool_calls ?? []).map((tc: any) => ({
+                name: tc.name,
+                query: tc.query ?? '',
+                status: 'done' as const,
+                found: tc.found,
+                expanded: false,
+              }))
               return {
                 role: msg.role as 'user' | 'assistant',
                 content: msg.content || '',
                 typingComplete: true,
                 images: images.length ? images : undefined,
                 sources: msg.sources?.length ? msg.sources : undefined,
+                toolCalls: toolCalls.length ? toolCalls : undefined,
+                timestamp: fmtTs2(msg.timestamp),
               }
             }),
             assistantType: 'general', // 默认为通用助手

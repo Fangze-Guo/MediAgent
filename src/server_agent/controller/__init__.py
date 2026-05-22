@@ -12,10 +12,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from src.server_agent.agent.conversation_agent import AgentConfig, ConversationAgent
+from src.server_agent.agent.react_agent import ReActAgent
 from src.server_agent.configs.config_provider import ConfigProvider
 from src.server_agent.exceptions import setup_exception_handlers
 from src.server_agent.runtime_registry import RuntimeRegistry
 
+from .AgentController import AgentController
 from .clinical_tools.CodeAgentController import CodeAgentController
 from .ConversationController import ConversationController
 from .FileController import FileController
@@ -50,6 +52,43 @@ async def lifespan(app: FastAPI):
     app.state.conv_mapper = conv_mapper
     app.state.kb_mapper = kb_mapper
 
+    # ---- Agent mapper (临床智能体 & 全局技能仓库) ----
+    from src.server_agent.mapper.AgentMapper import AgentMapper
+    from src.server_agent.service.AgentService import AgentService
+    from src.server_agent.service.SkillRegistryService import SkillRegistryService
+
+    agent_mapper = AgentMapper()
+    await agent_mapper.init()
+    app.state.agent_mapper = agent_mapper
+
+    agent_svc = AgentService(agent_mapper)
+
+    # 将 NICE-BCX 注册为 clinical agent（幂等，已存在则跳过）
+    import os
+    from pathlib import Path as _Path
+    _clinical_agents_dir = _Path(os.getenv("CLINICAL_AGENTS_DIR", os.path.expanduser("~/mediagent/agents")))
+    await agent_svc.register_existing_agent(
+        agent_id="nice-bcx",
+        name="NICE-BCX",
+        description="肺癌新辅助治疗影像分析",
+        system_prompt="""【项目专属：NICE-BCX 肺癌新辅助治疗影像分析】
+
+你是 NICE-BCX 项目的肺癌影像 AI 分析助手，专注于新辅助化疗前后 CT 影像分析与主要病理缓解（MPR）预测。
+
+【NICE-BCX 专属规则】
+- pre/post CT 必须同时处理，任何任务不得只处理其中一个时间点
+- MPR 预测需要临床基线特征，若用户未提供须主动询问后再执行
+- 所有影像分析结果需给出直观的临床解读，不暴露技术细节
+- 【重要】对于分割推理等长时间Skill任务必须挂到后台去执行
+""",
+        base_dir=str(_clinical_agents_dir / "NICE-BCX"),
+    )
+
+    await agent_svc.sync_to_project_configs()
+
+    skill_registry = SkillRegistryService(agent_mapper)
+    await skill_registry.sync_from_filesystem()
+
     # ---- Skill task manager ----
     from src.server_agent.service.SkillTaskManager import get_skill_task_manager
 
@@ -69,7 +108,8 @@ async def lifespan(app: FastAPI):
         base_url=snapshot.base_url if snapshot else os.getenv("MODEL_URL"),
     )
     agent = ConversationAgent(agent_cfg)
-    registry = RuntimeRegistry(agent)
+    react_agent = ReActAgent(agent_cfg)
+    registry = RuntimeRegistry(agent, react_agent)
     app.state.runtime_registry = registry
 
     logger.info("[LIFESPAN] Application startup completed")
@@ -82,6 +122,7 @@ async def lifespan(app: FastAPI):
         await shutdown_all_agents()
         await code_agent_mapper.close()
         await conv_mapper.close()
+        await agent_mapper.close()
         logger.info("[LIFESPAN] Application shutdown completed")
 
 
@@ -120,6 +161,7 @@ def create_app() -> FastAPI:
     skill_controller = SkillController()
     code_agent_controller = CodeAgentController()
     knowledge_base_controller = KnowledgeBaseController()
+    agent_controller = AgentController()
 
     # 注册路由
     app.include_router(file_controller.router)
@@ -129,6 +171,7 @@ def create_app() -> FastAPI:
     app.include_router(skill_controller.router)
     app.include_router(code_agent_controller.router)
     app.include_router(knowledge_base_controller.router)
+    app.include_router(agent_controller.router)
     # 设置异常处理器
     setup_exception_handlers(app)
 
@@ -145,4 +188,5 @@ __all__ = [
     "SkillController",
     "CodeAgentController",
     "KnowledgeBaseController",
+    "AgentController",
 ]

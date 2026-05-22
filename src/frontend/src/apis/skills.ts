@@ -2,7 +2,7 @@
  * Skills API 接口
  * 从真实的 ~/.claude/skills 目录读取 skill 信息
  */
-import { get } from '@/utils/request'
+import { get, post, del } from '@/utils/request'
 
 /**
  * 项目信息接口
@@ -131,5 +131,33 @@ export async function getSkillFileContent(skillId: string, filePath: string, pro
  */
 export async function getSkillProjects(): Promise<SkillProject[]> {
   const response = await get<BaseResponse<SkillProject[]>>('/skills/projects')
+  return response.data.data
+}
+
+/**
+ * 删除 Skill（管理员专属）
+ */
+export async function deleteSkill(slug: string): Promise<void> {
+  await del<BaseResponse<{ deleted: string }>>(`/skills/${slug}`)
+}
+
+/**
+ * 上传 Skill zip 包
+ * @param file zip 文件
+ * @param onProgress 上传进度回调 (0-100)
+ */
+export async function uploadSkill(
+  file: File,
+  onProgress?: (percent: number) => void
+): Promise<SkillInfo> {
+  const form = new FormData()
+  form.append('file', file)
+  const response = await post<BaseResponse<SkillInfo>>('/skills/upload', form, {
+    onUploadProgress: (e) => {
+      if (onProgress && e.total) {
+        onProgress(Math.round((e.loaded / e.total) * 100))
+      }
+    },
+  })
   return response.data.data
 }

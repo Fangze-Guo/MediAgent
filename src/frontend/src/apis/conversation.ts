@@ -29,6 +29,8 @@ export interface ConversationMessage {
   attachments?: { type: string; url: string }[]
   /** RAG 来源引用 */
   sources?: RagSource[]
+  /** 工具调用链路（持久化数据） */
+  tool_calls?: { name: string; query: string; status: string; found?: number }[]
 }
 
 /**
@@ -85,6 +87,7 @@ export interface RagSource {
 export interface SearchStartEvent {
   kb: string
   kb_id: number
+  query?: string
 }
 
 /** 知识库检索完成事件 */

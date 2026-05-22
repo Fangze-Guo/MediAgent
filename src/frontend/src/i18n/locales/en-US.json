@@ -720,18 +720,18 @@
     }
   },
   "views_SkillStoreView": {
-    "title": "Skill Store",
+    "title": "Skill Repository",
     "searchPlaceholder": "Search skill name or description",
-    "defaultCategory": "Default Skills",
+    "defaultCategory": "All Skills",
     "loading": "Loading...",
     "emptyText": "No matching skills found",
-    "emptyHint": "Try adjusting search criteria or selecting another category",
+    "emptyHint": "Try adjusting your search",
     "resultsCount": "{count} skills",
     "loadProjectsFailed": "Failed to load project list",
-    "loadSkillsFailed": "Failed to load skill list"
+    "loadSkillsFailed": "Failed to load skills"
   },
   "views_SkillDetailView": {
-    "backToStore": "Back to Skill Store",
+    "backToStore": "Back to Skill Repository",
     "loading": "Loading...",
     "provider": "Provider: {author}",
     "localSkill": "Local Skill",

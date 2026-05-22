@@ -9,23 +9,19 @@
             <div class="messages-container">
               <div v-for="(m, idx) in currentMessages" :key="idx"
                    :class="['message', m.role === 'user' ? 'user' : 'ai']">
-                <!-- 用户和AI的头像 -->
-                <div 
-                  v-if="m.role !== 'user'" 
-                  class="avatar ai-avatar" 
-                  :class="getAssistantAvatarClass(m.assistantType)"
-                  :style="getAssistantAvatarStyle()"
-                >
-                  <component :is="getAssistantIcon(m.assistantType, m)" />
+                <!-- 流式期间显示项目图标，完成后不显示 -->
+                <div v-if="m.role === 'assistant' && !m.typingComplete" class="streaming-icon">
+                  <img src="/MedWiser.png" alt="MedWiser" />
                 </div>
+                <!-- message-main: 内容 + hover 操作栏 -->
+                <div class="message-main">
                 <div class="message-content">
                   <!-- 解析并展示思考过程和回复内容 -->
                   <div v-if="m.parsedContent">
-                    <!-- 实时检索进度（流式期间） -->
-                    <RagSearchProgress
-                      v-if="m.role === 'assistant' && !m.typingComplete && m.searchProgress && m.searchProgress.length"
-                      :items="m.searchProgress"
-                    />
+                    <!-- 工具调用链路（流式期间与完成后均显示） -->
+                    <template v-if="m.role === 'assistant' && m.toolCalls && m.toolCalls.length">
+                      <ToolCallBlock v-for="(tc, ti) in m.toolCalls" :key="ti" :item="tc" />
+                    </template>
                     <!-- 多个思考过程 -->
                     <div v-if="m.parsedContent.thinkingList && m.parsedContent.thinkingList.length > 0">
                       <div v-for="(thinking, thinkingIdx) in m.parsedContent.thinkingList" :key="thinkingIdx"
@@ -59,11 +55,10 @@
                   </div>
                   <!-- 原始内容（如果没有解析出思考过程） -->
                   <div v-else>
-                    <!-- 实时检索进度（流式期间） -->
-                    <RagSearchProgress
-                      v-if="m.role === 'assistant' && !m.typingComplete && m.searchProgress && m.searchProgress.length"
-                      :items="m.searchProgress"
-                    />
+                    <!-- 工具调用链路（流式期间与完成后均显示） -->
+                    <template v-if="m.role === 'assistant' && m.toolCalls && m.toolCalls.length">
+                      <ToolCallBlock v-for="(tc, ti) in m.toolCalls" :key="ti" :item="tc" />
+                    </template>
                     <!-- 流式等待中：空内容 → 显示打字动画 -->
                     <div v-if="m.role === 'assistant' && !m.typingComplete && !m.content" class="typing-indicator">
                       <span></span><span></span><span></span>
@@ -106,9 +101,14 @@
                     </div>
                   </div>
                 </div>
-                <div v-if="m.role === 'user'" class="avatar user-avatar">
-                  <UserOutlined />
+                <!-- hover 操作栏：时间 + 复制 -->
+                <div v-if="m.typingComplete" class="message-actions">
+                  <span v-if="m.timestamp" class="action-time">{{ m.timestamp }}</span>
+                  <button class="action-btn" @click="copyMessage(m)" title="复制">
+                    <CopyOutlined />
+                  </button>
                 </div>
+                </div><!-- end message-main -->
               </div>
               <!-- 加载状态：仅在没有未完成消息时显示（避免与气泡内 typing dots 重复） -->
               <div v-if="sending && !currentMessages.some(m => m.role === 'assistant' && !m.typingComplete)" class="loading-message">
@@ -188,44 +188,6 @@
                 style="display: none"
                 @change="handleFileSelect"
               />
-              <!-- 顶部工具栏 -->
-              <div class="input-toolbar">
-                <div class="toolbar-left">
-                  <!-- 模型选择器 -->
-                  <ModelSelector 
-                    :value="selectedModel"
-                    @update:value="selectedModel = $event"
-                    @model-change="handleModelChange"
-                  />
-                  <!-- 功能图标 -->
-                  <div class="toolbar-icons">
-                    <a-button type="text" class="toolbar-icon" @click="handleAttachClick"
-                              :title="t('views_ChatView.uploadFile')">
-                      <PaperClipOutlined />
-                    </a-button>
-                    <a-button type="text" class="toolbar-icon" :title="t('views_ChatView.documentManagement')">
-                      <FileTextOutlined />
-                    </a-button>
-                    <a-button type="text" class="toolbar-icon" :title="t('views_ChatView.settings')">
-                      <SettingOutlined />
-                    </a-button>
-                    <a-button type="text" class="toolbar-icon" :title="t('views_ChatView.voiceInput')">
-                      <AudioOutlined />
-                    </a-button>
-                    <a-button type="text" class="toolbar-icon" :title="t('views_ChatView.tools')">
-                      <AppstoreOutlined />
-                    </a-button>
-                  </div>
-                </div>
-                <div class="toolbar-right">
-                  <a-button type="text" class="toolbar-icon" :title="t('views_ChatView.clearInput')">
-                    <DeleteOutlined />
-                  </a-button>
-                  <a-button type="text" class="toolbar-icon" :title="t('views_ChatView.expandInput')">
-                    <ExpandOutlined />
-                  </a-button>
-                </div>
-              </div>
               <!-- 待发送附件预览 -->
               <div v-if="pendingAttachments.length > 0" class="pending-attachments">
                 <div v-for="att in pendingAttachments" :key="att.id" class="attachment-item">
@@ -259,16 +221,37 @@
                   ref="textareaRef"
                 ></textarea>
               </div>
-              <!-- 底部工具栏 -->
-              <div class="input-bottom">
-                <div class="input-hint">
-                  <span class="hint-text">{{ t('views_ChatView.inputHint') }}</span>
-                </div>
-                <div class="send-group">
-                  <a-button type="primary" class="send-btn" :loading="sending" @click="sendMessage"
-                            :disabled="!inputMessage.trim() && pendingAttachments.length === 0">
-                    {{ t('views_ChatView.send') }}
-                  </a-button>
+              <!-- 底部操作栏 -->
+              <div class="input-bottom-bar">
+                <!-- 左侧：+ 附件按钮 -->
+                <button class="bar-plus-btn" @click="handleAttachClick" :title="t('views_ChatView.uploadFile')">
+                  <PlusOutlined />
+                </button>
+                <!-- 右侧：模型选择器 + 功能图标 / 发送停止按钮 -->
+                <div class="bar-right">
+                  <ModelSelector
+                    :value="selectedModel"
+                    @update:value="selectedModel = $event"
+                    @model-change="handleModelChange"
+                  />
+                  <!-- 有内容时显示发送/停止，无内容时显示功能图标 -->
+                  <template v-if="sending || inputMessage.trim() || pendingAttachments.length">
+                    <button
+                      class="send-icon-btn"
+                      @click="sending ? stopGeneration() : sendMessage()"
+                    >
+                      <span v-if="sending" class="stop-square" />
+                      <ArrowUpOutlined v-else />
+                    </button>
+                  </template>
+                  <template v-else>
+                    <button class="bar-action-btn" title="语音输入">
+                      <AudioOutlined />
+                    </button>
+                    <button class="bar-action-btn bar-wave-btn" title="语音">
+                      <span class="wave-icon"><span/><span/><span/><span/><span/></span>
+                    </button>
+                  </template>
                 </div>
               </div>
             </div>
@@ -320,25 +303,20 @@ import { useI18n } from 'vue-i18n'
 import { useConversationsStore } from '@/store/conversations'
 import FileUpload from '@/components/file/FileUpload.vue'
 import MarkdownRenderer from '@/components/markdown/MarkdownRenderer.vue'
-import RagSearchProgress from '@/components/chat/RagSearchProgress.vue'
+import ToolCallBlock from '@/components/chat/ToolCallBlock.vue'
 import ModelSelector from '@/components/model/ModelSelector.vue'
 import { type FileInfo, getChatImagePresignUrl, uploadToOss } from '@/apis/files'
 import {
-  AppstoreOutlined,
+  ArrowUpOutlined,
   AudioOutlined,
-  BarChartOutlined,
   CloseOutlined,
+  CopyOutlined,
   DeleteOutlined,
   DownOutlined,
-  ExpandOutlined,
   FileImageOutlined,
   FileOutlined,
   FileTextOutlined,
-  MedicineBoxOutlined,
-  PaperClipOutlined,
-  RobotOutlined,
-  SettingOutlined,
-  UserOutlined,
+  PlusOutlined,
 } from '@ant-design/icons-vue'
 
 // 路由相关
@@ -356,6 +334,8 @@ const conversationsStore = useConversationsStore()
 const inputMessage = ref('')
 /** 是否正在发送消息 */
 const sending = ref(false)
+/** 中止控制器（停止生成用）*/
+const abortController = ref<AbortController | null>(null)
 /** 当前活跃的会话ID */
 const activeId = ref<string>('')
 /** 消息容器的DOM引用，用于滚动到底部 */
@@ -952,18 +932,39 @@ const sendMessageToAI = async (
   attachments?: { type: string; url: string }[],
 ) => {
   if (!currentConversation.value || sending.value) return
-
+  const ctrl = new AbortController()
+  abortController.value = ctrl
   sending.value = true
-
   try {
     await conversationsStore.streamMessageToAgent(
-      currentConversation.value.id, messageText, images, attachments
+      currentConversation.value.id, messageText, images, attachments, ctrl.signal
     )
   } catch (error) {
-    console.error('发送消息失败:', error)
-    message.error('发送消息失败，请稍后再试')
+    if ((error as Error).name !== 'AbortError') {
+      console.error('发送消息失败:', error)
+      message.error('发送消息失败，请稍后再试')
+    }
   } finally {
     sending.value = false
+    abortController.value = null
+  }
+}
+
+const stopGeneration = () => {
+  abortController.value?.abort()
+  abortController.value = null
+}
+
+/**
+ * 复制消息内容
+ */
+const copyMessage = async (m: any) => {
+  const text: string = (m.parsedContent?.response ?? m.content) || ''
+  try {
+    await navigator.clipboard.writeText(text)
+    message.success('已复制', 1)
+  } catch {
+    message.error('复制失败')
   }
 }
 
@@ -1083,64 +1084,6 @@ const sendMessage = async () => {
   )
 }
 
-/**
- * 助手相关方法
- */
-
-/**
- * 获取助手图标
- */
-const getAssistantIcon = (assistantType?: string, message?: any) => {
-  // 如果有消息且消息来自医学助手会话，尝试使用工具图标
-  if (message && currentConversation.value?.toolInfo?.toolIcon) {
-    return currentConversation.value.toolInfo.toolIcon
-  }
-  
-  switch (assistantType) {
-    case 'medical':
-      return MedicineBoxOutlined
-    case 'data':
-      return BarChartOutlined
-    case 'document':
-      return FileTextOutlined
-    default:
-      return RobotOutlined
-  }
-}
-
-/**
- * 获取助手头像样式类
- */
-const getAssistantAvatarClass = (assistantType?: string) => {
-  // 如果有工具信息，使用工具特定的样式
-  if (currentConversation.value?.toolInfo?.toolId) {
-    return `tool-avatar tool-${currentConversation.value.toolInfo.toolId}`
-  }
-  
-  switch (assistantType) {
-    case 'medical':
-      return 'medical-avatar'
-    case 'data':
-      return 'data-avatar'
-    case 'document':
-      return 'document-avatar'
-    default:
-      return 'general-avatar'
-  }
-}
-
-/**
- * 获取助手头像样式
- */
-const getAssistantAvatarStyle = () => {
-  // 如果有工具信息，使用工具的渐变背景
-  if (currentConversation.value?.toolInfo?.toolGradient) {
-    return {
-      background: currentConversation.value.toolInfo.toolGradient
-    }
-  }
-  return {}
-}
 
 </script>
 
@@ -1185,36 +1128,47 @@ const getAssistantAvatarStyle = () => {
   position: relative;
 }
 
-/* 消息容器 */
-.messages-container {
-  max-width: 80%;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  margin: 10px auto 10px;
+/* 消息区底部渐变遇雐层 */
+.chat-content::after {
+  content: '';
+  display: block;
+  position: sticky;
+  bottom: 0;
+  height: 48px;
+  background: linear-gradient(to bottom, transparent, var(--bg-primary));
+  pointer-events: none;
+  margin-top: -48px;
 }
 
+/* 消息容器：居中列 */
+.messages-container {
+  max-width: 860px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0 auto;
+  padding: 16px 0 24px;
+}
 
-/* 单条消息容器：最大宽度、圆角、内边距与布局 */
+/* 单条消息：仅布局，无气泡样式 */
 .message {
-  padding: 16px 20px;
-  border-radius: 16px;
   display: flex;
   align-items: flex-start;
   gap: 12px;
+  padding: 6px 0;
 }
 
-/* 用户消息：靠右显示，头像在右侧 */
+/* 用户消息：靠右，头像在右侧 */
 .message.user {
-  max-width: 50%;
-  align-self: flex-end;
   flex-direction: row-reverse;
+  padding: 4px 0;
 }
 
-/* AI 消息：靠左显示 */
+/* AI 消息：靠左，全宽，无气泡，增加垂直间距 */
 .message.ai {
-  max-width: 80%;
-  align-self: flex-start;
+  width: 100%;
+  padding: 10px 0 6px;
 }
 
 /* 头像：尺寸、圆形、居中对齐与顶部微调 */
@@ -1243,38 +1197,119 @@ const getAssistantAvatarStyle = () => {
   box-shadow: 0 2px 8px rgba(6, 182, 212, 0.2);
 }
 
-/* 消息文本：行高与换行策略 */
-.message-content {
+/* message-main：列布局，包裹内容和操作栏 */
+.message-main {
+  display: flex;
+  flex-direction: column;
+}
+
+.message.ai .message-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.message.user .message-main {
+  align-items: flex-end;
+}
+
+/* AI 消息内容 */
+.message.ai .message-content {
+  min-width: 0;
+  line-height: 1.7;
+  word-wrap: break-word;
+  padding: 4px 0;
+  color: var(--text-primary);
+}
+
+/* 用户消息内容：气泡样式 */
+.message.user .message-content {
+  max-width: calc(860px * 0.62);
+  background: var(--user-bubble-bg, #e8edf8);
+  border: 1px solid rgba(99, 102, 241, 0.12);
+  border-radius: 18px 18px 4px 18px;
+  padding: 10px 14px;
   line-height: 1.6;
   word-wrap: break-word;
-  padding: 8px 0;
+  color: var(--text-primary);
+  font-size: 14px;
+  box-shadow: 0 1px 4px rgba(99, 102, 241, 0.08);
 }
 
-/* AI 气泡：白底轻阴影 */
-.message.ai {
-  background: var(--bg-primary);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-  border: 1px solid var(--border-color-light);
+/* hover 操作栏 */
+.message-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 2px;
+  margin-top: 2px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
 }
 
-/* 用户气泡：白底与白色文字 */
-.message.user {
-  background: var(--bg-primary);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+.message:hover .message-actions {
+  opacity: 1;
+  pointer-events: auto;
 }
 
-/* 底部区域 */
+.message.user .message-actions {
+  flex-direction: row-reverse;
+}
+
+.action-time {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  user-select: none;
+  padding: 0 2px;
+}
+
+.action-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.action-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+/* 流式期间的项目图标 */
+.streaming-icon {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+.streaming-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 50%;
+}
+
+/* 底部区域：无边框，背景与页面融合，靠输入框阴影做视觉分隔 */
 .ant-layout-footer {
   padding: 0;
   background: var(--bg-primary);
-  min-height: auto; /* 移除固定高度，让内容自适应 */
-  border: 1px solid var(--border-color);
+  border: none;
 }
 
-/* 输入区域：固定在底部 */
+/* 输入区域：居中对齐消息列 */
 .input-area {
-  height: auto; /* 改为自适应高度 */
-  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 10px 16px 14px;
 }
 
 /* 当前会话文件显示区域 */
@@ -1354,18 +1389,21 @@ const getAssistantAvatarStyle = () => {
   margin-top: 2px;
 }
 
-/* 输入容器 */
+/* 输入容器：圆角卡片，浅灰背景 */
 .input-container {
-  height: auto; /* 改为自适应高度 */
   width: 100%;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--border-color);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 18px;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.04);
   overflow: hidden;
+  background: var(--input-surface, #f5f5f5);
 }
 
 .input-container:focus-within {
-  border-color: var(--link-color);
+  border-color: rgba(0, 0, 0, 0.18);
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.08);
 }
 
 
@@ -1375,13 +1413,13 @@ const getAssistantAvatarStyle = () => {
   border: none;
   outline: none;
   resize: none;
-  font-size: 16px;
-  min-height: 60px;
-  max-height: 150px;
+  font-size: 15px;
+  min-height: 52px;
+  max-height: 200px;
   width: 100%;
   color: var(--text-primary);
-  background: var(--bg-primary);
-  padding: 12px 16px;
+  background: transparent;
+  padding: 14px 16px 6px;
   line-height: 1.6;
 }
 
@@ -1576,118 +1614,121 @@ const getAssistantAvatarStyle = () => {
   white-space: nowrap;
 }
 
-/* 顶部工具栏 */
-.input-toolbar {
+/* 输入框区域 */
+.input-field {
+  width: 100%;
+}
+
+/* 底部操作栏 */
+.input-bottom-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px; /* 增加内边距 */
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
-  height: auto; /* 改为自适应高度 */
-  min-height: 60px; /* 增加最小高度 */
+  padding: 6px 10px 10px;
 }
 
-.toolbar-left {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.toolbar-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* 模型选择器 */
-.model-selector {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  background: #4f46e5;
-  border-radius: 20px;
-  color: white;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.model-icon {
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.model-name {
-  font-size: 13px;
-}
-
-/* 工具栏图标 */
-.toolbar-icons {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.toolbar-icon {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
+/* 左侧 + 按钮 */
+.bar-plus-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(0, 0, 0, 0.22);
+  background: transparent;
   color: var(--text-secondary);
-  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+  flex-shrink: 0;
 }
 
-.toolbar-icon:hover {
-  background: var(--hover-bg);
+.bar-plus-btn:hover {
+  border-color: var(--text-primary);
   color: var(--text-primary);
 }
 
-/* 输入框区域 */
-.input-field {
-  height: auto; /* 改为自适应高度 */
-  width: 100%;
-  min-height: 80px; /* 增加最小高度 */
-}
-
-/* 底部工具栏 */
-.input-bottom {
+/* 右侧容器 */
+.bar-right {
   display: flex;
   align-items: center;
-  justify-content: space-between; /* 改为两端对齐 */
-  padding: 12px 16px; /* 增加内边距 */
-  height: auto; /* 改为自适应高度 */
-  min-height: 60px; /* 增加最小高度 */
+  gap: 6px;
 }
 
-/* 输入提示 */
-.input-hint {
-  display: flex;
-  align-items: center;
-}
-
-.hint-text {
-  font-size: 12px;
-  color: var(--text-tertiary);
-  user-select: none;
-  transition: color 0.2s ease;
-}
-
-.input-container:focus-within .hint-text {
+/* 右侧功能图标按钮（mic / wave） */
+.bar-action-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
   color: var(--text-secondary);
-}
-
-/* 发送按钮组 */
-.send-group {
   display: flex;
   align-items: center;
-  border-radius: 8px;
-  overflow: hidden;
+  justify-content: center;
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color 0.2s;
+  flex-shrink: 0;
+}
+
+.bar-action-btn:hover {
+  color: var(--text-primary);
+}
+
+/* 波形图标（5根竖条） */
+.wave-icon {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 14px;
+}
+
+.wave-icon span {
+  width: 3px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.wave-icon span:nth-child(1) { height: 6px; }
+.wave-icon span:nth-child(2) { height: 10px; }
+.wave-icon span:nth-child(3) { height: 14px; }
+.wave-icon span:nth-child(4) { height: 10px; }
+.wave-icon span:nth-child(5) { height: 6px; }
+
+/* 圆形发送 / 正方形停止按钮 */
+.send-icon-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  color: var(--bg-primary);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 14px;
+  transition: opacity 0.2s;
+}
+
+.send-icon-btn:hover:not(:disabled) {
+  opacity: 0.78;
+}
+
+.send-icon-btn:disabled {
+  background: var(--border-color);
+  cursor: not-allowed;
+}
+
+.stop-square {
+  width: 11px;
+  height: 11px;
+  background: var(--bg-primary);
+  border-radius: 2px;
+  flex-shrink: 0;
 }
 
 /* 回到底部按钮 */

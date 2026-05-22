@@ -27,25 +27,8 @@ class ProjectConfig:
     max_output_size_mb: int = 1000  # 最大输出大小
 
 
-# 预定义项目配置
-PROJECT_CONFIGS: Dict[str, ProjectConfig] = {
-    "nice-bcx": ProjectConfig(
-        project_id="nice-bcx",
-        project_name="NICE-BCX",
-        base_dir=Path("/home/fetters/project/NICE-BCX"),
-        system_prompt="""【项目专属：NICE-BCX 肺癌新辅助治疗影像分析】
-
-你是 NICE-BCX 项目的肺癌影像 AI 分析助手，专注于新辅助化疗前后 CT 影像分析与主要病理缓解（MPR）预测。
-
-【NICE-BCX 专属规则】
-- pre/post CT 必须同时处理，任何任务不得只处理其中一个时间点
-- MPR 预测需要临床基线特征，若用户未提供须主动询问后再执行
-- 所有影像分析结果需给出直观的临床解读，不暴露技术细节
-- 【重要】对于分割推理等长时间Skill任务必须挂到后台去执行
-""",
-        allow_execute=False,
-    ),
-}
+# 项目配置字典 - 运行时由 AgentService.sync_to_project_configs() 从 DB 动态填充
+PROJECT_CONFIGS: Dict[str, ProjectConfig] = {}
 
 
 def get_project_config(project_id: str) -> Optional[ProjectConfig]:

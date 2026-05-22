@@ -8,10 +8,9 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { SearchProgressItem } from '@/store/conversations'
 
 const props = defineProps<{
-  items: SearchProgressItem[]
+  items: { status: string }[]
 }>()
 
 const isSearching = computed(() => props.items.some(i => i.status === 'searching'))
