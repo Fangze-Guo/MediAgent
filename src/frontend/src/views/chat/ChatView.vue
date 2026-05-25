@@ -8,7 +8,8 @@
             <!-- 消息列表 -->
             <div class="messages-container">
               <div v-for="(m, idx) in currentMessages" :key="idx"
-                   :class="['message', m.role === 'user' ? 'user' : 'ai']">
+                   :class="['message', m.role === 'user' ? 'user' : 'ai']"
+                   @mouseleave="copiedIdx = null">
                 <!-- 流式期间显示项目图标，完成后不显示 -->
                 <div v-if="m.role === 'assistant' && !m.typingComplete" class="streaming-icon">
                   <img src="/MedWiser.png" alt="MedWiser" />
@@ -103,9 +104,10 @@
                 </div>
                 <!-- hover 操作栏：时间 + 复制 -->
                 <div v-if="m.typingComplete" class="message-actions">
-                  <span v-if="m.timestamp" class="action-time">{{ m.timestamp }}</span>
-                  <button class="action-btn" @click="copyMessage(m)" title="复制">
-                    <CopyOutlined />
+                  <span v-if="m.timestamp" class="action-time">{{ formatMsgTime(m.timestamp) }}</span>
+                  <button class="action-btn" @click="copyMessage(m, idx)" :title="copiedIdx === idx ? '已复制' : '复制'">
+                    <CheckOutlined v-if="copiedIdx === idx" class="action-copy-ok" />
+                    <CopyOutlined v-else />
                   </button>
                 </div>
                 </div><!-- end message-main -->
@@ -309,6 +311,7 @@ import { type FileInfo, getChatImagePresignUrl, uploadToOss } from '@/apis/files
 import {
   ArrowUpOutlined,
   AudioOutlined,
+  CheckOutlined,
   CloseOutlined,
   CopyOutlined,
   DeleteOutlined,
@@ -955,14 +958,33 @@ const stopGeneration = () => {
   abortController.value = null
 }
 
+/** 当前显示 ✓ 的消息索引 */
+const copiedIdx = ref<number | null>(null)
+
 /**
- * 复制消息内容
+ * 格式化消息时间戳：今天只显示时:分，其余显示完整日期
  */
-const copyMessage = async (m: any) => {
+const formatMsgTime = (ts?: string): string => {
+  if (!ts) return ''
+  const d = new Date(ts)
+  if (isNaN(d.getTime())) return ''
+  const now = new Date()
+  const isToday = d.getFullYear() === now.getFullYear() &&
+                  d.getMonth() === now.getMonth() &&
+                  d.getDate() === now.getDate()
+  const timeStr = d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+  if (isToday) return timeStr
+  return d.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' }) + ' ' + timeStr
+}
+
+/**
+ * 复制消息内容，复制成功后按钮变 ✓，离开 hover 后恢复
+ */
+const copyMessage = async (m: any, idx: number) => {
   const text: string = (m.parsedContent?.response ?? m.content) || ''
   try {
     await navigator.clipboard.writeText(text)
-    message.success('已复制', 1)
+    copiedIdx.value = idx
   } catch {
     message.error('复制失败')
   }
@@ -1252,9 +1274,6 @@ const sendMessage = async () => {
   pointer-events: auto;
 }
 
-.message.user .message-actions {
-  flex-direction: row-reverse;
-}
 
 .action-time {
   font-size: 11px;
@@ -1282,6 +1301,10 @@ const sendMessage = async () => {
 .action-btn:hover {
   background: var(--hover-bg);
   color: var(--text-primary);
+}
+
+.action-copy-ok {
+  color: #22c55e;
 }
 
 /* 流式期间的项目图标 */

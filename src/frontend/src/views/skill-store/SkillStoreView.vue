@@ -2,13 +2,15 @@
   <div class="skill-repo">
     <!-- Hero 横幅 -->
     <div class="repo-hero">
+      <div class="hero-decor hero-decor-1"></div>
+      <div class="hero-decor hero-decor-2"></div>
       <div class="hero-inner">
         <div class="hero-text">
-          <h1 class="hero-title">
-            <span class="hero-icon">⚡</span>
-            {{ t('views_SkillStoreView.title') }}
-          </h1>
-          <p class="hero-subtitle">{{ t('views_SkillStoreView.searchPlaceholder') }}</p>
+          <div class="hero-icon-wrap">⚡</div>
+          <div>
+            <h1 class="hero-title">{{ t('views_SkillStoreView.title') }}</h1>
+            <p class="hero-subtitle">{{ t('views_SkillStoreView.subtitle') }}</p>
+          </div>
         </div>
         <div class="hero-actions">
           <a-input-search
@@ -21,7 +23,7 @@
           >
             <template #prefix><SearchOutlined /></template>
           </a-input-search>
-          <a-button type="primary" size="large" class="upload-btn" @click="showUploadModal = true">
+          <a-button class="upload-btn" @click="showUploadModal = true">
             <template #icon><UploadOutlined /></template>
             上传 Skill
           </a-button>
@@ -128,7 +130,7 @@
         <template v-else>
           <FileZipOutlined class="drop-icon file-selected" />
           <p class="drop-title">{{ selectedFile.name }}</p>
-          <p class="drop-hint">{{ (selectedFile.size / 1024).toFixed(1) }} KB · 点击重新选择</p>
+          <p class="drop-hint">{{ formatFileSize(selectedFile.size) }} · 点击重新选择</p>
         </template>
       </div>
 
@@ -204,7 +206,7 @@ const loadSkills = async () => {
 const handleSearch = () => loadSkills()
 
 const goToSkillDetail = (id: string) => {
-  router.push(`/skill-store/${id}`)
+  router.push(`/skill-repository/${id}`)
 }
 
 const handleDelete = async (skill: SkillInfo, e: Event) => {
@@ -216,6 +218,13 @@ const handleDelete = async (skill: SkillInfo, e: Event) => {
   } catch {
     message.error('删除失败')
   }
+}
+
+const formatFileSize = (bytes: number): string => {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
 
 const handleFileChange = (e: Event) => {
@@ -274,6 +283,20 @@ const resetUpload = () => {
 .upload-btn {
   white-space: nowrap;
   flex-shrink: 0;
+  height: 40px;
+  padding: 0 20px;
+  font-size: 14px;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #fff;
+  border-radius: 10px;
+}
+
+.upload-btn:hover {
+  background: rgba(255, 255, 255, 0.26) !important;
+  border-color: rgba(255, 255, 255, 0.55) !important;
+  color: #fff !important;
 }
 
 /* ── 上传 Modal ── */
@@ -340,11 +363,38 @@ const resetUpload = () => {
 
 /* ── Hero 横幅 ── */
 .repo-hero {
-  background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 60%, #1a56a0 100%);
-  padding: 48px 32px 40px;
+  position: relative;
+  background: linear-gradient(135deg, #1c0a3e 0%, #3a1270 55%, #6b2db5 100%);
+  padding: 44px 32px 40px;
+  overflow: hidden;
+}
+
+.hero-decor {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.hero-decor-1 {
+  width: 340px;
+  height: 340px;
+  background: #fff;
+  opacity: 0.07;
+  top: -110px;
+  right: 60px;
+}
+
+.hero-decor-2 {
+  width: 200px;
+  height: 200px;
+  background: #d4a8ff;
+  opacity: 0.1;
+  bottom: -70px;
+  left: 80px;
 }
 
 .hero-inner {
+  position: relative;
   max-width: 1200px;
   margin: 0 auto;
   display: flex;
@@ -354,38 +404,80 @@ const resetUpload = () => {
   flex-wrap: wrap;
 }
 
-.hero-text { flex: 1; min-width: 0; }
-
-.hero-title {
-  font-size: 32px;
-  font-weight: 700;
-  color: #fff;
-  margin: 0 0 8px 0;
+.hero-text {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 18px;
+}
+
+.hero-icon-wrap {
+  font-size: 40px;
+  width: 64px;
+  height: 64px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.hero-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 6px 0;
   letter-spacing: -0.3px;
 }
 
-.hero-icon { font-size: 28px; }
-
 .hero-subtitle {
-  font-size: 15px;
-  color: rgba(255,255,255,0.65);
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.65);
   margin: 0;
+  line-height: 1.5;
 }
 
-
-.search-input :deep(.ant-input-group-wrapper) {
-  border-radius: 10px;
-}
 .search-input :deep(.ant-input-affix-wrapper) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
   border-radius: 10px 0 0 10px;
+  color: #fff;
 }
+
+.search-input :deep(.ant-input-affix-wrapper:hover),
+.search-input :deep(.ant-input-affix-wrapper-focused) {
+  border-color: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.search-input :deep(.ant-input) {
+  background: transparent;
+  color: #fff;
+}
+
+.search-input :deep(.ant-input::placeholder) {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.search-input :deep(.ant-input-prefix),
+.search-input :deep(.ant-input-suffix .anticon) {
+  color: rgba(255, 255, 255, 0.55);
+}
+
 .search-input :deep(.ant-input-search-button) {
   border-radius: 0 10px 10px 0;
-  margin-left: 8px;
-  min-width: 72px;
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+.search-input :deep(.ant-input-search-button:hover) {
+  background: rgba(255, 255, 255, 0.32);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 /* ── 主体 ── */
@@ -587,7 +679,9 @@ const resetUpload = () => {
 /* ── 响应式 ── */
 @media (max-width: 768px) {
   .repo-hero { padding: 32px 20px 28px; }
-  .hero-inner { flex-direction: column; gap: 20px; }
+  .hero-inner { flex-direction: column; gap: 20px; align-items: flex-start; }
+  .hero-icon-wrap { width: 52px; height: 52px; font-size: 32px; }
+  .hero-title { font-size: 22px; }
   .hero-actions { flex: 1; width: 100%; flex-wrap: wrap; }
   .body-inner { padding: 24px 16px; }
   .skills-grid { grid-template-columns: 1fr; }

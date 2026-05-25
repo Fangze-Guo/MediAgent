@@ -205,7 +205,6 @@ export const useConversationsStore = defineStore('conversations', () => {
       console.log(`从后端获取到 ${messages.length} 条消息`)
       
       // 转换消息格式，将 attachments 中的图片 URL 还原到 images 字段
-      const fmtTs = (ts?: string) => ts ? new Date(ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }) : undefined
       conversation.messages = messages.map(msg => {
         const attachments: { type: string; url: string }[] = msg.attachments ?? []
         const images = attachments
@@ -225,7 +224,7 @@ export const useConversationsStore = defineStore('conversations', () => {
           images: images.length ? images : undefined,
           sources: msg.sources?.length ? msg.sources : undefined,
           toolCalls: toolCalls.length ? toolCalls : undefined,
-          timestamp: fmtTs(msg.timestamp),
+          timestamp: msg.timestamp,
         }
       })
       
@@ -336,9 +335,9 @@ export const useConversationsStore = defineStore('conversations', () => {
     const conversation = getConversation(id)
     if (!conversation) throw new Error(`会话 ${id} 不存在`)
 
-    const now = () => new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
-    appendMessage(id, { role: 'user', content, typingComplete: true, images: images?.length ? images : undefined, timestamp: now() })
-    appendMessage(id, { role: 'assistant', content: '', typingComplete: false, timestamp: now() })
+    const nowIso = new Date().toISOString()
+    appendMessage(id, { role: 'user', content, typingComplete: true, images: images?.length ? images : undefined, timestamp: nowIso })
+    appendMessage(id, { role: 'assistant', content: '', typingComplete: false, timestamp: nowIso })
 
     // rAF 批量更新：同一帧内的 token 合并后一次性写入，DOM 最多 60fps 刷新
     let pendingTokens = ''
@@ -497,7 +496,6 @@ export const useConversationsStore = defineStore('conversations', () => {
             id,
             title,
             messages: messages.map(msg => {
-              const fmtTs2 = (ts?: string) => ts ? new Date(ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }) : undefined
               const attachments: { type: string; url: string }[] = msg.attachments ?? []
               const images = attachments
                 .filter((a) => a.type === 'image' && a.url)
@@ -516,7 +514,7 @@ export const useConversationsStore = defineStore('conversations', () => {
                 images: images.length ? images : undefined,
                 sources: msg.sources?.length ? msg.sources : undefined,
                 toolCalls: toolCalls.length ? toolCalls : undefined,
-                timestamp: fmtTs2(msg.timestamp),
+                timestamp: msg.timestamp,
               }
             }),
             assistantType: 'general', // 默认为通用助手

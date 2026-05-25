@@ -26,15 +26,18 @@
     "conversation": "Conversation",
     "files": "File Management",
     "settings": "Settings",
-    "skillStore": "Skill Store",
+    "skillStore": "Skill Repository",
     "skillDetail": "Skill Detail",
     "modelConfig": "Model Configuration",
     "clinicalTools": "Clinical Tools",
     "niceBcxAgent": "NICE-BCX Agent",
     "niceBcxWorkflow": "NICE-BCX Workflow",
     "niceBcxKnowledgeBase": "NICE-BCX Knowledge Base",
+    "knowledgeBase": "Knowledge Base",
     "knowledgeBaseDetail": "Knowledge Base Detail",
-    "documentDetail": "Document Detail"
+    "documentDetail": "Document Detail",
+    "clinicalAgent": "Clinical Agent",
+    "clinicalAgentSkills": "Skill Management"
   },
   "login": {
     "title": "Login",
@@ -721,6 +724,7 @@
   },
   "views_SkillStoreView": {
     "title": "Skill Repository",
+    "subtitle": "Browse and manage intelligent Skills to power your AI workflows",
     "searchPlaceholder": "Search skill name or description",
     "defaultCategory": "All Skills",
     "loading": "Loading...",

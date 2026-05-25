@@ -58,7 +58,7 @@ const routes: RouteRecordRaw[] = [
         }
     },
     {
-        path: '/skill-store',
+        path: '/skill-repository',
         name: 'SkillStore',
         component: () => import('@/views/skill-store/SkillStoreView.vue'),
         meta: {
@@ -67,13 +67,21 @@ const routes: RouteRecordRaw[] = [
         }
     },
     {
-        path: '/skill-store/:id',
+        path: '/skill-repository/:id',
         name: 'SkillDetail',
         component: () => import('@/views/skill-store/SkillDetailView.vue'),
         meta: {
             title: 'MedWiser - Skill Detail',
             requiresAuth: true
         }
+    },
+    {
+        path: '/skill-store',
+        redirect: '/skill-repository'
+    },
+    {
+        path: '/skill-store/:id',
+        redirect: to => `/skill-repository/${to.params.id}`
     },
     {
         path: '/model-config',
@@ -113,6 +121,15 @@ const routes: RouteRecordRaw[] = [
         }
     },
     {
+        path: '/clinical-agent/:agentId/skills',
+        name: 'ClinicalAgentSkills',
+        component: () => import('@/views/clinical-tools/ClinicalAgentSkillsView.vue'),
+        meta: {
+            title: 'MedWiser - Agent Skills',
+            requiresAuth: true
+        }
+    },
+    {
         path: '/nice-bcx-workflow',
         name: 'NiceBcxWorkflow',
         component: () => import('@/views/clinical-tools/WorkflowView.vue'),
@@ -122,13 +139,17 @@ const routes: RouteRecordRaw[] = [
         }
     },
     {
-        path: '/nice-bcx-knowledge-base',
-        name: 'NiceBcxKnowledgeBase',
+        path: '/knowledge-base',
+        name: 'KnowledgeBase',
         component: () => import('@/views/clinical-tools/rag/RagKnowledgeBaseView.vue'),
         meta: {
-            title: 'MedWiser - NICE-BCX Knowledge Base',
+            title: 'MedWiser - Knowledge Base',
             requiresAuth: true
         }
+    },
+    {
+        path: '/nice-bcx-knowledge-base',
+        redirect: '/knowledge-base'
     },
     {
         path: '/knowledge-base/:id',

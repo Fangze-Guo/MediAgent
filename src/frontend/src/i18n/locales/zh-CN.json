@@ -26,15 +26,18 @@
     "conversation": "对话",
     "files": "文件管理",
     "settings": "设置",
-    "skillStore": "技能商店",
-    "skillDetail": "技能详情",
+    "skillStore": "Skill 仓库",
+    "skillDetail": "Skill 详情",
     "modelConfig": "模型配置",
     "clinicalTools": "临床工具",
     "niceBcxAgent": "NICE-BCX Agent",
     "niceBcxWorkflow": "NICE-BCX 工作流",
     "niceBcxKnowledgeBase": "NICE-BCX 知识库",
+    "knowledgeBase": "知识库",
     "knowledgeBaseDetail": "知识库详情",
-    "documentDetail": "文档详情"
+    "documentDetail": "文档详情",
+    "clinicalAgent": "临床智能体",
+    "clinicalAgentSkills": "Skill 管理"
   },
   "login": {
     "title": "登录",
@@ -721,6 +724,7 @@
   },
   "views_SkillStoreView": {
     "title": "Skill 仓库",
+    "subtitle": "浏览和管理智能 Skill，赋能 AI 工作流",
     "searchPlaceholder": "搜索 Skill 名称或描述",
     "defaultCategory": "全部 Skill",
     "loading": "加载中...",

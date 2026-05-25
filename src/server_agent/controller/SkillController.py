@@ -46,27 +46,49 @@ class SkillController(BaseController):
 
         @self.router.get("/list")
         async def get_skills(
-            type: Optional[str] = Query(None, description="类型筛选"),
+            request: Request,
             search: Optional[str] = Query(None, description="搜索关键词"),
-            project_id: Optional[str] = Query(None, description="项目ID，不传则使用默认目录")
         ) -> BaseResponse[List[dict]]:
             try:
-                svc = self._get_service(project_id)
-                skills = await svc.get_skills(type=type, search=search)
+                mapper = request.app.state.agent_mapper
+                rows = await mapper.list_skills(search=search)
+                skills = [
+                    {
+                        "id":          r["slug"],
+                        "name":        r["name"],
+                        "type":        r["type"],
+                        "description": r["description"] or "",
+                        "version":     r["version"],
+                        "author":      r["author"] or "",
+                        "user_id":     r["user_id"],
+                        "created_at":  str(r["created_at"]) if r.get("created_at") else "",
+                        "installed":   True,
+                        "tags":        [r["type"]] if r.get("type") else [],
+                    }
+                    for r in rows
+                ]
                 return ResultUtils.success(skills)
             except Exception as e:
                 return ResultUtils.error(ErrorCode.SYSTEM_ERROR, f"获取 skill 列表失败: {str(e)}")
         
         @self.router.get("/detail/{skill_id}")
         async def get_skill_detail(
+            request: Request,
             skill_id: str,
-            project_id: Optional[str] = Query(None, description="项目ID")
         ) -> BaseResponse[dict]:
             try:
-                svc = self._get_service(project_id)
-                skill = await svc.get_skill_detail(skill_id)
-                if not skill:
+                from pathlib import Path
+                mapper = request.app.state.agent_mapper
+                record = await mapper.get_skill_by_slug(skill_id)
+                if not record:
                     return ResultUtils.error(ErrorCode.NOT_FOUND, "Skill 不存在")
+                storage_path = Path(record["storage_path"])
+                svc = SkillService(str(storage_path.parent))
+                skill = await svc.get_skill_detail(storage_path.name)
+                if not skill:
+                    return ResultUtils.error(ErrorCode.NOT_FOUND, "Skill 文件不存在")
+                skill["user_id"] = record["user_id"]
+                skill["created_at"] = str(record["created_at"]) if record.get("created_at") else ""
                 return ResultUtils.success(skill)
             except Exception as e:
                 return ResultUtils.error(ErrorCode.SYSTEM_ERROR, f"获取 skill 详情失败: {str(e)}")
@@ -84,27 +106,39 @@ class SkillController(BaseController):
 
         @self.router.get("/files/{skill_id}")
         async def get_skill_files(
+            request: Request,
             skill_id: str,
-            project_id: Optional[str] = Query(None, description="项目ID")
         ) -> BaseResponse[List[dict]]:
             try:
-                svc = self._get_service(project_id)
-                files = await svc.get_skill_files(skill_id)
-                if files is None:
+                from pathlib import Path
+                mapper = request.app.state.agent_mapper
+                record = await mapper.get_skill_by_slug(skill_id)
+                if not record:
                     return ResultUtils.error(ErrorCode.NOT_FOUND, "Skill 不存在")
+                storage_path = Path(record["storage_path"])
+                svc = SkillService(str(storage_path.parent))
+                files = await svc.get_skill_files(storage_path.name)
+                if files is None:
+                    return ResultUtils.error(ErrorCode.NOT_FOUND, "Skill 文件不存在")
                 return ResultUtils.success(files)
             except Exception as e:
                 return ResultUtils.error(ErrorCode.SYSTEM_ERROR, f"获取文件列表失败: {str(e)}")
 
         @self.router.get("/file-content/{skill_id}")
         async def get_skill_file_content(
+            request: Request,
             skill_id: str,
             path: str = Query(..., description="文件相对路径"),
-            project_id: Optional[str] = Query(None, description="项目ID")
         ) -> BaseResponse[dict]:
             try:
-                svc = self._get_service(project_id)
-                content = await svc.get_skill_file_content(skill_id, path)
+                from pathlib import Path
+                mapper = request.app.state.agent_mapper
+                record = await mapper.get_skill_by_slug(skill_id)
+                if not record:
+                    return ResultUtils.error(ErrorCode.NOT_FOUND, "Skill 不存在")
+                storage_path = Path(record["storage_path"])
+                svc = SkillService(str(storage_path.parent))
+                content = await svc.get_skill_file_content(storage_path.name, path)
                 if content is None:
                     return ResultUtils.error(ErrorCode.NOT_FOUND, "文件不存在")
                 return ResultUtils.success(content)

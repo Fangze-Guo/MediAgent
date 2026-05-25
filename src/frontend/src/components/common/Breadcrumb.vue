@@ -35,9 +35,11 @@ const routeI18nMap: Record<string, string> = {
   'ClinicalTools': 'breadcrumb.clinicalTools',
   'NiceBcxAgent': 'breadcrumb.niceBcxAgent',
   'NiceBcxWorkflow': 'breadcrumb.niceBcxWorkflow',
-  'NiceBcxKnowledgeBase': 'breadcrumb.niceBcxKnowledgeBase',
+  'KnowledgeBase': 'breadcrumb.knowledgeBase',
   'KnowledgeBaseDetail': 'breadcrumb.knowledgeBaseDetail',
-  'DocumentDetail': 'breadcrumb.documentDetail'
+  'DocumentDetail': 'breadcrumb.documentDetail',
+  'ClinicalAgent': 'breadcrumb.clinicalAgent',
+  'ClinicalAgentSkills': 'breadcrumb.clinicalAgentSkills',
 }
 
 const breadcrumbs = computed<Breadcrumb[]>(() => {
@@ -60,19 +62,19 @@ const breadcrumbs = computed<Breadcrumb[]>(() => {
   if (route.name === 'SkillDetail') {
     items.push({
       title: t('breadcrumb.skillStore'),
-      path: '/skill-store',
+      path: '/skill-repository',
       isLast: false
     })
   } else if (route.name === 'KnowledgeBaseDetail') {
     items.push({
-      title: t('breadcrumb.niceBcxKnowledgeBase'),
-      path: '/nice-bcx-knowledge-base',
+      title: t('breadcrumb.knowledgeBase'),
+      path: '/knowledge-base',
       isLast: false
     })
   } else if (route.name === 'DocumentDetail') {
     items.push({
-      title: t('breadcrumb.niceBcxKnowledgeBase'),
-      path: '/nice-bcx-knowledge-base',
+      title: t('breadcrumb.knowledgeBase'),
+      path: '/knowledge-base',
       isLast: false
     })
     if (route.params.kbId) {

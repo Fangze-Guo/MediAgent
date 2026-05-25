@@ -1,44 +1,28 @@
 <template>
   <div class="clinical-tools">
-    <!-- ==================== 顶部导航栏 ==================== -->
-    <div class="tools-header">
-      <div class="header-container">
-        <div class="header-content">
-          <div class="header-left">
-            <div class="logo-wrapper">
-              <div class="logo-icon">🏥</div>
-              <div class="logo-info">
-                <h1 class="logo-title">{{ t('views_ClinicalToolsView.logoText') }}</h1>
-                <p class="logo-subtitle">{{ t('views_ClinicalToolsView.headerDescription') }}</p>
-              </div>
-            </div>
-          </div>
-          <div class="header-right">
-            <a-input-search
-              v-model:value="searchKeyword"
-              :placeholder="t('views_ClinicalToolsView.searchPlaceholder')"
-              size="large"
-              class="search-input"
-            >
-              <template #prefix>
-                <SearchOutlined />
-              </template>
-            </a-input-search>
+    <!-- ==================== 顶部 Hero 横幅 ==================== -->
+    <div class="tools-hero">
+      <div class="hero-decor hero-decor-1"></div>
+      <div class="hero-decor hero-decor-2"></div>
+      <div class="hero-inner">
+        <div class="hero-text">
+          <div class="hero-icon-wrap">🏥</div>
+          <div>
+            <h1 class="hero-title">{{ t('views_ClinicalToolsView.logoText') }}</h1>
+            <p class="hero-subtitle">{{ t('views_ClinicalToolsView.headerDescription') }}</p>
           </div>
         </div>
-      </div>
-    </div>
-
-    <!-- ==================== 分类标签栏 ==================== -->
-    <div class="categories-bar">
-      <div class="categories-container">
-        <div
-          v-for="cat in categories"
-          :key="cat.key"
-          :class="['category-tab', { active: selectedCategory === cat.key }]"
-          @click="selectCategory(cat.key)"
-        >
-          {{ cat.label }}
+        <div class="hero-search">
+          <a-input-search
+            v-model:value="searchKeyword"
+            :placeholder="t('views_ClinicalToolsView.searchPlaceholder')"
+            size="large"
+            class="search-input"
+          >
+            <template #prefix>
+              <SearchOutlined />
+            </template>
+          </a-input-search>
         </div>
       </div>
     </div>
@@ -63,11 +47,7 @@
         <div v-else>
           <!-- 区块标题 -->
           <div class="section-header">
-            <h2 class="section-title">
-              {{ selectedCategory === 'all'
-                ? t('views_ClinicalToolsView.sectionTitle')
-                : categories.find(c => c.key === selectedCategory)?.label }}
-            </h2>
+            <h2 class="section-title">{{ t('views_ClinicalToolsView.sectionTitle') }}</h2>
             <span class="results-count">{{ t('views_ClinicalToolsView.resultsCount', { count: filteredProjects.length }) }}</span>
           </div>
 
@@ -79,13 +59,16 @@
             >
               <!-- 项目头部 -->
               <div class="project-header">
-                <div class="project-icon-wrapper">
-                  <Icon :icon="project.icon" class="project-icon" />
+                <div class="project-avatar" :style="{ background: project.avatarColor }">
+                  <span class="project-avatar-text">{{ project.avatarText }}</span>
                 </div>
                 <div class="project-info">
                   <h2 class="project-name">{{ project.name }}</h2>
                   <p class="project-description">{{ project.description }}</p>
                 </div>
+                <button class="card-edit-btn" title="编辑智能体" @click.stop="openEditModal(project.id)">
+                  <EditOutlined />
+                </button>
               </div>
 
               <!-- 工具列表 -->
@@ -97,13 +80,10 @@
                   @click="navigateTo(tool.route)"
                 >
                   <div class="tool-item-left">
-                    <div class="tool-icon-wrapper">
+                    <div class="tool-icon-wrapper" :style="{ background: tool.iconBg }">
                       <Icon :icon="tool.icon" class="tool-icon" :style="{ color: tool.iconColor }" />
                     </div>
-                    <div class="tool-info">
-                      <h3 class="tool-name">{{ tool.name }}</h3>
-                      <p class="tool-description">{{ tool.description }}</p>
-                    </div>
+                    <span class="tool-name">{{ tool.name }}</span>
                   </div>
                   <div class="tool-arrow">
                     <RightOutlined />
@@ -116,15 +96,44 @@
       </div>
     </div>
   </div>
+  <!-- ==================== 编辑智能体 Modal ==================== -->
+  <a-modal
+    v-model:open="editModalVisible"
+    title="编辑智能体"
+    :confirm-loading="editLoading"
+    ok-text="保存"
+    cancel-text="取消"
+    :width="560"
+    @ok="handleEditSubmit"
+    @cancel="editModalVisible = false"
+  >
+    <a-form layout="vertical" style="margin-top: 8px">
+      <a-form-item label="名称">
+        <a-input v-model:value="editForm.name" placeholder="智能体名称" />
+      </a-form-item>
+      <a-form-item label="描述">
+        <a-input v-model:value="editForm.description" placeholder="简短描述（可选）" />
+      </a-form-item>
+      <a-form-item label="System Prompt">
+        <a-textarea
+          v-model:value="editForm.system_prompt"
+          placeholder="输入系统提示词"
+          :rows="8"
+          :style="{ fontFamily: 'monospace', fontSize: '13px' }"
+        />
+      </a-form-item>
+    </a-form>
+  </a-modal>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { SearchOutlined, RightOutlined, InboxOutlined } from '@ant-design/icons-vue'
+import { message } from 'ant-design-vue'
+import { SearchOutlined, RightOutlined, InboxOutlined, EditOutlined } from '@ant-design/icons-vue'
 import { Icon } from '@iconify/vue'
-import { listClinicalAgents, type ClinicalAgent } from '@/apis/agents'
+import { listClinicalAgents, getAgent, updateAgent, type ClinicalAgent, type UpdateAgentParams } from '@/apis/agents'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -133,9 +142,9 @@ const { t } = useI18n()
 interface Tool {
   id: string
   name: string
-  description: string
   icon: string
   iconColor: string
+  iconBg: string
   route: string
 }
 
@@ -144,86 +153,124 @@ interface Project {
   id: string
   name: string
   description: string
-  icon: string
-  category: string
+  avatarText: string
+  avatarColor: string
   tools: Tool[]
 }
 
-// 分类接口
-interface Category {
-  key: string
-  label: string
+// 头像颜色池
+const avatarColors = [
+  'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+  'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+  'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+  'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+  'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+  'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)',
+  'linear-gradient(135deg, #fccb90 0%, #d57eeb 100%)',
+  'linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%)',
+]
+
+const getAvatarColor = (index: number) => avatarColors[index % avatarColors.length]
+
+const getAvatarText = (name: string) => {
+  if (!name) return '?'
+  const trimmed = name.trim()
+  // 取前两个字符（中文两字 or 英文首字母）
+  return trimmed.slice(0, 2).toUpperCase()
 }
 
 // 状态
 const searchKeyword = ref('')
-const selectedCategory = ref('all')
 const loading = ref(false)
 const dynamicAgents = ref<ClinicalAgent[]>([])
 
-// 分类列表
-const categories = computed<Category[]>(() => [
-  { key: 'all', label: t('views_ClinicalToolsView.categories.all') },
-  { key: 'segmentation', label: t('views_ClinicalToolsView.categories.segmentation') },
-  { key: 'neoadjuvant', label: t('views_ClinicalToolsView.categories.neoadjuvant') },
-  { key: 'agent', label: '临床智能体' }
-])
+// 编辑 Modal
+const editModalVisible = ref(false)
+const editLoading = ref(false)
+const editingAgentId = ref('')
+const editForm = ref<UpdateAgentParams>({ name: '', description: '', system_prompt: '' })
+
+const openEditModal = async (agentId: string) => {
+  editingAgentId.value = agentId
+  editModalVisible.value = true
+  editLoading.value = true
+  try {
+    const res = await getAgent(agentId)
+    if (res.code === 200 && res.data) {
+      editForm.value = {
+        name: res.data.name,
+        description: res.data.description,
+        system_prompt: res.data.system_prompt,
+      }
+    }
+  } catch {
+    message.error('加载智能体信息失败')
+  } finally {
+    editLoading.value = false
+  }
+}
+
+const handleEditSubmit = async () => {
+  if (!editForm.value.name?.trim()) {
+    message.warning('名称不能为空')
+    return
+  }
+  editLoading.value = true
+  try {
+    const res = await updateAgent(editingAgentId.value, editForm.value)
+    if (res.code === 200 && res.data) {
+      const idx = dynamicAgents.value.findIndex(a => a.agent_id === editingAgentId.value)
+      if (idx !== -1) dynamicAgents.value[idx] = res.data
+      message.success('保存成功')
+      editModalVisible.value = false
+    } else {
+      message.error(res.message || '保存失败')
+    }
+  } catch {
+    message.error('保存失败，请稍后重试')
+  } finally {
+    editLoading.value = false
+  }
+}
 
 // 项目列表 - 全部从接口动态拉取
 const projects = computed<Project[]>(() =>
-  dynamicAgents.value.map(agent => ({
+  dynamicAgents.value.map((agent, index) => ({
     id: agent.agent_id,
     name: agent.name,
     description: agent.description || '',
-    icon: 'carbon:bot-trained',
-    category: 'agent',
+    avatarText: getAvatarText(agent.name),
+    avatarColor: getAvatarColor(index),
     tools: [
       {
         id: `${agent.agent_id}-chat`,
-        name: '智能对话',
-        description: agent.description || '进入该临床智能体进行对话',
+        name: '智能体',
         icon: 'carbon:bot',
         iconColor: '#1677ff',
+        iconBg: 'rgba(22,119,255,0.1)',
         route: `/clinical-agent/${agent.agent_id}?name=${encodeURIComponent(agent.name)}`
-      }
+      },
+      {
+        id: `${agent.agent_id}-skills`,
+        name: 'Skill 管理',
+        icon: 'carbon:tools',
+        iconColor: '#a0243e',
+        iconBg: 'rgba(160,36,62,0.1)',
+        route: `/clinical-agent/${agent.agent_id}/skills?name=${encodeURIComponent(agent.name)}`
+      },
     ]
   }))
 )
 
 // 过滤后的项目列表
 const filteredProjects = computed(() => {
-  let result = projects.value
-
-  // 按分类筛选
-  if (selectedCategory.value !== 'all') {
-    result = result.filter(project => project.category === selectedCategory.value)
-  }
-
-  // 按搜索关键词筛选
-  if (searchKeyword.value.trim()) {
-    const keyword = searchKeyword.value.toLowerCase().trim()
-    result = result.filter(project => {
-      // 搜索项目名称和描述
-      const projectMatch = project.name.toLowerCase().includes(keyword) ||
-                          project.description.toLowerCase().includes(keyword)
-
-      // 搜索工具名称和描述
-      const toolMatch = project.tools.some(tool =>
-        tool.name.toLowerCase().includes(keyword) ||
-        tool.description.toLowerCase().includes(keyword)
-      )
-
-      return projectMatch || toolMatch
-    })
-  }
-
-  return result
+  if (!searchKeyword.value.trim()) return projects.value
+  const keyword = searchKeyword.value.toLowerCase().trim()
+  return projects.value.filter(project =>
+    project.name.toLowerCase().includes(keyword) ||
+    project.description.toLowerCase().includes(keyword)
+  )
 })
-
-// 选择分类
-const selectCategory = (category: string) => {
-  selectedCategory.value = category
-}
 
 // 导航到工具页面
 const navigateTo = (path: string) => {
@@ -249,123 +296,130 @@ onMounted(async () => {
 <style scoped>
 /* ==================== 整体布局 ==================== */
 .clinical-tools {
-  min-height: 100vh;
+  min-height: 100%;
   background: var(--bg-secondary);
 }
 
-/* ==================== 顶部导航栏 ==================== */
-.tools-header {
-  background: var(--bg-primary);
-  border-bottom: 1px solid var(--border-color);
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+/* ==================== Hero 横幅 ==================== */
+.tools-hero {
+  position: relative;
+  background: linear-gradient(135deg, #0c1a3a 0%, #1a3a7c 55%, #0d6b8f 100%);
+  padding: 44px 32px 40px;
+  overflow: hidden;
 }
 
-.header-container {
+.hero-decor {
+  position: absolute;
+  border-radius: 50%;
+  opacity: 0.08;
+  pointer-events: none;
+}
+
+.hero-decor-1 {
+  width: 360px;
+  height: 360px;
+  background: #fff;
+  top: -120px;
+  right: 80px;
+}
+
+.hero-decor-2 {
+  width: 220px;
+  height: 220px;
+  background: #60c8f5;
+  bottom: -80px;
+  left: 60px;
+  opacity: 0.12;
+}
+
+.hero-inner {
+  position: relative;
   max-width: 1400px;
   margin: 0 auto;
-  padding: 20px 32px;
-}
-
-.header-content {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 32px;
+  gap: 40px;
+  flex-wrap: wrap;
 }
 
-.header-left {
+.hero-text {
+  display: flex;
+  align-items: center;
+  gap: 18px;
   flex: 1;
   min-width: 0;
 }
 
-.logo-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.logo-icon {
-  width: 48px;
-  height: 48px;
-  font-size: 32px;
+.hero-icon-wrap {
+  font-size: 40px;
+  width: 64px;
+  height: 64px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
   flex-shrink: 0;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
 }
 
-.logo-info {
-  flex: 1;
-  min-width: 0;
+.hero-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 6px 0;
+  letter-spacing: -0.3px;
 }
 
-.logo-title {
-  font-size: 24px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 4px 0;
-}
-
-.logo-subtitle {
+.hero-subtitle {
   font-size: 14px;
-  color: var(--text-secondary);
+  color: rgba(255, 255, 255, 0.65);
   margin: 0;
   line-height: 1.5;
 }
 
-.header-right {
+.hero-search {
   flex: 0 0 400px;
 }
 
-.search-input {
-  border-radius: 8px;
+.search-input :deep(.ant-input-affix-wrapper) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+  border-radius: 10px 0 0 10px;
+  color: #fff;
 }
 
-/* ==================== 分类标签栏 ==================== */
-.categories-bar {
-  background: var(--bg-primary);
-  border-bottom: 1px solid var(--border-color);
-  position: sticky;
-  top: 89px;
-  z-index: 99;
+.search-input :deep(.ant-input-affix-wrapper:hover),
+.search-input :deep(.ant-input-affix-wrapper-focused) {
+  border-color: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.18);
 }
 
-.categories-container {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 0 32px;
-  display: flex;
-  gap: 32px;
-  overflow-x: auto;
-  scrollbar-width: none;
+.search-input :deep(.ant-input) {
+  background: transparent;
+  color: #fff;
 }
 
-.categories-container::-webkit-scrollbar {
-  display: none;
+.search-input :deep(.ant-input::placeholder) {
+  color: rgba(255, 255, 255, 0.45);
 }
 
-.category-tab {
-  padding: 16px 0;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  cursor: pointer;
-  white-space: nowrap;
-  border-bottom: 2px solid transparent;
-  transition: all 0.2s ease;
+.search-input :deep(.ant-input-prefix) {
+  color: rgba(255, 255, 255, 0.55);
 }
 
-.category-tab:hover {
-  color: var(--link-color);
+.search-input :deep(.ant-input-search-button) {
+  border-radius: 0 10px 10px 0;
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
 }
 
-.category-tab.active {
-  color: var(--link-color);
-  border-bottom-color: var(--link-color);
+.search-input :deep(.ant-input-search-button:hover) {
+  background: rgba(255, 255, 255, 0.32);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 /* ==================== 主内容区 ==================== */
@@ -426,47 +480,51 @@ onMounted(async () => {
 /* ==================== 项目网格 ==================== */
 .projects-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 20px;
 }
 
 /* ==================== 项目卡片 ==================== */
 .project-card {
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: 16px;
   overflow: hidden;
-  transition: all 0.2s ease;
+  transition: all 0.25s ease;
 }
 
 .project-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  border-color: var(--border-color-light);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+  border-color: transparent;
 }
 
 /* 项目头部 */
 .project-header {
-  padding: 24px;
-  border-bottom: 1px solid var(--bg-secondary);
+  padding: 24px 24px 20px;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 16px;
 }
 
-.project-icon-wrapper {
+/* 头像 */
+.project-avatar {
   width: 56px;
   height: 56px;
-  background: color-mix(in srgb, var(--link-color) 12%, transparent);
-  border-radius: 12px;
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.project-icon {
-  font-size: 32px;
-  color: var(--link-color);
+.project-avatar-text {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.5px;
+  line-height: 1;
 }
 
 .project-info {
@@ -475,22 +533,33 @@ onMounted(async () => {
 }
 
 .project-name {
-  font-size: 20px;
+  font-size: 17px;
   font-weight: 600;
-  margin: 0 0 8px 0;
+  margin: 0 0 6px 0;
   color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .project-description {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text-secondary);
   margin: 0;
-  line-height: 1.6;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 /* ==================== 工具列表 ==================== */
 .tools-list {
-  padding: 20px;
+  padding: 0 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 /* 工具项 */
@@ -498,37 +567,29 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px;
-  margin-bottom: 12px;
+  padding: 12px 14px;
   background: var(--bg-secondary);
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
   transition: all 0.2s ease;
   border: 1px solid transparent;
 }
 
-.tool-item:last-child {
-  margin-bottom: 0;
-}
-
 .tool-item:hover {
-  background: var(--bg-primary);
-  border-color: var(--link-color);
-  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.1);
+  background: color-mix(in srgb, var(--link-color) 6%, var(--bg-primary));
+  border-color: color-mix(in srgb, var(--link-color) 30%, transparent);
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.08);
 }
 
 .tool-item-left {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex: 1;
-  min-width: 0;
+  gap: 10px;
 }
 
 .tool-icon-wrapper {
-  width: 40px;
-  height: 40px;
-  background: var(--bg-primary);
+  width: 34px;
+  height: 34px;
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -537,83 +598,87 @@ onMounted(async () => {
 }
 
 .tool-icon {
-  font-size: 24px;
-}
-
-.tool-info {
-  flex: 1;
-  min-width: 0;
+  font-size: 18px;
 }
 
 .tool-name {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--text-primary);
-  margin: 0 0 4px 0;
-}
-
-.tool-description {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin: 0;
-  line-height: 1.5;
 }
 
 .tool-arrow {
   flex-shrink: 0;
   color: var(--border-color);
-  font-size: 14px;
+  font-size: 12px;
   transition: all 0.2s ease;
 }
 
 .tool-item:hover .tool-arrow {
+  color: var(--link-color);
+  transform: translateX(2px);
+}
+
+/* 卡片编辑按钮 */
+.card-edit-btn {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: all 0.18s ease;
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+.card-edit-btn:hover {
+  background: color-mix(in srgb, var(--link-color) 10%, transparent);
   color: var(--link-color);
 }
 
 /* ==================== 响应式设计 ==================== */
 @media (max-width: 1200px) {
   .projects-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   }
 }
 
 @media (max-width: 768px) {
-  .header-container {
-    padding: 16px 20px;
+  .tools-hero {
+    padding: 32px 20px 28px;
   }
 
-  .header-content {
+  .hero-inner {
     flex-direction: column;
-    gap: 16px;
+    gap: 20px;
+    align-items: flex-start;
   }
 
-  .header-right {
+  .hero-search {
     flex: 1;
     width: 100%;
   }
 
-  .logo-icon {
-    width: 40px;
-    height: 40px;
-    font-size: 28px;
-    border-radius: 10px;
+  .hero-icon-wrap {
+    width: 52px;
+    height: 52px;
+    font-size: 32px;
+    border-radius: 13px;
   }
 
-  .logo-title {
-    font-size: 20px;
+  .hero-title {
+    font-size: 22px;
   }
 
-  .logo-subtitle {
+  .hero-subtitle {
     font-size: 13px;
-  }
-
-  .categories-bar {
-    top: 120px;
-  }
-
-  .categories-container {
-    padding: 0 20px;
-    gap: 24px;
   }
 
   .tools-main {
@@ -621,108 +686,54 @@ onMounted(async () => {
   }
 
   .projects-grid {
-    gap: 20px;
+    grid-template-columns: 1fr;
+    gap: 16px;
   }
 
   .project-header {
-    padding: 20px;
+    padding: 20px 20px 16px;
   }
 
-  .project-icon-wrapper {
+  .project-avatar {
     width: 48px;
     height: 48px;
+    border-radius: 12px;
   }
 
-  .project-icon {
-    font-size: 28px;
-  }
-
-  .project-name {
-    font-size: 18px;
-  }
-
-  .project-description {
-    font-size: 13px;
-  }
-
-  .tools-list {
-    padding: 16px;
-  }
-
-  .tool-item {
-    padding: 14px;
-  }
-
-  .tool-icon-wrapper {
-    width: 36px;
-    height: 36px;
-  }
-
-  .tool-icon {
-    font-size: 20px;
-  }
-
-  .tool-name {
-    font-size: 14px;
-  }
-
-  .tool-description {
-    font-size: 12px;
-  }
-}
-
-@media (max-width: 480px) {
-  .header-container {
-    padding: 12px 16px;
-  }
-
-  .logo-wrapper {
-    gap: 12px;
-  }
-
-  .logo-icon {
-    width: 36px;
-    height: 36px;
-    font-size: 24px;
-  }
-
-  .logo-title {
-    font-size: 18px;
-  }
-
-  .tools-main {
-    padding: 20px 16px;
-  }
-
-  .project-header {
-    padding: 16px;
-    flex-direction: column;
-  }
-
-  .project-icon-wrapper {
-    width: 44px;
-    height: 44px;
-  }
-
-  .project-icon {
-    font-size: 24px;
+  .project-avatar-text {
+    font-size: 16px;
   }
 
   .project-name {
     font-size: 16px;
   }
+}
+
+@media (max-width: 480px) {
+  .tools-hero {
+    padding: 24px 16px 22px;
+  }
+
+  .hero-text {
+    gap: 12px;
+  }
+
+  .hero-icon-wrap {
+    width: 44px;
+    height: 44px;
+    font-size: 26px;
+  }
+
+  .hero-title {
+    font-size: 19px;
+  }
+
+  .tools-main {
+    padding: 16px;
+  }
 
   .tools-list {
-    padding: 12px;
-  }
-
-  .tool-item {
-    padding: 12px;
-    margin-bottom: 10px;
-  }
-
-  .tool-item-left {
-    gap: 10px;
+    padding: 0 12px 12px;
   }
 }
 </style>

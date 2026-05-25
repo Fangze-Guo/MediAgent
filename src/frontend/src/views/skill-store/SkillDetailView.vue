@@ -173,13 +173,13 @@ const loadSkillDetail = async () => {
 // 返回技能仓库（保留 project_id）
 const goBack = () => {
   const query = projectId.value ? { project_id: projectId.value } : {}
-  router.push({ path: '/skill-store', query })
+  router.push({ path: '/skill-repository', query })
 }
 
 // 跳转到其他技能（保留 project_id）
 const goToSkill = (id: string) => {
   const query = projectId.value ? { project_id: projectId.value } : {}
-  router.push({ path: `/skill-store/${id}`, query })
+  router.push({ path: `/skill-repository/${id}`, query })
 }
 
 // 监听路由变化，重新加载数据

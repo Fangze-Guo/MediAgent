@@ -101,10 +101,17 @@ class AgentMapper:
             )
         return dict(row)
 
-    async def list_skills(self) -> List[dict]:
+    async def list_skills(self, search: Optional[str] = None) -> List[dict]:
         pool = await self._get_pool()
         async with pool.acquire() as conn:
-            rows = await conn.fetch("SELECT * FROM global_skills ORDER BY name")
+            if search:
+                pattern = f"%{search}%"
+                rows = await conn.fetch(
+                    "SELECT * FROM global_skills WHERE name ILIKE $1 OR description ILIKE $1 ORDER BY name",
+                    pattern,
+                )
+            else:
+                rows = await conn.fetch("SELECT * FROM global_skills ORDER BY name")
         return [dict(r) for r in rows]
 
     async def get_skill_by_slug(self, slug: str) -> Optional[dict]:

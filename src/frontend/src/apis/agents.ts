@@ -1,7 +1,7 @@
 /**
  * 临床智能体管理 API
  */
-import { get, post, del } from '@/utils/request'
+import { get, post, put, del } from '@/utils/request'
 
 interface BaseResponse<T> {
   code: number
@@ -39,6 +39,28 @@ export async function listClinicalAgents(): Promise<BaseResponse<ClinicalAgent[]
  */
 export async function createClinicalAgent(params: CreateAgentParams): Promise<BaseResponse<ClinicalAgent>> {
   const response = await post<BaseResponse<ClinicalAgent>>('/clinical-agents/create', params)
+  return response.data
+}
+
+/**
+ * 获取单个临床智能体详情
+ */
+export async function getAgent(agentId: string): Promise<BaseResponse<ClinicalAgent>> {
+  const response = await get<BaseResponse<ClinicalAgent>>(`/clinical-agents/${agentId}`)
+  return response.data
+}
+
+export interface UpdateAgentParams {
+  name?: string
+  description?: string
+  system_prompt?: string
+}
+
+/**
+ * 更新临床智能体
+ */
+export async function updateAgent(agentId: string, params: UpdateAgentParams): Promise<BaseResponse<ClinicalAgent>> {
+  const response = await put<BaseResponse<ClinicalAgent>>(`/clinical-agents/${agentId}`, params)
   return response.data
 }
 

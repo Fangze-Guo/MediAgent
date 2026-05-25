@@ -229,7 +229,12 @@ const items = computed(() =>[
     label: t('components_Sidebar.clinicalTools'),
   },
   {
-    key: 'skill-store',
+    key: 'knowledge-base',
+    icon: () => h(DatabaseOutlined),
+    label: t('components_Sidebar.knowledgeBase'),
+  },
+  {
+    key: 'skill-repository',
     icon: () => h(AppstoreOutlined),
     label: t('components_Sidebar.skillStore'),
   },
@@ -258,8 +263,8 @@ const selectedKeys = computed(() => {
     return []
   }
 
-  if (path === '/skill-store' || path.startsWith('/skill-store/')) {
-    return ['skill-store']
+  if (path === '/skill-repository' || path.startsWith('/skill-repository/')) {
+    return ['skill-repository']
   }
 
   if (path === '/files') {
@@ -273,8 +278,13 @@ const selectedKeys = computed(() => {
   // 临床工具相关页面都高亮"临床工具"菜单
   if (path === '/clinical-tools' ||
       path.startsWith('/nice-bcx-') ||
-      path.startsWith('/knowledge-base/')) {
+      path.startsWith('/clinical-agent/')) {
     return ['clinical-tools']
+  }
+
+
+  if (path === '/knowledge-base' || path.startsWith('/knowledge-base/')) {
+    return ['knowledge-base']
   }
 
   if (path === '/') {
@@ -299,9 +309,12 @@ const handleMenuClick: MenuProps['onClick'] = ({key}) => {
   } else if (key === 'clinical-tools') {
     // 跳转到临床工具主页面
     router.push('/clinical-tools')
-  } else if (key === 'skill-store') {
+  } else if (key === 'knowledge-base') {
+    // 跳转到知识库页面
+    router.push('/knowledge-base')
+  } else if (key === 'skill-repository') {
     // 跳转到技能仓库页面
-    router.push('/skill-store')
+    router.push('/skill-repository')
   } else if (key === 'model-config') {
     // 跳转到模型配置页面
     router.push('/model-config')

@@ -50,6 +50,14 @@ apiClient.interceptors.response.use(
 // 从统一响应体中提取 data
 const unwrap = <T>(response: { data: { data: T } }): T => response.data.data
 
+export interface SearchResult {
+  content: string
+  score: number
+  doc_id?: number
+  file_name?: string
+  chunk_index?: number
+}
+
 export const knowledgeBaseApi = {
   // 获取知识库列表
   getKnowledgeBases: async (): Promise<KnowledgeBase[]> => {
@@ -110,9 +118,9 @@ export const knowledgeBaseApi = {
     return unwrap(await apiClient.get(`/knowledge-base/${kbId}/documents/${docId}/preview`))
   },
 
-  // 获取文档详情
-  getDocument: async (kbId: number, docId: number): Promise<Document> => {
-    return unwrap(await apiClient.get(`/knowledge-base/${kbId}/documents/${docId}`))
+  // 语义检索知识库（向量相似度搜索）
+  searchKnowledgeBase: async (kbId: number, query: string, topK: number = 5): Promise<SearchResult[]> => {
+    return unwrap(await apiClient.post(`/knowledge-base/${kbId}/search`, { query, top_k: topK }))
   },
 
   // 触发文档 embedding（Analyze）
