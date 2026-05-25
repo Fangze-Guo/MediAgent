@@ -3,7 +3,7 @@
     <a-spin v-if="loading" />
     <div v-else-if="fileTree.length === 0" class="empty-state">
       <InboxOutlined style="font-size: 32px; color: #ccc" />
-      <p>暂无文件</p>
+      <p>{{ t('components_GitHubStyleFileList.noFiles') }}</p>
     </div>
     <div v-else class="file-list-container">
       <!-- 文件列表表格 -->
@@ -49,14 +49,14 @@
           </div>
           <a-button size="small" @click="copyContent">
             <CopyOutlined />
-            复制
+            {{ t('components_GitHubStyleFileList.copy') }}
           </a-button>
         </div>
         <div class="viewer-body">
           <a-spin v-if="loadingContent" />
           <div v-else-if="fileContent?.is_binary" class="binary-file">
             <WarningOutlined style="font-size: 32px; color: #faad14" />
-            <p>这是一个二进制文件，无法预览</p>
+            <p>{{ t('components_GitHubStyleFileList.binaryFile') }}</p>
           </div>
           <pre v-else class="code-content"><code :class="getLanguageClass(selectedFile.name)">{{ fileContent?.content }}</code></pre>
         </div>
@@ -67,6 +67,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { message } from 'ant-design-vue'
 import {
   FolderFilled,
@@ -78,6 +79,8 @@ import {
   WarningOutlined
 } from '@ant-design/icons-vue'
 import { getSkillFiles, getSkillFileContent, type FileTreeNode, type FileContent } from '@/apis/skills'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   skillId: string
@@ -123,7 +126,7 @@ const loadFileTree = async () => {
     fileTree.value = files
   } catch (error) {
     console.error('加载文件树失败', error)
-    message.error('加载文件树失败')
+    message.error(t('components_GitHubStyleFileList.loadTreeFailed'))
   } finally {
     loading.value = false
   }
@@ -153,7 +156,7 @@ const loadFileContent = async (path: string) => {
     fileContent.value = content
   } catch (error) {
     console.error('加载文件内容失败', error)
-    message.error('加载文件内容失败')
+    message.error(t('components_GitHubStyleFileList.loadContentFailed'))
   } finally {
     loadingContent.value = false
   }
@@ -163,7 +166,7 @@ const loadFileContent = async (path: string) => {
 const copyContent = () => {
   if (fileContent.value?.content) {
     navigator.clipboard.writeText(fileContent.value.content)
-    message.success('已复制到剪贴板')
+    message.success(t('components_GitHubStyleFileList.copySuccess'))
   }
 }
 

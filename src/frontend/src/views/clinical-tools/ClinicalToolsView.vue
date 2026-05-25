@@ -12,7 +12,7 @@
             <p class="hero-subtitle">{{ t('views_ClinicalToolsView.headerDescription') }}</p>
           </div>
         </div>
-        <div class="hero-search">
+        <div class="hero-actions">
           <a-input-search
             v-model:value="searchKeyword"
             :placeholder="t('views_ClinicalToolsView.searchPlaceholder')"
@@ -23,6 +23,10 @@
               <SearchOutlined />
             </template>
           </a-input-search>
+          <a-button class="create-agent-btn" @click="createModalVisible = true">
+            <template #icon><PlusOutlined /></template>
+            {{ t('views_ClinicalToolsView.createAgent') }}
+          </a-button>
         </div>
       </div>
     </div>
@@ -66,9 +70,22 @@
                   <h2 class="project-name">{{ project.name }}</h2>
                   <p class="project-description">{{ project.description }}</p>
                 </div>
-                <button class="card-edit-btn" title="编辑智能体" @click.stop="openEditModal(project.id)">
+                <button class="card-edit-btn" :title="t('views_ClinicalToolsView.editBtnTitle')" @click.stop="openEditModal(project.id)">
                   <EditOutlined />
                 </button>
+                <a-popconfirm
+                  v-if="isAdmin"
+                  :title="t('views_ClinicalToolsView.deleteConfirmTitle')"
+                  :ok-text="t('views_ClinicalToolsView.deleteOkText')"
+                  :cancel-text="t('views_ClinicalToolsView.cancelBtn')"
+                  ok-type="danger"
+                  @confirm.stop="handleDeleteAgent(project.id)"
+                  @click.stop
+                >
+                  <button class="card-delete-btn" :title="t('views_ClinicalToolsView.deleteBtnTitle')" @click.stop>
+                    <DeleteOutlined />
+                  </button>
+                </a-popconfirm>
               </div>
 
               <!-- 工具列表 -->
@@ -96,28 +113,56 @@
       </div>
     </div>
   </div>
+  <!-- ==================== 新建智能体 Modal ==================== -->
+  <a-modal
+    v-model:open="createModalVisible"
+    :title="t('views_ClinicalToolsView.createModalTitle')"
+    :confirm-loading="createLoading"
+    :ok-text="t('views_ClinicalToolsView.createBtn')"
+    :cancel-text="t('views_ClinicalToolsView.cancelBtn')"
+    :width="560"
+    @ok="handleCreateSubmit"
+    @cancel="createModalVisible = false"
+  >
+    <a-form layout="vertical" style="margin-top: 8px">
+      <a-form-item :label="t('views_ClinicalToolsView.fieldName')" :required="true">
+        <a-input v-model:value="createForm.name" :placeholder="t('views_ClinicalToolsView.fieldNamePlaceholder')" />
+      </a-form-item>
+      <a-form-item :label="t('views_ClinicalToolsView.fieldDesc')">
+        <a-input v-model:value="createForm.description" :placeholder="t('views_ClinicalToolsView.fieldDescPlaceholder')" />
+      </a-form-item>
+      <a-form-item :label="t('views_ClinicalToolsView.fieldSystemPrompt')">
+        <a-textarea
+          v-model:value="createForm.system_prompt"
+          :placeholder="t('views_ClinicalToolsView.fieldSystemPromptPlaceholder')"
+          :rows="8"
+          :style="{ fontFamily: 'monospace', fontSize: '13px' }"
+        />
+      </a-form-item>
+    </a-form>
+  </a-modal>
   <!-- ==================== 编辑智能体 Modal ==================== -->
   <a-modal
     v-model:open="editModalVisible"
-    title="编辑智能体"
+    :title="t('views_ClinicalToolsView.editModalTitle')"
     :confirm-loading="editLoading"
-    ok-text="保存"
-    cancel-text="取消"
+    :ok-text="t('views_ClinicalToolsView.saveBtn')"
+    :cancel-text="t('views_ClinicalToolsView.cancelBtn')"
     :width="560"
     @ok="handleEditSubmit"
     @cancel="editModalVisible = false"
   >
     <a-form layout="vertical" style="margin-top: 8px">
-      <a-form-item label="名称">
-        <a-input v-model:value="editForm.name" placeholder="智能体名称" />
+      <a-form-item :label="t('views_ClinicalToolsView.fieldName')">
+        <a-input v-model:value="editForm.name" :placeholder="t('views_ClinicalToolsView.fieldNamePlaceholder')" />
       </a-form-item>
-      <a-form-item label="描述">
-        <a-input v-model:value="editForm.description" placeholder="简短描述（可选）" />
+      <a-form-item :label="t('views_ClinicalToolsView.fieldDesc')">
+        <a-input v-model:value="editForm.description" :placeholder="t('views_ClinicalToolsView.fieldDescPlaceholder')" />
       </a-form-item>
-      <a-form-item label="System Prompt">
+      <a-form-item :label="t('views_ClinicalToolsView.fieldSystemPrompt')">
         <a-textarea
           v-model:value="editForm.system_prompt"
-          placeholder="输入系统提示词"
+          :placeholder="t('views_ClinicalToolsView.fieldSystemPromptEditPlaceholder')"
           :rows="8"
           :style="{ fontFamily: 'monospace', fontSize: '13px' }"
         />
@@ -131,12 +176,15 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { message } from 'ant-design-vue'
-import { SearchOutlined, RightOutlined, InboxOutlined, EditOutlined } from '@ant-design/icons-vue'
+import { SearchOutlined, RightOutlined, InboxOutlined, EditOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import { Icon } from '@iconify/vue'
-import { listClinicalAgents, getAgent, updateAgent, type ClinicalAgent, type UpdateAgentParams } from '@/apis/agents'
+import { listClinicalAgents, createClinicalAgent, getAgent, updateAgent, deleteClinicalAgent, type ClinicalAgent, type UpdateAgentParams, type CreateAgentParams } from '@/apis/agents'
+import { useAuthStore } from '@/store/auth'
 
 const router = useRouter()
 const { t } = useI18n()
+const authStore = useAuthStore()
+const isAdmin = computed(() => authStore.user?.role === 'admin')
 
 // 工具数据接口
 interface Tool {
@@ -184,6 +232,49 @@ const searchKeyword = ref('')
 const loading = ref(false)
 const dynamicAgents = ref<ClinicalAgent[]>([])
 
+// 删除智能体
+const handleDeleteAgent = async (agentId: string) => {
+  try {
+    const res = await deleteClinicalAgent(agentId)
+    if (res.code === 200) {
+      dynamicAgents.value = dynamicAgents.value.filter(a => a.agent_id !== agentId)
+      message.success(t('views_ClinicalToolsView.messages.deleteSuccess'))
+    } else {
+      message.error(res.message || t('views_ClinicalToolsView.messages.deleteFailed'))
+    }
+  } catch {
+    message.error(t('views_ClinicalToolsView.messages.deleteError'))
+  }
+}
+
+// 新建 Modal
+const createModalVisible = ref(false)
+const createLoading = ref(false)
+const createForm = ref<CreateAgentParams>({ name: '', description: '', system_prompt: '' })
+
+const handleCreateSubmit = async () => {
+  if (!createForm.value.name?.trim()) {
+    message.warning(t('views_ClinicalToolsView.messages.nameRequired'))
+    return
+  }
+  createLoading.value = true
+  try {
+    const res = await createClinicalAgent(createForm.value)
+    if (res.code === 200 && res.data) {
+      dynamicAgents.value.unshift(res.data)
+      message.success(t('views_ClinicalToolsView.messages.createSuccess'))
+      createModalVisible.value = false
+      createForm.value = { name: '', description: '', system_prompt: '' }
+    } else {
+      message.error(res.message || t('views_ClinicalToolsView.messages.createFailed'))
+    }
+  } catch {
+    message.error(t('views_ClinicalToolsView.messages.createError'))
+  } finally {
+    createLoading.value = false
+  }
+}
+
 // 编辑 Modal
 const editModalVisible = ref(false)
 const editLoading = ref(false)
@@ -204,7 +295,7 @@ const openEditModal = async (agentId: string) => {
       }
     }
   } catch {
-    message.error('加载智能体信息失败')
+    message.error(t('views_ClinicalToolsView.messages.loadAgentFailed'))
   } finally {
     editLoading.value = false
   }
@@ -212,7 +303,7 @@ const openEditModal = async (agentId: string) => {
 
 const handleEditSubmit = async () => {
   if (!editForm.value.name?.trim()) {
-    message.warning('名称不能为空')
+    message.warning(t('views_ClinicalToolsView.messages.nameRequired'))
     return
   }
   editLoading.value = true
@@ -221,13 +312,13 @@ const handleEditSubmit = async () => {
     if (res.code === 200 && res.data) {
       const idx = dynamicAgents.value.findIndex(a => a.agent_id === editingAgentId.value)
       if (idx !== -1) dynamicAgents.value[idx] = res.data
-      message.success('保存成功')
+      message.success(t('views_ClinicalToolsView.messages.saveSuccess'))
       editModalVisible.value = false
     } else {
-      message.error(res.message || '保存失败')
+      message.error(res.message || t('views_ClinicalToolsView.messages.saveFailed'))
     }
   } catch {
-    message.error('保存失败，请稍后重试')
+    message.error(t('views_ClinicalToolsView.messages.saveError'))
   } finally {
     editLoading.value = false
   }
@@ -244,7 +335,7 @@ const projects = computed<Project[]>(() =>
     tools: [
       {
         id: `${agent.agent_id}-chat`,
-        name: '智能体',
+        name: t('views_ClinicalToolsView.toolAgent'),
         icon: 'carbon:bot',
         iconColor: '#1677ff',
         iconBg: 'rgba(22,119,255,0.1)',
@@ -252,7 +343,7 @@ const projects = computed<Project[]>(() =>
       },
       {
         id: `${agent.agent_id}-skills`,
-        name: 'Skill 管理',
+        name: t('views_ClinicalToolsView.toolSkillManage'),
         icon: 'carbon:tools',
         iconColor: '#a0243e',
         iconBg: 'rgba(160,36,62,0.1)',
@@ -380,44 +471,70 @@ onMounted(async () => {
   line-height: 1.5;
 }
 
-.hero-search {
-  flex: 0 0 400px;
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 500px;
 }
 
-.search-input :deep(.ant-input-affix-wrapper) {
+.hero-actions .search-input {
+  flex: 1;
+}
+
+.create-agent-btn {
+  white-space: nowrap;
+  flex-shrink: 0;
+  height: 40px;
+  padding: 0 20px;
+  font-size: 14px;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #fff;
+  border-radius: 10px;
+}
+
+.create-agent-btn:hover {
+  background: rgba(255, 255, 255, 0.26) !important;
+  border-color: rgba(255, 255, 255, 0.55) !important;
+  color: #fff !important;
+}
+
+.hero-actions .search-input :deep(.ant-input-affix-wrapper) {
   background: rgba(255, 255, 255, 0.12);
   border-color: rgba(255, 255, 255, 0.25);
   border-radius: 10px 0 0 10px;
   color: #fff;
 }
 
-.search-input :deep(.ant-input-affix-wrapper:hover),
-.search-input :deep(.ant-input-affix-wrapper-focused) {
+.hero-actions .search-input :deep(.ant-input-affix-wrapper:hover),
+.hero-actions .search-input :deep(.ant-input-affix-wrapper-focused) {
   border-color: rgba(255, 255, 255, 0.55);
   background: rgba(255, 255, 255, 0.18);
 }
 
-.search-input :deep(.ant-input) {
+.hero-actions .search-input :deep(.ant-input) {
   background: transparent;
   color: #fff;
 }
 
-.search-input :deep(.ant-input::placeholder) {
+.hero-actions .search-input :deep(.ant-input::placeholder) {
   color: rgba(255, 255, 255, 0.45);
 }
 
-.search-input :deep(.ant-input-prefix) {
+.hero-actions .search-input :deep(.ant-input-prefix) {
   color: rgba(255, 255, 255, 0.55);
 }
 
-.search-input :deep(.ant-input-search-button) {
+.hero-actions .search-input :deep(.ant-input-search-button) {
   border-radius: 0 10px 10px 0;
   background: rgba(255, 255, 255, 0.2);
   border-color: rgba(255, 255, 255, 0.25);
   color: #fff;
 }
 
-.search-input :deep(.ant-input-search-button:hover) {
+.hero-actions .search-input :deep(.ant-input-search-button:hover) {
   background: rgba(255, 255, 255, 0.32);
   border-color: rgba(255, 255, 255, 0.5);
 }
@@ -643,6 +760,29 @@ onMounted(async () => {
   color: var(--link-color);
 }
 
+.card-delete-btn {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: all 0.18s ease;
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+.card-delete-btn:hover {
+  background: color-mix(in srgb, #ff4d4f 10%, transparent);
+  color: #ff4d4f;
+}
+
 /* ==================== 响应式设计 ==================== */
 @media (max-width: 1200px) {
   .projects-grid {
@@ -661,7 +801,7 @@ onMounted(async () => {
     align-items: flex-start;
   }
 
-  .hero-search {
+  .hero-actions {
     flex: 1;
     width: 100%;
   }

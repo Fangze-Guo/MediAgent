@@ -6,26 +6,26 @@
       <div class="hero-decor hero-decor-2"></div>
       <div class="hero-inner">
         <div class="hero-left">
-          <button class="back-btn" @click="goBack" title="返回">
+          <button class="back-btn" @click="goBack" :title="t('views_ClinicalAgentSkillsView.backTitle')">
             <LeftOutlined />
           </button>
           <div class="hero-text">
             <div class="hero-icon-wrap">⚙️</div>
             <div>
-              <h1 class="hero-title">Skill 管理</h1>
-              <p class="hero-subtitle">{{ agentName }} · 管理该智能体可用的技能</p>
+              <h1 class="hero-title">{{ t('views_ClinicalAgentSkillsView.heroTitle') }}</h1>
+              <p class="hero-subtitle">{{ t('views_ClinicalAgentSkillsView.heroSubtitle', { agentName }) }}</p>
             </div>
           </div>
         </div>
         <div class="hero-stats">
           <div class="stat-item">
             <span class="stat-num">{{ installedIds.length }}</span>
-            <span class="stat-label">已安装</span>
+            <span class="stat-label">{{ t('views_ClinicalAgentSkillsView.statsInstalled') }}</span>
           </div>
           <span class="stat-sep">/</span>
           <div class="stat-item">
             <span class="stat-num">{{ allSkills.length }}</span>
-            <span class="stat-label">全部</span>
+            <span class="stat-label">{{ t('views_ClinicalAgentSkillsView.statsAll') }}</span>
           </div>
         </div>
       </div>
@@ -45,11 +45,12 @@
           >
             {{ tab.label }}
             <span v-if="tab.key === 'installed'" class="tab-badge">{{ installedIds.length }}</span>
+            <span v-if="tab.key === 'not-installed'" class="tab-badge tab-badge--gray">{{ notInstalledCount }}</span>
           </button>
         </div>
         <a-input-search
           v-model:value="searchKeyword"
-          placeholder="搜索 Skill 名称或描述"
+          :placeholder="t('views_ClinicalAgentSkillsView.searchPlaceholder')"
           class="skill-search"
           allow-clear
         />
@@ -58,14 +59,14 @@
       <!-- 加载态 -->
       <div v-if="loading" class="state-center">
         <a-spin size="large" />
-        <p class="state-text">加载中...</p>
+        <p class="state-text">{{ t('views_ClinicalAgentSkillsView.loading') }}</p>
       </div>
 
       <!-- 空态 -->
       <div v-else-if="filteredSkills.length === 0" class="state-center">
         <InboxOutlined class="state-icon" />
-        <p class="state-title">{{ activeTab === 'installed' ? '该智能体尚未安装任何 Skill' : '未找到匹配的 Skill' }}</p>
-        <p class="state-hint">{{ activeTab === 'installed' ? '从「全部」标签页浏览并安装' : '尝试调整搜索条件' }}</p>
+        <p class="state-title">{{ emptyTitle }}</p>
+        <p class="state-hint">{{ emptyHint }}</p>
       </div>
 
       <!-- Skill 网格 -->
@@ -88,7 +89,7 @@
             <div class="card-badges">
               <span class="type-badge">{{ skill.type }}</span>
               <span v-if="isInstalled(skill.id)" class="installed-badge">
-                <CheckCircleFilled /> 已安装
+                <CheckCircleFilled /> {{ t('views_ClinicalAgentSkillsView.installedBadge') }}
               </span>
             </div>
           </div>
@@ -111,14 +112,14 @@
               danger
               :loading="operatingId === skill.id"
               @click.stop="handleUninstall(skill)"
-            >卸载</a-button>
+            >{{ t('views_ClinicalAgentSkillsView.uninstallBtn') }}</a-button>
             <a-button
               v-else
               size="small"
               type="primary"
               :loading="operatingId === skill.id"
               @click.stop="handleInstall(skill)"
-            >安装</a-button>
+            >{{ t('views_ClinicalAgentSkillsView.installBtn') }}</a-button>
           </div>
         </div>
       </div>
@@ -130,6 +131,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { message } from 'ant-design-vue'
 import {
   LeftOutlined,
@@ -144,8 +146,9 @@ import { getSkillIcon, isSvgIcon } from '@/utils/skillIcon'
 const route = useRoute()
 const router = useRouter()
 
+const { t } = useI18n()
 const agentId = computed(() => route.params.agentId as string)
-const agentName = computed(() => (route.query.name as string) || '智能体')
+const agentName = computed(() => (route.query.name as string) || t('views_ClinicalAgentSkillsView.heroTitle'))
 
 // ==================== 状态 ====================
 const loading = ref(false)
@@ -153,12 +156,13 @@ const allSkills = ref<SkillInfo[]>([])
 const installedIds = ref<string[]>([])
 const operatingId = ref<string | null>(null)
 const searchKeyword = ref('')
-const activeTab = ref<'all' | 'installed'>('all')
+const activeTab = ref<'all' | 'installed' | 'not-installed'>('all')
 
-const tabs: { key: 'all' | 'installed'; label: string }[] = [
-  { key: 'all', label: '全部 Skill' },
-  { key: 'installed', label: '已安装' },
-]
+const tabs = computed(() => [
+  { key: 'all' as const, label: t('views_ClinicalAgentSkillsView.tabAll') },
+  { key: 'installed' as const, label: t('views_ClinicalAgentSkillsView.tabInstalled') },
+  { key: 'not-installed' as const, label: t('views_ClinicalAgentSkillsView.tabNotInstalled') },
+])
 
 // ==================== 计算 ====================
 const isInstalled = (skillId: string) => installedIds.value.includes(skillId)
@@ -187,8 +191,27 @@ const installedSkillsList = computed<SkillInfo[]>(() =>
   })
 )
 
+const notInstalledCount = computed(() =>
+  allSkills.value.filter(s => !isInstalled(s.id)).length
+)
+
+const emptyTitle = computed(() => {
+  if (activeTab.value === 'installed') return t('views_ClinicalAgentSkillsView.emptyTitleInstalled')
+  if (activeTab.value === 'not-installed') return t('views_ClinicalAgentSkillsView.emptyTitleNotInstalled')
+  return t('views_ClinicalAgentSkillsView.emptyTitleAll')
+})
+
+const emptyHint = computed(() => {
+  if (activeTab.value === 'installed') return t('views_ClinicalAgentSkillsView.emptyHintInstalled')
+  if (activeTab.value === 'not-installed') return t('views_ClinicalAgentSkillsView.emptyHintNotInstalled')
+  return t('views_ClinicalAgentSkillsView.emptyHintAll')
+})
+
 const filteredSkills = computed(() => {
-  const base = activeTab.value === 'installed' ? installedSkillsList.value : allSkills.value
+  let base: SkillInfo[]
+  if (activeTab.value === 'installed') base = installedSkillsList.value
+  else if (activeTab.value === 'not-installed') base = allSkills.value.filter(s => !isInstalled(s.id))
+  else base = allSkills.value
   const kw = searchKeyword.value.toLowerCase().trim()
   if (!kw) return base
   return base.filter(s =>
@@ -204,9 +227,9 @@ const handleInstall = async (skill: SkillInfo) => {
   try {
     await installSkill(agentId.value, skill.id)
     installedIds.value.push(skill.id)
-    message.success(`已安装 ${skill.name}`)
+    message.success(t('views_ClinicalAgentSkillsView.messages.installSuccess', { name: skill.name }))
   } catch {
-    message.error(`安装 ${skill.name} 失败`)
+    message.error(t('views_ClinicalAgentSkillsView.messages.installFailed', { name: skill.name }))
   } finally {
     operatingId.value = null
   }
@@ -217,9 +240,9 @@ const handleUninstall = async (skill: SkillInfo) => {
   try {
     await uninstallSkill(agentId.value, skill.id)
     installedIds.value = installedIds.value.filter(id => id !== skill.id)
-    message.success(`已卸载 ${skill.name}`)
+    message.success(t('views_ClinicalAgentSkillsView.messages.uninstallSuccess', { name: skill.name }))
   } catch {
-    message.error(`卸载 ${skill.name} 失败`)
+    message.error(t('views_ClinicalAgentSkillsView.messages.uninstallFailed', { name: skill.name }))
   } finally {
     operatingId.value = null
   }
@@ -240,7 +263,7 @@ onMounted(async () => {
       installedIds.value = installed.data
     }
   } catch {
-    message.error('加载失败，请稍后重试')
+    message.error(t('views_ClinicalAgentSkillsView.messages.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -465,6 +488,10 @@ onMounted(async () => {
   min-width: 18px;
   text-align: center;
   line-height: 18px;
+}
+
+.tab-badge--gray {
+  background: var(--text-tertiary);
 }
 
 .skill-search {
