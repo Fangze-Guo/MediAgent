@@ -177,6 +177,7 @@
                 :model="model"
                 :category="categories[model.category]"
                 :provider="providers[model.provider]"
+                :toggle-loading="!!toggleLoading[model.id]"
                 @edit="handleEditModel"
                 @delete="handleDeleteModel"
                 @toggle="handleToggleModel"
@@ -266,7 +267,7 @@
             <template v-else-if="column.key === 'status'">
               <a-switch
                 :checked="record.enabled"
-                @change="() => handleToggleModel(record)"
+                @change="(checked) => handleToggleModel(record, checked)"
                 :loading="toggleLoading[record.id]"
               />
             </template>
@@ -332,6 +333,8 @@ import {
 import ModelCard from '@/components/model/ModelCard.vue'
 import ModelFormModal from '@/components/model/ModelFormModal.vue'
 import { getCategoryColor, getProviderColor } from '@/utils/colors'
+
+const { t } = useI18n()
 
 const _API_BASE = 'http://localhost:8000'
 const getAvatarUrl = (avatar?: string) => {
@@ -403,7 +406,6 @@ const filteredModels = computed(() => {
 
 // 表格列配置
 const tableColumns = computed(() => {
-  const { t } = useI18n()
   return [
     {
       title: t('model.view.table.modelName'),
@@ -553,14 +555,16 @@ const handleDeleteModel = (model: ModelConfig) => {
 /**
  * 切换模型状态
  */
-const handleToggleModel = async (model: ModelConfig) => {
+const handleToggleModel = async (model: ModelConfig, nextEnabled: boolean) => {
+  const targetModel = models.value.find(item => item.id === model.id)
+  if (!targetModel || toggleLoading[model.id]) return
+
   try {
     toggleLoading[model.id] = true
+    targetModel.enabled = nextEnabled
     await toggleModelStatus(model.id)
-    message.success(`模型已${model.enabled ? '禁用' : '启用'}`)
-    await loadModels()
   } catch (error) {
-    message.error('切换模型状态失败')
+    targetModel.enabled = !nextEnabled
     console.error('Toggle model status error:', error)
   } finally {
     toggleLoading[model.id] = false
@@ -571,7 +575,6 @@ const handleToggleModel = async (model: ModelConfig) => {
  * 表单提交处理
  */
 const handleFormSubmit = async (formData: any) => {
-  const { t } = useI18n()
   try {
     if (editingModel.value) {
       // 更新模型

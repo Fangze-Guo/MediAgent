@@ -648,6 +648,18 @@ const getConversationAvatarStyle = (conversation: any) => {
   display: flex;
   align-items: center;
   gap: 12px;
+  border-radius: 0;
+  transition: background 0.15s, transform 0.1s;
+  user-select: none;
+}
+
+.sidebar-header:hover {
+  background: var(--hover-bg);
+}
+
+.sidebar-header:active {
+  background: color-mix(in srgb, var(--link-color, #1890ff) 10%, transparent);
+  transform: scale(0.98);
 }
 
 /* Logo 图片 */

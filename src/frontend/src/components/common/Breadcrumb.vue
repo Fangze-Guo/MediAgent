@@ -28,7 +28,6 @@ const routeI18nMap: Record<string, string> = {
   'Home': 'breadcrumb.home',
   'Conversation': 'breadcrumb.conversation',
   'files': 'breadcrumb.files',
-  'Settings': 'breadcrumb.settings',
   'SkillStore': 'breadcrumb.skillStore',
   'SkillDetail': 'breadcrumb.skillDetail',
   'ModelConfig': 'breadcrumb.modelConfig',

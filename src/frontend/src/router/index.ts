@@ -49,15 +49,6 @@ const routes: RouteRecordRaw[] = [
         }
     },
     {
-        path: '/settings',
-        name: 'Settings',
-        component: () => import('@/views/settings/SettingsView.vue'),
-        meta: {
-            title: 'MedWiser - Settings',
-            requiresAuth: true
-        }
-    },
-    {
         path: '/skill-repository',
         name: 'SkillStore',
         component: () => import('@/views/skill-store/SkillStoreView.vue'),

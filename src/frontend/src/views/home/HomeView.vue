@@ -11,6 +11,7 @@
         v-for="card in navCards"
         :key="card.path"
         class="nav-card"
+        :style="{ '--card-accent': card.color }"
         @click="router.push(card.path)"
       >
         <div class="card-icon">{{ card.icon }}</div>
@@ -38,30 +39,35 @@ const navCards = computed(() => [
     icon: '💬',
     title: t('views_HomeView.nav.chat'),
     desc: t('views_HomeView.nav.chatDesc'),
+    color: '#3b82f6',
   },
   {
     path: '/files',
     icon: '📁',
     title: t('views_HomeView.nav.files'),
     desc: t('views_HomeView.nav.filesDesc'),
+    color: '#10b981',
   },
   {
     path: '/clinical-tools',
     icon: '🏥',
     title: t('views_HomeView.nav.clinicalTools'),
     desc: t('views_HomeView.nav.clinicalToolsDesc'),
+    color: '#f59e0b',
   },
   {
     path: '/knowledge-base',
     icon: '📚',
     title: t('views_HomeView.nav.knowledgeBase'),
     desc: t('views_HomeView.nav.knowledgeBaseDesc'),
+    color: '#8b5cf6',
   },
   {
     path: '/skill-repository',
     icon: '🧩',
     title: t('views_HomeView.nav.skillStore'),
     desc: t('views_HomeView.nav.skillStoreDesc'),
+    color: '#ec4899',
   },
 ])
 </script>
@@ -73,7 +79,7 @@ const navCards = computed(() => [
   display: flex;
   flex-direction: column;
   align-items: center;
-  background: var(--bg-primary);
+  background: var(--bg-secondary);
   overflow-y: auto;
   padding: 48px 24px 40px;
   gap: 40px;
@@ -122,19 +128,32 @@ const navCards = computed(() => [
   gap: 14px;
   padding: 16px 18px;
   border-radius: 12px;
-  border: 1px solid var(--border-color, #e5e7eb);
-  background: var(--bg-primary);
+  border: 1px solid color-mix(in srgb, var(--card-accent) 25%, transparent);
+  background: color-mix(in srgb, var(--card-accent) 8%, var(--bg-primary));
   cursor: pointer;
-  transition: box-shadow 0.15s, border-color 0.15s;
+  transition: box-shadow 0.15s, border-color 0.15s, transform 0.1s, background 0.15s;
+  user-select: none;
 }
 .nav-card:hover {
-  border-color: var(--link-color, #1890ff);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.07);
+  border-color: color-mix(in srgb, var(--card-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--card-accent) 13%, var(--bg-primary));
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--card-accent) 20%, transparent);
+}
+.nav-card:active {
+  transform: scale(0.975);
+  background: color-mix(in srgb, var(--card-accent) 18%, var(--bg-primary));
+  border-color: color-mix(in srgb, var(--card-accent) 70%, transparent);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--card-accent) 25%, transparent);
 }
 .card-icon {
   font-size: 22px;
   width: 36px;
-  text-align: center;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--card-accent) 15%, transparent);
   flex-shrink: 0;
 }
 .card-body {

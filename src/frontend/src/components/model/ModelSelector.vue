@@ -6,70 +6,29 @@
       v-model:open="dropdownVisible"
     >
       <div class="model-select-trigger" @click="handleTriggerClick" :class="{ 'loading': loading }">
-        <div class="model-icon">
-          <RobotOutlined v-if="!loading" />
-          <a-spin v-else size="small" />
-        </div>
-        <div class="model-info">
-          <span class="model-name">{{ selectedModelInfo.name }}</span>
-          <span class="model-provider">{{ selectedModelInfo.provider }}</span>
-          <span v-if="error" class="error-text">{{ error }}</span>
-        </div>
-        <DownOutlined class="dropdown-icon" :class="{ 'rotated': dropdownVisible }" />
+        <a-spin v-if="loading" size="small" class="trigger-spin" />
+        <span class="trigger-name">{{ selectedModelInfo.name }}</span>
+        <DownOutlined class="trigger-chevron" :class="{ 'rotated': dropdownVisible }" />
       </div>
       
       <template #overlay>
         <div class="model-dropdown">
-          <div class="dropdown-header">
-            <span class="header-text">{{ $t('model.selector.title') }}</span>
-            <a-button type="link" size="small" @click="showModelConfig">
-              <SettingOutlined />
-            </a-button>
-          </div>
-          
           <div class="model-groups">
-            <div 
-              v-for="provider in modelProviders" 
+            <div
+              v-for="provider in modelProviders"
               :key="provider.name"
               class="model-group"
             >
-              <div class="provider-header">
-                <span class="provider-name">{{ provider.name }}</span>
-                <span class="provider-count">{{ $t('model.selector.modelCount', { count: provider.models.length }) }}</span>
-              </div>
-              
-              <div class="model-list">
-                <div
-                  v-for="model in provider.models"
-                  :key="model.id"
-                  class="model-option"
-                  :class="{ 'selected': model.id === modelId }"
-                  @click="selectModel(model)"
-                >
-                  <div class="model-option-content">
-                    <div class="model-check">
-                      <a-radio :checked="model.id === modelId" />
-                    </div>
-                    <div class="model-details">
-                      <div class="model-name">{{ model.name }}</div>
-                      <div class="model-description">{{ model.description }}</div>
-                      <div class="model-tags">
-                        <span 
-                          v-for="tag in (model.tags || [])" 
-                          :key="tag"
-                          class="model-tag"
-                          :class="getTagClass(tag)"
-                        >
-                          {{ tag }}
-                        </span>
-                      </div>
-                    </div>
-                    <div class="model-status" :class="model.status">
-                      <div class="status-dot"></div>
-                      <span class="status-text">{{ getStatusText(model.status || 'online') }}</span>
-                    </div>
-                  </div>
-                </div>
+              <div class="provider-label">{{ provider.name }}</div>
+              <div
+                v-for="model in provider.models"
+                :key="model.id"
+                class="model-option"
+                :class="{ 'selected': model.id === modelId }"
+                @click="selectModel(model)"
+              >
+                <span class="model-name">{{ model.name }}</span>
+                <CheckOutlined v-if="model.id === modelId" class="model-check-icon" />
               </div>
             </div>
           </div>
@@ -81,9 +40,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { useI18n } from 'vue-i18n'
-import { RobotOutlined, DownOutlined, SettingOutlined } from '@ant-design/icons-vue'
+import { DownOutlined, CheckOutlined } from '@ant-design/icons-vue'
 import { 
   getAvailableModels, 
   selectModel as selectUserModel,
@@ -283,44 +240,6 @@ const selectModel = async (model: ModelInfo) => {
   }
 }
 
-const router = useRouter()
-
-const showModelConfig = () => {
-  // 跳转到设置页面的模型配置部分
-  router.push('/settings')
-}
-
-
-const getTagClass = (tag: string) => {
-  const { t } = useI18n()
-  const classMap: Record<string, string> = {
-    [t('model.capabilities.dailyChat')]: 'tag-blue',
-    [t('model.capabilities.textCreation')]: 'tag-green', 
-    [t('model.capabilities.codeGeneration')]: 'tag-orange',
-    [t('model.capabilities.mathProblems')]: 'tag-red',
-    [t('model.capabilities.logicalReasoning')]: 'tag-cyan',
-    [t('model.capabilities.complexAnalysis')]: 'tag-magenta',
-    // 兼容原有的中文标签
-    '日常对话': 'tag-blue',
-    '文本创作': 'tag-green',
-    '代码生成': 'tag-orange',
-    '数学问题': 'tag-red',
-    '逻辑推理': 'tag-cyan',
-    '复杂分析': 'tag-magenta',
-  }
-  return classMap[tag] || 'tag-default'
-}
-
-const getStatusText = (status: string) => {
-  const { t } = useI18n()
-  const statusMap: Record<string, string> = {
-    'online': t('model.status.online'),
-    'maintenance': t('model.status.maintenance'),
-    'offline': t('model.status.offline')
-  }
-  return statusMap[status] || status
-}
-
 // 监听props变化
 watch(() => props.value, (newValue) => {
   modelId.value = newValue
@@ -387,221 +306,106 @@ defineExpose({
 
 <style scoped>
 .model-select-trigger {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  padding: 8px 12px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 20px;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
   cursor: pointer;
-  transition: all 0.3s ease;
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
-  min-width: 180px;
+  transition: background 0.15s ease;
+  user-select: none;
 }
 
 .model-select-trigger:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  background: var(--hover-bg, rgba(255,255,255,0.08));
 }
 
 .model-select-trigger.loading {
-  opacity: 0.7;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
-.model-icon {
-  margin-right: 8px;
-}
-
-.model-icon .anticon {
-  color: white;
-  font-size: 16px;
-}
-
-.model-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  margin-right: 8px;
-}
-
-.model-name {
-  color: white;
-  font-weight: 600;
-  font-size: 13px;
-  line-height: 1.2;
-}
-
-.model-provider {
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 11px;
-  line-height: 1;
-}
-
-.error-text {
-  color: #ff4d4f;
-  font-size: 10px;
-  line-height: 1;
-  margin-top: 2px;
-}
-
-.dropdown-icon {
-  color: white;
+.trigger-spin {
   font-size: 12px;
-  transition: transform 0.3s ease;
 }
 
-.rotated {
+.trigger-name {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.trigger-chevron {
+  color: var(--text-tertiary, rgba(255,255,255,0.35));
+  font-size: 10px;
+  transition: transform 0.2s ease;
+}
+
+.trigger-chevron.rotated {
   transform: rotate(180deg);
 }
 
 .model-dropdown {
   background: var(--bg-secondary);
-  border-radius: 12px;
+  border-radius: 8px;
   border: 1px solid var(--border-color);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
   overflow: hidden;
-  min-width: 320px;
-  max-width: 480px;
-}
-
-.dropdown-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  background: var(--bg-tertiary);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.header-text {
-  font-weight: 600;
-  color: var(--text-primary);
-  font-size: 14px;
+  min-width: 200px;
+  max-width: 300px;
 }
 
 .model-groups {
-  max-height: 400px;
+  padding: 8px 0;
+  max-height: 360px;
   overflow-y: auto;
 }
 
-.model-group {
-  border-bottom: 1px solid var(--border-color);
+.model-group + .model-group {
+  margin-top: 4px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 4px;
 }
 
-.model-group:last-child {
-  border-bottom: none;
-}
-
-.provider-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 20px 8px;
-  background: var(--bg-tertiary);
-}
-
-.provider-name {
-  font-weight: 500;
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-
-.provider-count {
+.provider-label {
+  padding: 4px 14px 2px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
   color: var(--text-tertiary);
-  font-size: 11px;
-}
-
-.model-list {
-  padding: 0 20px 16px;
 }
 
 .model-option {
-  margin-bottom: 8px;
-  border-radius: 8px;
-  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 14px;
   cursor: pointer;
+  transition: background 0.12s;
 }
 
 .model-option:hover {
-  background: var(--hover-bg);
+  background: var(--hover-bg, rgba(255,255,255,0.06));
 }
 
-.model-option.selected {
-  background: color-mix(in srgb, var(--link-color) 12%, transparent);
-  border: 1px solid var(--link-color);
+.model-option.selected .model-name {
+  color: var(--link-color, #4da6ff);
+  font-weight: 500;
 }
 
-.model-option-content {
-  display: flex;
-  align-items: center;
-  padding: 12px;
-}
-
-.model-check {
-  margin-right: 12px;
-}
-
-.model-details {
-  flex: 1;
-  margin-right: 12px;
-}
-
-.model-details .model-name {
+.model-name {
+  font-size: 13px;
   color: var(--text-primary);
-  font-weight: 500;
-  font-size: 14px;
-  margin-bottom: 2px;
+  line-height: 1.4;
 }
 
-.model-description {
-  color: var(--text-secondary);
-  font-size: 12px;
-  margin-bottom: 6px;
-}
-
-.model-tags {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.model-tag {
-  padding: 2px 6px;
-  border-radius: 10px;
-  font-size: 10px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.tag-blue    { background: color-mix(in srgb, #1976d2 15%, transparent); color: #4da6ff; }
-.tag-green   { background: color-mix(in srgb, #388e3c 15%, transparent); color: #52c41a; }
-.tag-purple  { background: color-mix(in srgb, #7b1fa2 15%, transparent); color: #b37feb; }
-.tag-orange  { background: color-mix(in srgb, #f57c00 15%, transparent); color: #fa8c16; }
-.tag-red     { background: color-mix(in srgb, #c62828 15%, transparent); color: #ff6b6b; }
-.tag-cyan    { background: color-mix(in srgb, #00acc1 15%, transparent); color: #36cfc9; }
-.tag-magenta { background: color-mix(in srgb, #c2185b 15%, transparent); color: #f759ab; }
-.tag-default { background: var(--bg-tertiary); color: var(--text-secondary); }
-
-.model-status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-
-.status-dot.online { background: #52c41a; }
-.status-dot.maintenance { background: #faad14; }
-.status-dot.offline { background: #ff4d4f; }
-
-.status-text {
+.model-check-icon {
   font-size: 11px;
-  color: var(--text-secondary);
+  color: var(--link-color, #4da6ff);
+  flex-shrink: 0;
 }
 
 /* 滚动条样式 */
@@ -627,17 +431,9 @@ defineExpose({
   .model-dropdown {
     min-width: 280px;
   }
-  
-  .model-select-trigger {
-    min-width: 150px;
-  }
-  
+
   .model-name {
     font-size: 12px;
-  }
-  
-  .model-provider {
-    font-size: 10px;
   }
 }
 </style>

@@ -19,7 +19,7 @@ class ConfigProvider:
     并生成"只读快照"供运行态重建使用
     
     新架构：
-    - user_config.json: {"current_model_id": "xxx", "models": ["id1", "id2"]}
+    - user_config.json: {"current_model_id": "xxx"}
     - main_model_config.json: 包含所有模型的详细信息
     """
 
@@ -39,7 +39,7 @@ class ConfigProvider:
             if self._path.exists():
                 self._data = json.loads(self._path.read_text("utf-8"))
             else:
-                self._data = {"current_model_id": "", "models": []}
+                self._data = {"current_model_id": ""}
             
             # 加载主配置
             if self._main_config_path.exists():
@@ -58,15 +58,14 @@ class ConfigProvider:
         with self._lock:
             # 重新从磁盘加载最新配置
             self.reload_from_disk()
-            
-            # 检查模型是否在用户选择列表中
-            user_models = self._data.get("models", [])
-            if model_id not in user_models:
-                return False
-            
+
             # 检查模型是否在主配置中存在
             main_models = self._main_data.get("models", {})
-            if model_id not in main_models:
+            target_model = main_models.get(model_id)
+            if not target_model:
+                return False
+
+            if not target_model.get("enabled", True):
                 return False
             
             self._data["current_model_id"] = model_id
@@ -97,51 +96,6 @@ class ConfigProvider:
                 api_key=api_key,
                 base_url=base_url,
             )
-
-    def add_user_model(self, model_id: str) -> bool:
-        """添加模型到用户配置"""
-        with self._lock:
-            self.reload_from_disk()
-            
-            # 检查模型是否在主配置中存在
-            main_models = self._main_data.get("models", {})
-            if model_id not in main_models:
-                return False
-            
-            # 添加到用户配置
-            user_models = self._data.get("models", [])
-            if model_id not in user_models:
-                user_models.append(model_id)
-                self._data["models"] = user_models
-                self._write_to_disk()
-            
-            return True
-
-    def remove_user_model(self, model_id: str) -> bool:
-        """从用户配置中移除模型"""
-        with self._lock:
-            self.reload_from_disk()
-            
-            user_models = self._data.get("models", [])
-            current_model_id = self._data.get("current_model_id")
-            
-            # 不能删除当前使用的模型
-            if current_model_id == model_id:
-                return False
-            
-            if model_id in user_models:
-                user_models.remove(model_id)
-                self._data["models"] = user_models
-                self._write_to_disk()
-                return True
-            
-            return False
-
-    def get_user_models(self) -> list:
-        """获取用户选择的模型ID列表"""
-        with self._lock:
-            self.reload_from_disk()
-            return self._data.get("models", [])
 
     def get_current_model_id(self) -> str:
         """获取当前模型ID"""

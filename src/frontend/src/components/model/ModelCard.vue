@@ -51,7 +51,8 @@
       <div class="model-actions">
         <a-switch 
           :checked="model.enabled" 
-          @change="$emit('toggle', model)"
+          :loading="toggleLoading"
+          @change="(checked) => $emit('toggle', model, checked)"
           size="small"
         />
         <a-dropdown>
@@ -113,8 +114,6 @@
     <div class="model-footer">
       <div class="provider-info">
         <span class="provider-name">{{ provider?.name || model.provider }}</span>
-        <a-tag v-if="model.enabled" color="success" size="small">启用</a-tag>
-        <a-tag v-else color="default" size="small">禁用</a-tag>
       </div>
     </div>
 
@@ -186,6 +185,7 @@ interface Props {
   model: ModelConfig
   category?: ModelCategory
   provider?: ModelProvider
+  toggleLoading?: boolean
 }
 
 defineProps<Props>()
@@ -194,7 +194,7 @@ defineProps<Props>()
 defineEmits<{
   edit: [model: ModelConfig]
   delete: [model: ModelConfig]
-  toggle: [model: ModelConfig]
+  toggle: [model: ModelConfig, enabled: boolean]
 }>()
 
 // ==================== 响应式数据 ====================

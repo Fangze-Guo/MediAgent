@@ -73,47 +73,60 @@ class ModelController(BaseController):
     def _register_routes(self):
         """注册路由"""
 
+        def load_user_config():
+            """加载用户模型选择配置"""
+            import json
+            from pathlib import Path
+
+            current_dir = Path(__file__).parent.parent
+            user_config_path = current_dir / "configs" / "model_configs.json"
+
+            try:
+                with open(user_config_path, 'r', encoding='utf-8') as f:
+                    return json.load(f), user_config_path
+            except FileNotFoundError:
+                return {"current_model_id": ""}, user_config_path
+
+        def save_user_config(config, config_path):
+            """保存用户模型选择配置"""
+            import json
+
+            temp_path = config_path.with_suffix('.tmp')
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                json.dump(config, f, ensure_ascii=False, indent=2)
+            temp_path.replace(config_path)
+
         @self.router.get("/configs", response_model=BaseResponse[ModelConfigsResponse])
         async def getModelConfigs() -> BaseResponse[ModelConfigsResponse]:
-            """获取用户选择的模型配置（从主配置引用）"""
+            """获取所有已启用的模型配置"""
             try:
-                # 加载用户配置和主配置
-                import json
-                from pathlib import Path
-                
-                current_dir = Path(__file__).parent.parent
-                user_config_path = current_dir / "configs" / "model_configs.json"
-                main_config_path = current_dir / "configs" / "main_model_config.json"
-                
-                # 读取用户配置
-                try:
-                    with open(user_config_path, 'r', encoding='utf-8') as f:
-                        user_config = json.load(f)
-                except FileNotFoundError:
-                    user_config = {"current_model_id": None, "models": []}
-                
-                # 读取主配置
-                with open(main_config_path, 'r', encoding='utf-8') as f:
-                    main_config = json.load(f)
-                
-                current_model_id = user_config.get("current_model_id", "")
-                user_model_ids = user_config.get("models", [])
-                
+                main_config, _ = load_main_config()
+                user_config, user_config_path = load_user_config()
                 models_dict = {}
-                for model_id in user_model_ids:
-                    # 从主配置获取模型详情
-                    main_model = main_config.get("models", {}).get(model_id)
-                    if main_model:
-                        models_dict[model_id] = ModelConfigResponse(
-                            id=main_model["id"],
-                            name=main_model["name"],
-                            description=main_model["description"],
-                            provider=main_model["provider"],
-                            base_url=main_model.get("config", {}).get("base_url", ""),
-                            api_key=main_model.get("config", {}).get("api_key", ""),
-                            status="online" if main_model.get("enabled", True) else "offline",
-                            tags=main_model.get("capabilities", [])
-                        )
+                enabled_model_ids = []
+
+                for model_id, main_model in main_config.get("models", {}).items():
+                    if not main_model.get("enabled", True):
+                        continue
+
+                    enabled_model_ids.append(model_id)
+                    models_dict[model_id] = ModelConfigResponse(
+                        id=main_model["id"],
+                        name=main_model["name"],
+                        description=main_model["description"],
+                        provider=main_model["provider"],
+                        base_url=main_model.get("config", {}).get("base_url", ""),
+                        api_key=main_model.get("config", {}).get("api_key", ""),
+                        status="online",
+                        tags=main_model.get("capabilities", [])
+                    )
+
+                current_model_id = user_config.get("current_model_id", "")
+                if current_model_id not in models_dict:
+                    current_model_id = enabled_model_ids[0] if enabled_model_ids else ""
+                    if user_config.get("current_model_id") != current_model_id:
+                        user_config["current_model_id"] = current_model_id
+                        save_user_config(user_config, user_config_path)
                 
                 response = ModelConfigsResponse(
                     current_model_id=current_model_id,
@@ -520,7 +533,7 @@ class ModelController(BaseController):
                     with open(user_config_path, 'r', encoding='utf-8') as f:
                         user_config = json.load(f)
                 except FileNotFoundError:
-                    user_config = {"current_model_id": None, "models": []}
+                    user_config = {"current_model_id": ""}
                 
                 current_model_id = user_config.get("current_model_id", "")
                 current_model_config = None
@@ -651,26 +664,13 @@ class ModelController(BaseController):
                     )
                 
                 # 读取用户配置
-                try:
-                    with open(user_config_path, 'r', encoding='utf-8') as f:
-                        user_config = json.load(f)
-                except FileNotFoundError:
-                    user_config = {"current_model_id": None, "models": []}
-                
-                # 添加模型到用户配置（如果不存在）
-                user_models = user_config.get("models", [])
-                if model_id not in user_models:
-                    user_models.append(model_id)
-                    user_config["models"] = user_models
+                user_config, user_config_path = load_user_config()
                 
                 # 设置为当前模型
                 user_config["current_model_id"] = model_id
                 
                 # 保存用户配置
-                temp_path = user_config_path.with_suffix('.tmp')
-                with open(temp_path, 'w', encoding='utf-8') as f:
-                    json.dump(user_config, f, ensure_ascii=False, indent=2)
-                temp_path.replace(user_config_path)
+                save_user_config(user_config, user_config_path)
                 
                 # 🔄 刷新 RuntimeRegistry
                 print(f"🔄 用户选择模型: {model_id}")
@@ -690,4 +690,3 @@ class ModelController(BaseController):
                 raise
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"选择模型失败: {str(e)}")
-
