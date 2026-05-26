@@ -3,7 +3,10 @@
     <!-- Header toggle -->
     <div class="ksb-header" @click="expanded = !expanded">
       <span class="ksb-header-text">Searched knowledge base</span>
-      <span class="ksb-chevron" :class="{ open: expanded }">›</span>
+      <span v-if="items.some(i => i.status === 'running')" class="ksb-running">
+        <span></span><span></span><span></span>
+      </span>
+      <span v-else class="ksb-chevron" :class="{ open: expanded }">›</span>
     </div>
 
     <!-- Each search group -->
@@ -13,14 +16,7 @@
         <div class="ksb-query-row">
           <span class="ksb-icon">📚</span>
           <span class="ksb-query-text">{{ item.query || item.inputSummary }}</span>
-          <template v-if="item.status === 'running'">
-            <span class="ksb-running">
-              <span></span><span></span><span></span>
-            </span>
-          </template>
-          <span v-else-if="item.found !== undefined" class="ksb-count">
-            {{ item.found }} 个片段
-          </span>
+          <span v-if="item.found !== undefined" class="ksb-count">{{ item.found }} 个片段</span>
           <span v-else-if="item.status === 'done'" class="ksb-count">完成</span>
         </div>
 
@@ -28,7 +24,7 @@
         <div v-if="item.status === 'done' && sources?.length && i === items.length - 1" class="ksb-results">
           <div v-for="(s, si) in sources" :key="si" class="ksb-source-item">
             <div class="ksb-source-meta">
-              <span class="ksb-source-icon">📄</span>
+              <span class="ksb-file-icon">{{ getFileEmoji(s.file_name) }}</span>
               <span class="ksb-source-name">{{ s.file_name || s.kb_name }}</span>
               <span class="ksb-source-kb">{{ s.kb_name }}</span>
             </div>
@@ -54,6 +50,15 @@ import type { RagSource } from '@/apis/conversation'
 defineProps<{ items: ToolCallItem[]; sources?: RagSource[] }>()
 
 const expanded = ref(false)
+
+function getFileEmoji(filename?: string): string {
+  if (!filename) return '📄'
+  const ext = filename.toLowerCase()
+  if (ext.endsWith('.pdf')) return '📕'
+  if (ext.endsWith('.xlsx') || ext.endsWith('.xls')) return '📗'
+  if (ext.endsWith('.docx') || ext.endsWith('.doc')) return '📘'
+  return '📄'
+}
 </script>
 
 <style scoped>
@@ -155,7 +160,7 @@ const expanded = ref(false)
   align-items: center;
   gap: 5px;
 }
-.ksb-source-icon { font-size: 12px; flex-shrink: 0; }
+.ksb-file-icon { font-size: 13px; flex-shrink: 0; }
 .ksb-source-name {
   font-size: 12px;
   font-weight: 500;

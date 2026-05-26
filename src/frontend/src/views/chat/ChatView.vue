@@ -91,8 +91,9 @@
                         :item="tc"
                       />
                     </template>
-                    <!-- 流式等待中：空内容 → 显示打字动画 -->
-                    <div v-if="m.role === 'assistant' && !m.typingComplete && !m.content" class="typing-indicator">
+                    <!-- 流式等待中：无内容且无运行中工具调用 → 显示打字动画 -->
+                    <div v-if="m.role === 'assistant' && !m.typingComplete && !m.content
+                      && !(m.toolCalls && m.toolCalls.some(tc => tc.status === 'running'))" class="typing-indicator">
                       <span></span><span></span><span></span>
                     </div>
                     <!-- 助手消息：统一使用 MarkdownRenderer，streaming 仅控制光标 -->
@@ -121,11 +122,7 @@
                       <span class="rag-icon">📚</span>
                       <span>参考来源</span>
                     </div>
-                    <div
-                      v-for="(src, si) in m.sources"
-                      :key="si"
-                      class="rag-source-item"
-                    >
+                    <div v-for="(src, si) in m.sources" :key="si" class="rag-source-item">
                       <span class="rag-source-index">[{{ si + 1 }}]</span>
                       <span class="rag-source-kb">{{ src.kb_name }}</span>
                       <span v-if="src.file_name" class="rag-source-file">· {{ src.file_name }}</span>
@@ -1136,7 +1133,8 @@ const sendMessage = async () => {
 
   // 清空输入框和附件，revoke ObjectURL 释放内存
   inputMessage.value = ''
-  adjustTextareaHeight()
+  // 需在 nextTick 后调用，否则 DOM 未更新 scrollHeight 仍是旧值
+  nextTick(() => adjustTextareaHeight())
   const toRevoke = pendingAttachments.value.filter(a => a.dataUrl.startsWith('blob:'))
   pendingAttachments.value = []
   nextTick(() => toRevoke.forEach(a => URL.revokeObjectURL(a.dataUrl)))
@@ -1746,6 +1744,7 @@ const sendMessage = async () => {
   border-radius: 10px;
   white-space: nowrap;
 }
+.rag-file-icon { font-size: 13px; flex-shrink: 0; }
 
 /* 输入框区域 */
 .input-field {

@@ -3,7 +3,10 @@
     <!-- Header toggle -->
     <div class="wsb-header" @click="expanded = !expanded">
       <span class="wsb-header-text">Searched the web</span>
-      <span class="wsb-chevron" :class="{ open: expanded }">›</span>
+      <span v-if="items.some(i => i.status === 'running')" class="wsb-running">
+        <span></span><span></span><span></span>
+      </span>
+      <span v-else class="wsb-chevron" :class="{ open: expanded }">›</span>
     </div>
 
     <!-- Each search group -->
@@ -13,12 +16,7 @@
         <div class="wsb-query-row">
           <span class="wsb-globe">🌐</span>
           <span class="wsb-query-text">{{ item.query || item.inputSummary }}</span>
-          <template v-if="item.status === 'running'">
-            <span class="wsb-running">
-              <span></span><span></span><span></span>
-            </span>
-          </template>
-          <span v-else-if="item.searchResults?.length" class="wsb-count">
+          <span v-if="item.searchResults?.length" class="wsb-count">
             {{ item.searchResults.length }} results
           </span>
         </div>

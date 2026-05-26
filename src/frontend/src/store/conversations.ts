@@ -217,9 +217,14 @@ export const useConversationsStore = defineStore('conversations', () => {
           .map((a) => a.url)
         const toolCalls = (msg.tool_calls ?? []).map((tc: any) => ({
           name: tc.name,
-          query: tc.query ?? '',
+          displayName: tc.display_name,
+          icon: tc.icon,
+          query: tc.query ?? tc.input_summary ?? '',
+          inputSummary: tc.input_summary ?? tc.query ?? '',
+          outputSummary: tc.output_summary,
           status: 'done' as const,
           found: tc.found,
+          searchResults: tc.search_results,
           expanded: false,
         }))
         return {
@@ -523,9 +528,14 @@ export const useConversationsStore = defineStore('conversations', () => {
                 .map((a) => a.url)
               const toolCalls = (msg.tool_calls ?? []).map((tc: any) => ({
                 name: tc.name,
-                query: tc.query ?? '',
+                displayName: tc.display_name,
+                icon: tc.icon,
+                query: tc.query ?? tc.input_summary ?? '',
+                inputSummary: tc.input_summary ?? tc.query ?? '',
+                outputSummary: tc.output_summary,
                 status: 'done' as const,
                 found: tc.found,
+                searchResults: tc.search_results,
                 expanded: false,
               }))
               return {

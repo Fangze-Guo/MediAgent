@@ -1,20 +1,31 @@
 <template>
-  <div class="tool-call-block" :class="item.status">
+  <div class="tool-call-block" :class="[item.status, { 'no-card': TOOL_NO_ICON.has(item.name) }]">
     <div class="tool-call-header" @click="toggle">
-      <span class="tool-icon">{{ item.icon || toolIcon }}</span>
-      <span class="tool-name">{{ item.displayName || displayName }}</span>
+      <span v-if="!TOOL_NO_ICON.has(item.name)" class="tool-icon">{{ item.icon || toolIcon }}</span>
+      <span class="tool-name">{{ displayName }}</span>
       <span v-if="item.status === 'running'" class="dot-wave">
         <span></span><span></span><span></span>
       </span>
       <template v-else-if="item.status === 'error'">
-        <span class="status-badge error">✕</span>
+        <span v-if="!TOOL_NO_ICON.has(item.name)" class="status-badge error">✕</span>
       </template>
       <template v-else>
-        <span class="status-badge done">✓</span>
+        <span v-if="!TOOL_NO_ICON.has(item.name)" class="status-badge done">✓</span>
         <span class="chevron" :class="{ rotated: localExpanded }">›</span>
       </template>
     </div>
-    <div v-if="localExpanded && item.status !== 'running'" class="tool-call-body">
+    <!-- no-card 模式展开内容：时间结果 + ✓ Done，和 WebSearchBlock 一致 -->
+    <div v-if="localExpanded && item.status !== 'running' && TOOL_NO_ICON.has(item.name)" class="nc-body">
+      <div v-if="item.outputSummary" class="nc-result-row">
+        <span class="nc-result-text">{{ item.outputSummary }}</span>
+      </div>
+      <div class="nc-done">
+        <span class="nc-done-icon">✓</span>
+        <span>Done</span>
+      </div>
+    </div>
+    <!-- 普通卡片展开内容 -->
+    <div v-if="localExpanded && item.status !== 'running' && !TOOL_NO_ICON.has(item.name)" class="tool-call-body">
       <div class="tool-call-divider" />
       <div v-if="item.inputSummary || item.query" class="tool-call-row">
         <span class="tc-label">输入</span>
@@ -65,13 +76,16 @@ import type { ToolCallItem } from '@/store/conversations'
 const props = defineProps<{ item: ToolCallItem }>()
 
 const localExpanded = ref(false)
+const isNoCard = computed(() => TOOL_NO_ICON.has(props.item.name))
 
 const TOOL_LABEL: Record<string, string> = {
   search_knowledge_base: '知识库检索',
   web_search: '网络搜索',
   read_local_file: '读取文件',
-  get_datetime: '获取时间',
+  get_datetime: 'Got current time',
 }
+// 这些工具 header 不显示图标，和 WebSearchBlock 风格一致
+const TOOL_NO_ICON = new Set(['get_datetime'])
 const TOOL_ICON: Record<string, string> = {
   search_knowledge_base: '📚',
   web_search: '🌐',
@@ -79,7 +93,8 @@ const TOOL_ICON: Record<string, string> = {
   get_datetime: '🕐',
 }
 
-const displayName = computed(() => TOOL_LABEL[props.item.name] ?? props.item.name)
+// 已知工具始终用前端英文标签，忽略后端存的旧中文 display_name
+const displayName = computed(() => TOOL_LABEL[props.item.name] ?? props.item.displayName ?? props.item.name)
 const toolIcon = computed(() => TOOL_ICON[props.item.name] ?? '🔧')
 
 function toggle() {
@@ -103,6 +118,71 @@ function getDomain(url: string): string {
   overflow: hidden;
   max-width: 360px;
 }
+/* running 时和 WebSearchBlock 一致：去掉卡片框 */
+.tool-call-block.running {
+  border: none;
+  background: transparent;
+  border-radius: 0;
+  max-width: none;
+}
+/* no-card 模式：所有状态都无卡片，和 WebSearchBlock 完全一致 */
+.tool-call-block.no-card {
+  border: none;
+  background: transparent;
+  border-radius: 0;
+  max-width: none;
+}
+.tool-call-block.no-card .tool-call-header {
+  padding: 2px 0;
+}
+.tool-call-block.no-card .tool-call-header:hover {
+  background: transparent;
+}
+.tool-call-block.no-card {
+  overflow: visible;
+}
+.tool-call-block.no-card .chevron {
+  margin-left: 4px;
+}
+.tool-call-block.no-card .tool-name {
+  font-weight: normal;
+  color: var(--text-secondary, #6b7280);
+}
+
+/* no-card 展开 body */
+.nc-body {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 13px;
+}
+.nc-result-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nc-result-text {
+  color: var(--text-secondary, #6b7280);
+  font-size: 13px;
+}
+.nc-done {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary, #6b7280);
+}
+.nc-done-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+}
 .tool-call-block.done:has(.search-results-list) {
   max-width: 480px;
 }
@@ -120,9 +200,14 @@ function getDomain(url: string): string {
   user-select: none;
   color: var(--text-secondary, #6b7280);
 }
-
+.tool-call-block.running .tool-call-header {
+  padding: 2px 0;
+}
 .tool-call-header:hover {
   background: var(--hover-bg, #f3f4f6);
+}
+.tool-call-block.running .tool-call-header:hover {
+  background: transparent;
 }
 
 .tool-icon { font-size: 13px; }

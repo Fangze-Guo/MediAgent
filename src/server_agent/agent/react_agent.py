@@ -25,7 +25,7 @@ TOOL_META: dict[str, dict] = {
     "search_knowledge_base": {"display_name": "知识库检索", "icon": "📚"},
     "web_search":            {"display_name": "网络搜索",   "icon": "🌐"},
     "read_local_file":       {"display_name": "读取文件",   "icon": "📄"},
-    "get_datetime":          {"display_name": "获取时间",   "icon": "🕐"},
+    "get_datetime":          {"display_name": "Got current time", "icon": "🕐"},
 }
 
 
@@ -84,7 +84,7 @@ SYSTEM_PROMPT = """\
 当用户询问专业医学问题（如疾病诊断、用药方案、手术指征、检验指标解读、医学文献等）时，\
 请主动调用 search_knowledge_base 工具查询知识库获取循证依据。
 当用户需要查询网络上的最新资讯、新闻、实时数据时，调用 web_search 工具。
-当用户询问当前日期或时间时，调用 get_datetime 工具。
+当用户询问当前日期、时间、星期、今天几号、现在几点、今年、今天、本周、本月等与当前时间相关的问题时，必须调用 get_datetime 工具，不得凭记忆猜测。
 当用户需要读取本地文件内容时，调用 read_local_file 工具。
 对于日常问候、简单对话等无需工具的场景，直接回答即可。
 
@@ -283,7 +283,7 @@ class ReActAgent:
         datetime_tool = StructuredTool.from_function(
             func=_get_datetime,
             name="get_datetime",
-            description="获取当前日期和时间（北京时间）。当用户询问今天日期、当前时间时调用。",
+            description="获取当前真实日期和时间（北京时间）。只要用户提到：今天、现在、当前、几号、几点、星期几、本周、本月、今年、最近日期等任何与时间相关的表达，都必须调用此工具。禁止凭训练数据推测当前时间。",
         )
 
         agent_graph = create_react_agent(
@@ -353,6 +353,10 @@ class ReActAgent:
                     elif name == "web_search" and _ws_results:
                         output_summary = f"找到 {len(_ws_results)} 条结果"
                         extra["search_results"] = list(_ws_results)
+                        for tc in reversed(collected_tool_calls):
+                            if tc.get("name") == name:
+                                tc["search_results"] = list(_ws_results)
+                                break
 
                     yield f"[TOOL_END]{json.dumps({'name': name, 'display_name': meta['display_name'], 'icon': meta['icon'], 'success': True, 'output_summary': output_summary, **extra}, ensure_ascii=False)}"
 
