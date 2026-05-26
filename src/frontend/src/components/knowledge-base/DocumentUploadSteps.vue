@@ -32,9 +32,9 @@
         <div class="card-body space-y-4">
           <div class="dropzone-wrapper">
             <FileDropzone
-              accept=".pdf,.docx,.txt,.md"
+              accept=".pdf,.docx,.txt,.md,.xlsx,.xls"
               text="Drop your files here or click to browse"
-              hint="Supports PDF, DOCX, TXT, and MD files"
+              hint="Supports PDF, DOCX, TXT, MD, XLSX, and XLS files"
               @files-selected="handleFilesSelected"
             />
           </div>
@@ -138,6 +138,25 @@
             frameborder="0"
           />
           <pre v-else-if="previewData.type === 'text'" style="padding:16px;overflow:auto;white-space:pre-wrap;word-break:break-all;">{{ previewData.content }}</pre>
+          <div v-else-if="previewData.type === 'table'" style="padding:16px;overflow:auto;flex:1;min-height:0;">
+            <div v-for="(rows, sheetName) in previewData.sheets" :key="sheetName" style="margin-bottom:24px;">
+              <p style="font-weight:600;margin-bottom:8px;color:var(--text-primary);">{{ sheetName }}</p>
+              <div style="overflow-x:auto;">
+                <table class="excel-preview-table">
+                  <thead v-if="rows.length > 0">
+                    <tr>
+                      <th v-for="(cell, ci) in rows[0]" :key="ci">{{ cell }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(row, ri) in rows.slice(1)" :key="ri">
+                      <td v-for="(cell, ci) in row" :key="ci">{{ cell }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </template>
         <div v-else style="display:flex;align-items:center;justify-content:center;height:100%;">
           <p>{{ t('components_DocumentList.previewNotAvailable') }}</p>
@@ -248,7 +267,7 @@ const uploadedFiles = computed(() => files.value.filter(f => f.status === 'uploa
 // 预览弹框
 const showPreviewModal = ref(false)
 const previewLoading = ref(false)
-const previewData = ref<{ type: 'url' | 'text' | 'table'; serve_url?: string; content?: string; file_name: string } | null>(null)
+const previewData = ref<{ type: 'url' | 'text' | 'table'; serve_url?: string; content?: string; sheets?: Record<string, string[][]>; file_name: string } | null>(null)
 let _currentBlobUrl = ''
 
 const revokeBlobUrl = () => {
@@ -272,6 +291,7 @@ const getFileTypeClass = (filename: string = ''): string => {
   const ext = filename.toLowerCase()
   if (ext.includes('.pdf')) return 'icon-pdf'
   if (ext.includes('.doc') || ext.includes('.docx')) return 'icon-word'
+  if (ext.includes('.xlsx') || ext.includes('.xls')) return 'icon-excel'
   if (ext.includes('.txt') || ext.includes('.md')) return 'icon-text'
   return 'icon-default'
 }
@@ -604,8 +624,26 @@ const handleProcess = async () => {
 .file-extension { font-size: 8px; font-weight: 700; color: white; letter-spacing: 0.5px; z-index: 1; }
 .icon-pdf { background: linear-gradient(135deg, #ef4444, #b91c1c); }
 .icon-word { background: linear-gradient(135deg, #3b82f6, #1d4ed8); }
+.icon-excel { background: linear-gradient(135deg, #22c55e, #15803d); }
 .icon-text { background: linear-gradient(135deg, #94a3b8, #475569); }
 .icon-default { background: linear-gradient(135deg, #cbd5e1, #64748b); }
+
+.excel-preview-table {
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  min-width: 100%;
+}
+.excel-preview-table th,
+.excel-preview-table td {
+  border: 1px solid var(--border-color);
+  padding: 6px 12px;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+.excel-preview-table thead th {
+  background-color: var(--bg-secondary);
+  font-weight: 600;
+}
 
 /* --- 5. 表单与按钮复刻 (覆盖 Ant Design) --- */
 .shadcn-title { font-size: 1.125rem; font-weight: 500; margin: 0; color: var(--text-primary); }

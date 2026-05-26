@@ -119,12 +119,31 @@
     <!-- 文档预览弹框 -->
     <a-modal
       v-model:open="showPreviewModal"
-      :title="previewData?.file_name || 'Document Preview'"
       :footer="null"
-      width="860px"
-      :body-style="{ padding: '0', height: '76vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }"
+      :width="isFullscreen ? '100vw' : '900px'"
+      :style="isFullscreen ? { top: '0', margin: '0', padding: '0', maxWidth: '100vw' } : {}"
+      :body-style="modalBodyStyle"
+      :wrap-class-name="isFullscreen ? 'preview-doc-modal preview-modal-fullscreen' : 'preview-doc-modal'"
       destroy-on-close
+      @after-close="isFullscreen = false"
     >
+      <template #title>
+        <div class="modal-title-bar">
+          <div class="modal-title-left">
+            <div class="modal-file-dot" :class="previewData?.type === 'table' ? 'dot-excel' : previewData?.type === 'url' ? 'dot-pdf' : 'dot-text'" />
+            <span class="modal-title-text">{{ previewData?.file_name || 'Document Preview' }}</span>
+          </div>
+          <a-tooltip :title="isFullscreen ? '退出全屏' : '全屏预览'" placement="left">
+            <a-button type="text" size="small" class="modal-fullscreen-btn" @click="isFullscreen = !isFullscreen">
+              <template #icon>
+                <FullscreenExitOutlined v-if="isFullscreen" />
+                <FullscreenOutlined v-else />
+              </template>
+            </a-button>
+          </a-tooltip>
+        </div>
+      </template>
+
       <div v-if="previewLoading" class="preview-loading">
         <a-spin size="large" />
         <p>{{ t('components_DocumentList.previewLoading') }}</p>
@@ -146,28 +165,12 @@
 
         <!-- Excel 表格 -->
         <div v-else-if="previewData.type === 'table'" class="preview-table-wrap">
-          <a-tabs v-if="previewData.sheets">
-            <a-tab-pane
-              v-for="(rows, sheetName) in previewData.sheets"
-              :key="sheetName"
-              :tab="sheetName"
-            >
-              <div class="sheet-scroll">
-                <table class="excel-table">
-                  <thead>
-                    <tr>
-                      <th v-for="(cell, ci) in rows[0]" :key="ci">{{ cell }}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="(row, ri) in rows.slice(1)" :key="ri">
-                      <td v-for="(cell, ci) in row" :key="ci">{{ cell }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </a-tab-pane>
-          </a-tabs>
+          <ExcelViewer
+            v-if="previewData.sheets"
+            :key="isFullscreen ? 'fs' : 'normal'"
+            :sheets="previewData.sheets"
+            :height="tablePreviewHeight"
+          />
         </div>
       </template>
 
@@ -187,11 +190,14 @@ import {
   ThunderboltOutlined,
   DeleteOutlined,
   EyeOutlined,
-  SyncOutlined
+  SyncOutlined,
+  FullscreenOutlined,
+  FullscreenExitOutlined,
 } from '@ant-design/icons-vue'
 import { formatDistanceToNow } from 'date-fns'
 import type { Document } from '../../types/knowledge-base'
 import { knowledgeBaseApi } from '../../apis/knowledgeBase'
+import ExcelViewer from './ExcelViewer.vue'
 
 interface Props {
   knowledgeBaseId: number
@@ -216,6 +222,20 @@ const selectedRowKeys = ref<number[]>([])
 const batchDeleting = ref(false)
 const batchAnalyzing = ref(false)
 const analyzingIds = ref<Set<number>>(new Set())
+
+const isFullscreen = ref(false)
+const modalBodyStyle = computed(() => ({
+  padding: '0',
+  height: isFullscreen.value ? 'calc(100vh - 55px)' : '76vh',
+  overflow: 'hidden',
+  display: 'flex',
+  flexDirection: 'column',
+}))
+const tablePreviewHeight = computed(() =>
+  isFullscreen.value
+    ? window.innerHeight - 55 - 60
+    : Math.round(window.innerHeight * 0.76) - 60
+)
 
 const showPreviewModal = ref(false)
 const previewLoading = ref(false)
@@ -375,7 +395,8 @@ const getFileTypeClass = (contentType: string = '', filename: string = ''): stri
   const type = contentType.toLowerCase()
   const ext = filename.toLowerCase()
   if (type.includes('pdf') || ext.includes('.pdf')) return 'icon-pdf'
-  if (type.includes('word') || type.includes('doc') || ext.includes('.doc')) return 'icon-word'
+  if (type.includes('spreadsheet') || type.includes('ms-excel') || ext.includes('.xlsx') || ext.includes('.xls')) return 'icon-excel'
+  if (type.includes('wordprocessing') || type.includes('msword') || ext.includes('.doc')) return 'icon-word'
   if (type.includes('text') || ext.includes('.txt') || ext.includes('.md')) return 'icon-text'
   return 'icon-default'
 }
@@ -590,6 +611,7 @@ onMounted(() => {
 /* 匹配不用文件类型的渐变色彩 */
 .icon-pdf { background: linear-gradient(135deg, #ef4444, #b91c1c); } /* Tailwind Red */
 .icon-word { background: linear-gradient(135deg, #3b82f6, #1d4ed8); } /* Tailwind Blue */
+.icon-excel { background: linear-gradient(135deg, #22c55e, #15803d); } /* Tailwind Green */
 .icon-text { background: linear-gradient(135deg, #94a3b8, #475569); } /* Tailwind Slate */
 .icon-default { background: linear-gradient(135deg, #cbd5e1, #64748b); }
 
@@ -598,6 +620,90 @@ onMounted(() => {
 }
 .btn-view:hover {
   color: #15803d !important;
+}
+
+/* 预览弹框标题栏 */
+.modal-title-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-right: 4px;
+}
+.modal-title-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.modal-file-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-excel { background: #22c55e; }
+.dot-pdf   { background: #ef4444; }
+.dot-text  { background: #94a3b8; }
+.modal-title-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.modal-fullscreen-btn {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+.modal-fullscreen-btn:hover {
+  color: var(--text-primary) !important;
+  background: var(--hover-bg) !important;
+}
+
+/* ant-design modal 外观微调（用 :global 层级，因 modal teleport 到 body）*/
+:global(.preview-doc-modal .ant-modal-header) {
+  padding: 12px 56px 12px 20px !important;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 0;
+}
+:global(.preview-doc-modal .ant-modal-close) {
+  top: 6px !important;
+  right: 8px !important;
+}
+:global(.preview-doc-modal .ant-modal-body) {
+  padding: 0 !important;
+}
+/* x-data-spreadsheet 底部栏收綺 */
+:global(.x-spreadsheet-bottombar) {
+  height: 32px !important;
+  padding: 0 12px !important;
+}
+:global(.x-spreadsheet-bottombar .x-spreadsheet-menu > li) {
+  height: 32px !important;
+  line-height: 32px !important;
+}
+:global(.x-spreadsheet-menu > li:first-child) {
+  display: none !important;
+}
+
+/* 全屏模态全局样式（需穿透 scoped）*/
+:global(.preview-modal-fullscreen .ant-modal) {
+  max-width: 100vw !important;
+  top: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+:global(.preview-modal-fullscreen .ant-modal-content) {
+  height: 100vh;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+}
+:global(.preview-modal-fullscreen .ant-modal-body) {
+  flex: 1;
+  min-height: 0;
 }
 
 /* 预览弹框 */
@@ -641,7 +747,31 @@ onMounted(() => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  padding: 0 16px 16px;
+  padding: 0;
+}
+
+:deep(.preview-table-wrap .ant-tabs) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+:deep(.preview-table-wrap .ant-tabs-content-holder) {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+:deep(.preview-table-wrap .ant-tabs-content) {
+  flex: 1;
+  overflow: hidden;
+  height: 100%;
+}
+:deep(.preview-table-wrap .ant-tabs-tabpane) {
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .sheet-scroll {

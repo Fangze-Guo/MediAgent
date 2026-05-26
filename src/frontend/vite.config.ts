@@ -7,7 +7,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
-    }
+    },
+  },
+  optimizeDeps: {
+    include: ['x-data-spreadsheet'],
   },
   server: {
     port: 5001,
