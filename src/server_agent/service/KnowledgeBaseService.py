@@ -375,7 +375,8 @@ class KnowledgeBaseService:
                 ws = wb[sheet_name]
                 rows = []
                 for row in ws.iter_rows(values_only=True):
-                    rows.append([str(cell) if cell is not None else "" for cell in row])
+                    if any(cell is not None for cell in row):
+                        rows.append([str(cell) if cell is not None else "" for cell in row])
                 sheets[sheet_name] = rows
             wb.close()
             return sheets

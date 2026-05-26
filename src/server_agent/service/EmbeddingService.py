@@ -168,17 +168,65 @@ def _extract_word(path: pathlib.Path) -> str:
 
 
 def _extract_excel(path: pathlib.Path) -> str:
+    """仅用于预览接口，embedding 走 _extract_excel_chunks。"""
     import openpyxl
     wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
-    lines: List[str] = []
+    blocks: List[str] = []
     for ws in wb.worksheets:
-        lines.append(f"=== {ws.title} ===")
-        for row in ws.iter_rows(values_only=True):
-            line = "\t".join("" if v is None else str(v) for v in row)
-            if line.strip():
-                lines.append(line)
+        all_rows = [row for row in ws.iter_rows(values_only=True)
+                    if any(v is not None for v in row)]
+        if not all_rows:
+            continue
+        raw_headers = all_rows[0]
+        headers = [
+            str(h).strip() if h is not None and str(h).strip() else f"列{i + 1}"
+            for i, h in enumerate(raw_headers)
+        ]
+        blocks.append(f"=== {ws.title} ===")
+        for row in all_rows[1:]:
+            parts = []
+            for h, v in zip(headers, row):
+                if v is not None and str(v).strip():
+                    parts.append(f"{h}: {v}")
+            if parts:
+                blocks.append(", ".join(parts))
     wb.close()
-    return "\n".join(lines)
+    return "\n".join(blocks)
+
+
+def _extract_excel_chunks(path: pathlib.Path) -> List[str]:
+    """
+    行语义化策略（一行一 chunk）：
+    - 列名内嵌在每行中，任意 chunk 均自洽
+    - 单元格内的换行符替换为空格，避免分割器在行内截断
+    - 每个 chunk 携带 Sheet 名前缀，提供上下文
+    """
+    import openpyxl
+    wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
+    chunks: List[str] = []
+    for ws in wb.worksheets:
+        all_rows = [row for row in ws.iter_rows(values_only=True)
+                    if any(v is not None for v in row)]
+        if not all_rows:
+            continue
+        raw_headers = all_rows[0]
+        headers = [
+            str(h).strip().replace('\n', ' ').replace('\r', '') if h is not None and str(h).strip()
+            else f"列{i + 1}"
+            for i, h in enumerate(raw_headers)
+        ]
+        sheet_prefix = f"[{ws.title}]"
+        for row in all_rows[1:]:
+            parts = []
+            for h, v in zip(headers, row):
+                if v is not None:
+                    sv = str(v).replace('\n', ' ').replace('\r', '').strip()
+                    if sv:
+                        parts.append(f"{h}: {sv}")
+            if parts:
+                chunks.append(f"{sheet_prefix} " + ", ".join(parts))
+    wb.close()
+    return chunks
 
 
 def _clean_text(text: str) -> str:
@@ -221,20 +269,25 @@ def _embed_sync(
     chunk_overlap: int,
 ) -> int:
     """提取文本 → 分块 → 生成 embedding → 写入 Chroma。返回 chunk 数量。"""
-    from langchain_text_splitters import RecursiveCharacterTextSplitter
     from langchain_chroma import Chroma
 
-    text = _clean_text(_extract_text(file_path))
-    if not text.strip():
-        logger.warning("doc %d: no text extracted, skipping embedding", doc_id)
-        return 0
+    suffix = file_path.suffix.lower()
+    if suffix in (".xlsx", ".xls"):
+        # Excel：一行一 chunk，不走字符分割器，避免在行内截断
+        chunks = _extract_excel_chunks(file_path)
+    else:
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
+        text = _clean_text(_extract_text(file_path))
+        if not text.strip():
+            logger.warning("doc %d: no text extracted, skipping embedding", doc_id)
+            return 0
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            separators=_SEPARATORS,
+        )
+        chunks = splitter.split_text(text)
 
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        separators=_SEPARATORS,
-    )
-    chunks = splitter.split_text(text)
     if not chunks:
         return 0
 
