@@ -34,14 +34,20 @@ _SEPARATORS = ["\n\n", "\n", "。", "！", "？", ".", "!", "?", " ", ""]
 # 同步工具函数（在线程池中执行）
 # ---------------------------------------------------------------------------
 
+_embeddings_instance = None
+
+
 def _get_embeddings():
-    from langchain_openai import OpenAIEmbeddings
-    return OpenAIEmbeddings(
-        model=os.getenv("EMBEDDING_MODEL", "qwen3-embedding:8b"),
-        api_key=os.getenv("EMBEDDING_API_KEY", "ollama"),
-        base_url=os.getenv("EMBEDDING_API_BASE", "http://localhost:11434/v1"),
-        check_embedding_ctx_length=False,
-    )
+    global _embeddings_instance
+    if _embeddings_instance is None:
+        from langchain_openai import OpenAIEmbeddings
+        _embeddings_instance = OpenAIEmbeddings(
+            model=os.getenv("EMBEDDING_MODEL", "qwen3-embedding:8b"),
+            api_key=os.getenv("EMBEDDING_API_KEY", "ollama"),
+            base_url=os.getenv("EMBEDDING_API_BASE", "http://localhost:11434/v1"),
+            check_embedding_ctx_length=False,
+        )
+    return _embeddings_instance
 
 
 def _extract_text(file_path: pathlib.Path) -> str:

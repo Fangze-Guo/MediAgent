@@ -3,11 +3,12 @@ Code 智能体服务 - 简化版
 
 使用 Claude SDK 内置的会话管理，不再需要 SessionAuditService
 """
+import asyncio
 import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import AsyncGenerator, List, Optional, Tuple
+from typing import AsyncGenerator, Dict, List, Optional, Tuple
 
 from src.server_agent.agent.claude import get_code_agent, get_agent_type, MessageKind
 from src.server_agent.agent.claude.claude_agent import find_agent_by_session
@@ -23,6 +24,16 @@ from src.server_agent.model.entity.CodeAgentConversation import (
 )
 
 logger = logging.getLogger(__name__)
+
+# 模块级：后台 Claude 任务注册表（conversation_id → asyncio.Task）
+# Task 独立于 SSE 连接运行，SSE 断流后 Claude 进程继续写 JSONL
+_background_tasks: Dict[str, asyncio.Task] = {}
+
+
+def is_conversation_active(conversation_id: str) -> bool:
+    """检查指定会话的 Claude 后台任务是否仍在运行"""
+    task = _background_tasks.get(conversation_id)
+    return task is not None and not task.done()
 
 
 class CodeAgentService:
@@ -48,7 +59,6 @@ class CodeAgentService:
                 logger.warning(f"[CodeAgentService] Unknown project_id: {project_id}, using default agent")
         return get_code_agent()
 
-    @handle_service_exception
     async def stream_chat(
         self,
         conversation_id: Optional[str],
@@ -57,64 +67,76 @@ class CodeAgentService:
         user_id: Optional[int] = None
     ) -> AsyncGenerator[str, None]:
         """
-        流式对话方法
+        流式对话方法（后台 Task 解耦版）
 
-        流程：
-        1. 前端创建会话 → POST /conversations → 后端生成 UUID 作为 conversation_id 存入 DB
-        2. 前端发送消息 → POST /taking (带 conversation_id)
-        3. 后端根据 conversation_id 查找 DB 中的 session_id
-           - 如果 session_id 存在，传给 SDK 恢复会话
-           - 如果 session_id 不存在，传 None 让 SDK 创建新会话
-        4. SDK 返回 init 消息（含真实的 sdk_session_id）
-        5. 如果 session_id 不存在，后端更新 DB 建立映射
-
-        Args:
-            conversation_id: 会话ID
-            messages: 历史消息列表（已弃用）
-            current_message: 当前用户消息
-            user_id: 用户ID
-
-        Yields:
-            SSE 格式的 JSON 字符串
+        Claude SDK 在独立 asyncio.Task 中运行，SSE 生成器只消费 Queue。
+        SSE 断流后 Task 继续写 JSONL，前端可通过轮询 /session-status + JSONL 恢复进度。
         """
         if not conversation_id:
             raise ValidationError(detail="conversation_id is required")
 
-        # 查找会话，获取 sdk_session_id
         existing = await self.mapper.get_conversation_by_id(conversation_id)
         if not existing:
             raise NotFoundError(resource_type="conversation", resource_id=conversation_id)
 
         sdk_session_id = existing.session_id
-
-        # 根据 project_id 获取对应的隔离 Agent
         code_agent = self._get_agent_for_project(existing.project_id)
 
-        # 检查 session 是否已死亡（进程崩溃/被 kill），避免 resume 死进程导致资源泄露
         if sdk_session_id and hasattr(code_agent, '_dead_sessions') and sdk_session_id in code_agent._dead_sessions:
-            logger.warning(f"[CodeAgentService] Session {sdk_session_id} is dead, clearing DB session_id to force new session")
+            logger.warning(f"[CodeAgentService] Session {sdk_session_id} is dead, forcing new session")
             await self.mapper.update_conversation_session_id(conversation_id, None)
             code_agent._dead_sessions.discard(sdk_session_id)
             sdk_session_id = None
 
-        # 如果没有 session_id，说明是首次发消息，需要调用 SDK 获取
         if not sdk_session_id:
-            logger.info(f"[CodeAgentService] First message for conversation {conversation_id}, SDK will create new session")
+            logger.info(f"[CodeAgentService] First message for {conversation_id}")
         else:
-            logger.info(f"[CodeAgentService] Resuming session {conversation_id} with SDK session {sdk_session_id}")
+            logger.info(f"[CodeAgentService] Resuming {conversation_id} with sdk_session={sdk_session_id}")
 
+        # ── 创建事件 Queue，启动独立 Claude 后台 Task ───────────────────────
+        queue: asyncio.Queue = asyncio.Queue()  # 无限制，防止 SSE 断流后 put 阻塞
+
+        async def _claude_worker():
+            """独立后台任务：运行 Claude SDK，结果写入 Queue。
+            本 Task 不受 SSE 连接生命周期影响，SSE 断开后继续运行直到完成。
+            """
+            try:
+                async for chunk_json in code_agent.stream_chat(
+                    current_message, sdk_session_id, user_id=user_id,
+                    conversation_id=conversation_id
+                ):
+                    await queue.put(chunk_json)
+            except asyncio.CancelledError:
+                logger.info(f"[Worker] Explicitly cancelled: {conversation_id}")
+                raise
+            except Exception as e:
+                logger.error(f"[Worker] Error for {conversation_id}: {e}")
+                await queue.put(json.dumps({"kind": "error", "content": str(e), "isError": True}))
+            finally:
+                await queue.put(None)  # 哨兵，通知 SSE 生成器结束
+                _background_tasks.pop(conversation_id, None)
+                logger.info(f"[Worker] Done: {conversation_id}")
+
+        task = asyncio.create_task(_claude_worker())
+        _background_tasks[conversation_id] = task
+
+        # ── SSE 生成器：从 Queue 读取，发给前端 ──────────────────────────────
         try:
             full_content = ""
+            while True:
+                try:
+                    chunk_json = await asyncio.wait_for(queue.get(), timeout=55.0)
+                except asyncio.TimeoutError:
+                    # 发送 keep-alive ping 防止代理超时断连
+                    yield f"data: {json.dumps({'kind': 'ping'})}\n\n"
+                    continue
 
-            # 使用 SDK 进行流式对话
-            async for chunk_json in code_agent.stream_chat(
-                current_message, sdk_session_id, user_id=user_id,
-                conversation_id=conversation_id
-            ):
+                if chunk_json is None:  # 后台 Task 已完成
+                    break
+
                 chunk_data = json.loads(chunk_json)
                 kind = chunk_data.get("kind", "")
 
-                # 统一消息类型
                 if kind == MessageKind.STREAM_DELTA:
                     full_content += chunk_data.get("content", "")
                     chunk_data["type"] = "text"
@@ -122,43 +144,35 @@ class CodeAgentService:
                     chunk_data["type"] = "thinking"
                 elif kind == MessageKind.SESSION_CREATED:
                     chunk_data["type"] = "session_created"
-
-                    # 从 init 消息获取 SDK 真实的 session_id
                     init_session_id = chunk_data.get("sessionId") or chunk_data.get("newSessionId")
                     if init_session_id:
-                        logger.info(f"[CodeAgentService] SDK init session_id: {init_session_id}")
-
-                        # 如果 DB 中还没有 session_id，建立映射
+                        logger.info(f"[CodeAgentService] SDK session created: {init_session_id}")
                         if not existing.session_id:
                             await self.mapper.update_conversation_session_id(conversation_id, init_session_id)
-                            logger.info(f"[CodeAgentService] Updated DB: conversation_id={conversation_id}, sdk_session_id={init_session_id}")
-
-                    # 将 conversation_id 放到事件中传给前端
+                            existing.session_id = init_session_id
                     chunk_data["conversation_id"] = conversation_id
-
                 elif kind == MessageKind.COMPLETE:
                     chunk_data["type"] = "done"
                     chunk_data["conversation_id"] = conversation_id
                 elif kind == MessageKind.ERROR:
                     chunk_data["type"] = "error"
                 elif kind == MessageKind.TOOL_USE:
-                    # 工具调用事件
                     chunk_data["type"] = "tool_use"
                     logger.info(f"[CodeAgentService] Tool use: {chunk_data.get('toolName')}")
                 elif kind == MessageKind.PERMISSION_REQUEST:
-                    # 权限请求事件，直接转发给前端
                     chunk_data["type"] = "permission_request"
                     logger.info(f"[CodeAgentService] Permission request: {chunk_data.get('toolName')}")
                 elif kind == "skill_submitted":
-                    # Skill 已提交后台，转发给前端（前端据此开始轮询）
                     chunk_data["type"] = "skill_submitted"
-                    logger.info(f"[CodeAgentService] Skill submitted: {chunk_data.get('skillName')}, task={chunk_data.get('taskId')}")
+                    logger.info(f"[CodeAgentService] Skill submitted: task={chunk_data.get('taskId')}")
 
-                # 统一输出格式（SSE）
                 yield f"data: {json.dumps(chunk_data, ensure_ascii=False)}\n\n"
 
+        except (asyncio.CancelledError, GeneratorExit):
+            # SSE 断流：后台 Task 继续运行，不取消
+            logger.warning(f"[CodeAgentService] SSE disconnected for {conversation_id}, background task continues")
         except Exception as e:
-            logger.error(f"Stream chat error: {e}")
+            logger.error(f"[CodeAgentService] SSE generator error for {conversation_id}: {e}")
             error_data = {"kind": "error", "content": str(e), "isError": True}
             yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
 

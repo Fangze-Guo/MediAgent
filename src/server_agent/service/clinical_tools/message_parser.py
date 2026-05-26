@@ -4,6 +4,7 @@ JSONL 消息解析器 - 从 CodeAgentController._parse_jsonl_messages 提取
 将原始 JSONL 记录转换成 MessageResponse 列表，供 Controller 和 Service 共用，
 确保前端聊天界面与导出功能使用完全一致的解析逻辑。
 """
+import json
 from typing import Any, Dict, List, Optional
 
 from src.server_agent.model.entity.MessageResponse import MessageResponse
@@ -63,6 +64,24 @@ def parse_jsonl_messages(
     messages_response: List[MessageResponse] = []
     assistant_index_by_message_id: Dict[str, int] = {}
 
+    # 预扫描：建立 tool_use_id → agentId 映射表（用于子智能体文件定位）
+    # toolUseResult.agentId 在 user type 的工具结果条目里，指向对应的 agent-{agentId}.jsonl
+    tool_use_to_agent_id: Dict[str, str] = {}
+    for _entry in sorted_entries:
+        _tur = _entry.get("toolUseResult")
+        if not isinstance(_tur, dict):
+            continue
+        _agent_id = _tur.get("agentId")
+        if not _agent_id:
+            continue
+        _msg = _entry.get("message", {})
+        if isinstance(_msg, dict):
+            for _part in (_msg.get("content") or []):
+                if isinstance(_part, dict) and _part.get("type") == "tool_result":
+                    _tuid = _part.get("tool_use_id")
+                    if _tuid:
+                        tool_use_to_agent_id[_tuid] = _agent_id
+
     # Skill call 分组收集：跳过 isMeta/attachment 条目
     skill_call_skipped_indices: set = set()
 
@@ -89,34 +108,57 @@ def parse_jsonl_messages(
         if entry_type in ("queue-operation", "last-prompt"):
             continue
 
-        # ======== TodoWrite 检测（必须在 role 判断之前） ========
+        # ======== tool_use block 检测（TodoWrite / Task / 其他）========
         raw_message = entry.get("message", {})
         raw_content = raw_message.get("content", []) if isinstance(raw_message, dict) else None
 
         todo_handled = False
         if isinstance(raw_content, list):
             for part in raw_content:
-                if not isinstance(part, dict):
+                if not isinstance(part, dict) or part.get("type") != "tool_use":
                     continue
 
-                if part.get("type") == "tool_use":
-                    tool_name = part.get("name")
-                    if tool_name == "TodoWrite":
-                        todos = part.get("input", {}).get("todos", [])
-                        # 每个 TodoWrite 事件单独输出（保持 JSONL 顺序）
-                        messages_response.append(MessageResponse(
-                            message_id=entry.get("uuid") or f"todo_{i}",
-                            conversation_id=conversation_id,
-                            role=None,
-                            content=None,
-                            thinking=None,
-                            created_at=entry.get("timestamp"),
-                            event_type="todo",
-                            skill_name="TodoWrite",
-                            todo_list=todos
-                        ))
-                        todo_handled = True
-                        break
+                tool_name = part.get("name", "")
+                tool_id = part.get("id", "")
+                tool_input = part.get("input") or {}
+
+                if tool_name == "TodoWrite":
+                    todos = tool_input.get("todos", [])
+                    messages_response.append(MessageResponse(
+                        message_id=entry.get("uuid") or f"todo_{i}",
+                        conversation_id=conversation_id,
+                        role=None,
+                        content=None,
+                        thinking=None,
+                        created_at=entry.get("timestamp"),
+                        event_type="todo",
+                        skill_name="TodoWrite",
+                        todo_list=todos
+                    ))
+                    todo_handled = True
+                    break  # 一条消息只取第一个 TodoWrite
+
+                elif tool_name in ("Agent", "Task"):
+                    # 子智能体调用：从 input 中提取任务描述
+                    prompt = (
+                        tool_input.get("prompt")
+                        or tool_input.get("description")
+                        or json.dumps(tool_input, ensure_ascii=False)
+                    )
+                    # 优先使用预扫描的 agentId（用于定位 agent-{agentId}.jsonl），回退到 tool_use block id
+                    resolved_agent_id = tool_use_to_agent_id.get(tool_id, tool_id)
+                    messages_response.append(MessageResponse(
+                        message_id=f"subagent_{entry.get('uuid', i)}_{tool_id}",
+                        conversation_id=conversation_id,
+                        role=None,
+                        content=prompt,
+                        thinking=None,
+                        created_at=entry.get("timestamp"),
+                        event_type="sub_agent_call",
+                        skill_name="Agent",
+                        tool_use_id=resolved_agent_id,
+                    ))
+                    # 不设 todo_handled，继续处理同条消息中可能的文本内容
 
         if todo_handled:
             continue

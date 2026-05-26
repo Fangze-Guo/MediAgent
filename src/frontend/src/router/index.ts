@@ -130,15 +130,6 @@ const routes: RouteRecordRaw[] = [
         }
     },
     {
-        path: '/nice-bcx-workflow',
-        name: 'NiceBcxWorkflow',
-        component: () => import('@/views/clinical-tools/WorkflowView.vue'),
-        meta: {
-            title: 'MedWiser - NICE-BCX Workflow',
-            requiresAuth: true
-        }
-    },
-    {
         path: '/knowledge-base',
         name: 'KnowledgeBase',
         component: () => import('@/views/clinical-tools/rag/RagKnowledgeBaseView.vue'),

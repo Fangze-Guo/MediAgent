@@ -6,7 +6,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { createConversation as createConversationAPI, addMessageToAgent, streamMessageToAgent as streamMessageToAgentAPI, getMessages, getUserConversations as getUserConversationsAPI, deleteConversation as deleteConversationAPI } from '@/apis/conversation'
-import type { RagSource, SearchStartEvent, SearchResultEvent } from '@/apis/conversation'
+import type { RagSource, ToolStartEvent, ToolEndEvent, SearchResult } from '@/apis/conversation'
 import { useAuthStore } from '@/store/auth'
 
 /**
@@ -17,9 +17,14 @@ import { useAuthStore } from '@/store/auth'
 export type ToolCallItem = {
   name: string
   query: string
-  status: 'running' | 'done'
+  status: 'running' | 'done' | 'error'
   found?: number
   expanded: boolean
+  displayName?: string
+  icon?: string
+  inputSummary?: string
+  outputSummary?: string
+  searchResults?: SearchResult[]
 }
 
 export type ChatMessage = { 
@@ -358,18 +363,34 @@ export const useConversationsStore = defineStore('conversations', () => {
             rafId = requestAnimationFrame(flushTokens)
           }
         },
-        onSearchStart(data: SearchStartEvent) {
+        onToolStart(data: ToolStartEvent) {
           const idx = conversation.messages.length - 1
           const msg = conversation.messages[idx]
           if (!msg.toolCalls) msg.toolCalls = []
-          msg.toolCalls.push({ name: 'search_knowledge_base', query: data.query ?? '', status: 'running', expanded: false })
+          msg.toolCalls.push({
+            name: data.name,
+            displayName: data.display_name,
+            icon: data.icon,
+            query: data.input_summary,
+            inputSummary: data.input_summary,
+            status: 'running',
+            expanded: false,
+          })
         },
-        onSearchResult(data: SearchResultEvent) {
+        onToolEnd(data: ToolEndEvent) {
           const idx = conversation.messages.length - 1
           const msg = conversation.messages[idx]
           if (!msg.toolCalls?.length) return
-          const item = msg.toolCalls[msg.toolCalls.length - 1]
-          if (item?.status === 'running') { item.status = 'done'; item.found = data.found }
+          for (let i = msg.toolCalls.length - 1; i >= 0; i--) {
+            const item = msg.toolCalls[i]
+            if (item.name === data.name && item.status === 'running') {
+              item.status = data.success ? 'done' : 'error'
+              item.outputSummary = data.output_summary
+              if (data.found !== undefined) item.found = data.found
+              if (data.search_results) item.searchResults = data.search_results
+              break
+            }
+          }
         },
         onSources(sources) {
           const idx = conversation.messages.length - 1

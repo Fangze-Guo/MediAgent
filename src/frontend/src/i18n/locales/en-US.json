@@ -579,7 +579,19 @@
     "ppt": "📊 PPT",
     "uploadFiles": "📁 Upload Files",
     "more": "➕ More",
-    "placeholder": "Send a message or select a skill"
+    "placeholder": "Send a message or select a skill",
+    "nav": {
+      "chat": "Start Conversation",
+      "chatDesc": "Chat with the AI medical assistant for intelligent diagnosis advice",
+      "files": "File Management",
+      "filesDesc": "Upload and manage medical images, reports, and other file resources",
+      "clinicalTools": "Clinical Tools",
+      "clinicalToolsDesc": "AI-powered clinical decision support and medical image analysis tools",
+      "knowledgeBase": "Knowledge Base",
+      "knowledgeBaseDesc": "Manage medical literature and clinical guidelines with smart search",
+      "skillStore": "Skill Store",
+      "skillStoreDesc": "Browse and install AI Agent skills to extend assistant capabilities"
+    }
   },
   "views_LoginView": {
     "welcome": "Welcome!",
@@ -879,9 +891,6 @@
     "arrow": "Arrow",
     "text": "Text",
     "saveReport": "Save Diagnosis Report"
-  },
-  "views_WorkflowView": {
-    "comingSoon": "Feature under development, stay tuned"
   },
   "components_DocumentList": {
     "loading": "Loading documents...",

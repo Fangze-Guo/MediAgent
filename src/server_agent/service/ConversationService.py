@@ -306,7 +306,7 @@ class ConversationService:
                         tool_calls_data = json.loads(event[12:])
                     except Exception:
                         pass
-                elif event.startswith(("[SEARCH_START]", "[SEARCH_RESULT]")):
+                elif event.startswith(("[TOOL_START]", "[TOOL_END]", "[SEARCH_START]", "[SEARCH_RESULT]")):
                     yield event
                 else:
                     full_reply.append(event)

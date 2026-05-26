@@ -7,6 +7,11 @@
           <div class="chat-content" ref="messagesEl" @scroll="handleScroll">
             <!-- 消息列表 -->
             <div class="messages-container">
+              <!-- 空状态：会话中没有消息时显示 -->
+              <div v-if="currentMessages.length === 0 && !sending" class="chat-empty-state">
+                <img src="/MedWiser.png" alt="MedWiser" class="empty-logo" />
+                <p class="empty-hint">{{ t('views_ChatView.inputPlaceholder') }}</p>
+              </div>
               <div v-for="(m, idx) in currentMessages" :key="idx"
                    :class="['message', m.role === 'user' ? 'user' : 'ai']"
                    @mouseleave="copiedIdx = null">
@@ -21,7 +26,20 @@
                   <div v-if="m.parsedContent">
                     <!-- 工具调用链路（流式期间与完成后均显示） -->
                     <template v-if="m.role === 'assistant' && m.toolCalls && m.toolCalls.length">
-                      <ToolCallBlock v-for="(tc, ti) in m.toolCalls" :key="ti" :item="tc" />
+                      <WebSearchBlock
+                        v-if="m.toolCalls.some(tc => tc.name === 'web_search')"
+                        :items="m.toolCalls.filter(tc => tc.name === 'web_search')"
+                      />
+                      <KnowledgeSearchBlock
+                        v-if="m.toolCalls.some(tc => tc.name === 'search_knowledge_base')"
+                        :items="m.toolCalls.filter(tc => tc.name === 'search_knowledge_base')"
+                        :sources="m.sources"
+                      />
+                      <ToolCallBlock
+                        v-for="(tc, ti) in m.toolCalls.filter(tc => tc.name !== 'web_search' && tc.name !== 'search_knowledge_base')"
+                        :key="ti"
+                        :item="tc"
+                      />
                     </template>
                     <!-- 多个思考过程 -->
                     <div v-if="m.parsedContent.thinkingList && m.parsedContent.thinkingList.length > 0">
@@ -58,7 +76,20 @@
                   <div v-else>
                     <!-- 工具调用链路（流式期间与完成后均显示） -->
                     <template v-if="m.role === 'assistant' && m.toolCalls && m.toolCalls.length">
-                      <ToolCallBlock v-for="(tc, ti) in m.toolCalls" :key="ti" :item="tc" />
+                      <WebSearchBlock
+                        v-if="m.toolCalls.some(tc => tc.name === 'web_search')"
+                        :items="m.toolCalls.filter(tc => tc.name === 'web_search')"
+                      />
+                      <KnowledgeSearchBlock
+                        v-if="m.toolCalls.some(tc => tc.name === 'search_knowledge_base')"
+                        :items="m.toolCalls.filter(tc => tc.name === 'search_knowledge_base')"
+                        :sources="m.sources"
+                      />
+                      <ToolCallBlock
+                        v-for="(tc, ti) in m.toolCalls.filter(tc => tc.name !== 'web_search' && tc.name !== 'search_knowledge_base')"
+                        :key="ti"
+                        :item="tc"
+                      />
                     </template>
                     <!-- 流式等待中：空内容 → 显示打字动画 -->
                     <div v-if="m.role === 'assistant' && !m.typingComplete && !m.content" class="typing-indicator">
@@ -262,6 +293,21 @@
       </a-layout>
     </div>
 
+    <!-- 对话链路图谱面板 -->
+    <ConversationGraph
+      v-if="showGraph"
+      :messages="currentConversation?.messages ?? []"
+      @close="showGraph = false"
+    />
+
+    <!-- 图谱切换浮动按钮 -->
+    <button
+      class="graph-toggle-btn"
+      :class="{ active: showGraph }"
+      :title="showGraph ? '隐藏链路图' : '查看对话链路图'"
+      @click="showGraph = !showGraph"
+    >🔗</button>
+
     <!-- 文件上传模态框 -->
     <a-modal
         v-model:open="showFileUpload"
@@ -306,6 +352,9 @@ import { useConversationsStore } from '@/store/conversations'
 import FileUpload from '@/components/file/FileUpload.vue'
 import MarkdownRenderer from '@/components/markdown/MarkdownRenderer.vue'
 import ToolCallBlock from '@/components/chat/ToolCallBlock.vue'
+import WebSearchBlock from '@/components/chat/WebSearchBlock.vue'
+import KnowledgeSearchBlock from '@/components/chat/KnowledgeSearchBlock.vue'
+import ConversationGraph from '@/components/chat/ConversationGraph.vue'
 import ModelSelector from '@/components/model/ModelSelector.vue'
 import { type FileInfo, getChatImagePresignUrl, uploadToOss } from '@/apis/files'
 import {
@@ -376,6 +425,8 @@ const pendingAttachments = ref<PendingAttachment[]>([])
 const fileInputRef = ref<HTMLInputElement | null>(null)
 /** 拖拽悬停状态 */
 const isDragging = ref(false)
+/** 是否显示对话链路图谱面板 */
+const showGraph = ref(false)
 /** 当前预览大图的 URL */
 const selectedPreviewImage = ref<string | null>(null)
 
@@ -812,6 +863,10 @@ const routeId = (route.params.id as string | undefined) || ''
 
 // 异步初始化函数
 const initializeConversation = async () => {
+  if (routeId === 'new') {
+    await createNewConversation()
+    return
+  }
   if (routeId) {
     // 如果路由ID存在，尝试加载该会话
     activeId.value = routeId
@@ -1117,6 +1172,34 @@ const sendMessage = async () => {
   display: flex;
   align-items: stretch;
   justify-content: center;
+  position: relative;
+  background: var(--bg-primary);
+}
+
+/* 图谱切换浮动按钮 */
+.graph-toggle-btn {
+  position: fixed;
+  bottom: 90px;
+  right: 20px;
+  z-index: 200;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-color, #e5e7eb);
+  background: var(--bg-primary, #fff);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  transition: all 0.2s;
+}
+.graph-toggle-btn:hover,
+.graph-toggle-btn.active {
+  background: var(--text-primary, #111);
+  border-color: var(--text-primary, #111);
+  filter: invert(1);
 }
 
 /* 居中容器：提供内边距与水平居中承载聊天布局 */
@@ -1132,6 +1215,7 @@ const sendMessage = async () => {
   width: 100%;
   height: 100%;
   display: flex;
+  background: var(--bg-primary) !important;
   flex-direction: column;
   overflow: hidden;
 }
@@ -1139,6 +1223,7 @@ const sendMessage = async () => {
 /* 布局内容区域 */
 .ant-layout-content {
   position: relative;
+  background: var(--bg-primary) !important;
 }
 
 /* 聊天内容区域：占据主要空间 */
@@ -1160,6 +1245,31 @@ const sendMessage = async () => {
   background: linear-gradient(to bottom, transparent, var(--bg-primary));
   pointer-events: none;
   margin-top: -48px;
+}
+
+/* 空状态占位 */
+.chat-empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 80px 20px;
+  opacity: 0.35;
+  user-select: none;
+  pointer-events: none;
+}
+.empty-logo {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: contain;
+}
+.empty-hint {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary);
 }
 
 /* 消息容器：居中列 */
@@ -1412,16 +1522,16 @@ const sendMessage = async () => {
   margin-top: 2px;
 }
 
-/* 输入容器：圆角卡片，浅灰背景 */
+/* 输入容器：圆角卡片，与消息区背景一致 */
 .input-container {
   width: 100%;
   display: flex;
   flex-direction: column;
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(0, 0, 0, 0.14);
   border-radius: 18px;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.06);
   overflow: hidden;
-  background: var(--input-surface, #f5f5f5);
+  background: var(--bg-primary);
 }
 
 .input-container:focus-within {

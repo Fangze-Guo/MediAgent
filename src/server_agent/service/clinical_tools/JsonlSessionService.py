@@ -224,6 +224,64 @@ class JsonlSessionService:
 
         return sessions[offset:offset + limit], total, has_more
 
+    async def get_sub_agent_messages_for_tool_use(
+        self,
+        parent_session_id: str,
+        tool_use_id: str,
+    ) -> List[dict]:
+        """
+        返回子智能体的 JSONL 全量记录。
+
+        Claude SDK 实际路径结构：
+          ~/.claude/projects/{project_dir}/{session_id}/subagents/agent-{agentId}.jsonl
+
+        message_parser.py 预扫描 toolUseResult.agentId 后，会将 agentId 存入
+        MessageResponse.tool_use_id，因此此处 tool_use_id 参数实际携带的是 agentId。
+
+        Args:
+            parent_session_id: 父会话的 session_id，用于定位项目目录
+            tool_use_id: agentId（即文件名中 agent-{agentId} 的部分）
+
+        Returns:
+            子智能体 JSONL 全量记录列表（供 parse_jsonl_messages 处理）
+        """
+        # 找到父会话所在的项目目录
+        project_dir: Optional[Path] = None
+        for pdir in PROJECTS_DIR.iterdir():
+            if not pdir.is_dir():
+                continue
+            if (pdir / f"{parent_session_id}.jsonl").exists():
+                project_dir = pdir
+                break
+
+        if not project_dir:
+            logger.debug(f"[SubAgent] Parent session {parent_session_id} not found in any project dir")
+            return []
+
+        # 直接构造路径：{project_dir}/{session_id}/subagents/agent-{agentId}.jsonl
+        agent_file = project_dir / parent_session_id / "subagents" / f"agent-{tool_use_id}.jsonl"
+        if not agent_file.exists():
+            logger.debug(f"[SubAgent] Agent file not found: {agent_file}")
+            return []
+
+        entries: List[dict] = []
+        try:
+            with open(agent_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entries.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+        except Exception as e:
+            logger.error(f"[SubAgent] Error reading {agent_file}: {e}")
+            return []
+
+        logger.info(f"[SubAgent] Loaded {len(entries)} entries from {agent_file.name}")
+        return entries
+
     async def get_conversation_by_id(self, session_id: str) -> Optional[dict]:
         """根据 ID 获取会话信息"""
         for project_dir in PROJECTS_DIR.iterdir():

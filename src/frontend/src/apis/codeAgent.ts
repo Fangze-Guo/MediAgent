@@ -241,10 +241,12 @@ export interface MessageResponse {
   thinking?: string
   created_at?: string
   loading?: boolean
-  // Skill call 字段
-  event_type?: 'skill_call' | 'skill_submitted' | 'todo' | null
+  // Skill call / tool call 字段
+  event_type?: 'skill_call' | 'skill_submitted' | 'todo' | 'sub_agent_call' | null
   skill_name?: string | null
   skill_arguments?: string | null
+  // 子智能体关联字段（event_type === 'sub_agent_call' 时有效）
+  tool_use_id?: string | null
   // Skill 后台任务字段（event_type === 'skill_submitted' 时有效）
   skill_task_id?: string
   skill_status?: 'running' | 'success' | 'failed'
@@ -600,6 +602,34 @@ export async function clearSkillTasks(
   if (conversation_id) params.append('conversation_id', conversation_id)
   params.append('only_finished', String(only_finished))
   const response = await del<BaseResponse<number>>(`/code-agent/skill-tasks?${params.toString()}`)
+  return response.data
+}
+
+/**
+ * 获取子智能体（Task 工具）的会话消息
+ * @param conversationId 父会话 ID
+ * @param toolUseId 父会话中 Task tool_use block 的 id
+ */
+export async function getSubAgentMessages(
+  conversationId: string,
+  toolUseId: string
+): Promise<BaseResponse<{ messages: MessageResponse[]; found: boolean }>> {
+  const response = await get<BaseResponse<{ messages: MessageResponse[]; found: boolean }>>(
+    `/code-agent/conversations/${encodeURIComponent(conversationId)}/sub-agents/${encodeURIComponent(toolUseId)}`
+  )
+  return response.data
+}
+
+/**
+ * 查询会话 session 活跃状态
+ * active=true 说明后端 Claude SDK client 仍在运行（SSE 断开但任务未完成）
+ */
+export async function getSessionStatus(
+  conversationId: string
+): Promise<BaseResponse<{ conversation_id: string; sdk_session_id: string | null; active: boolean }>> {
+  const response = await get<BaseResponse<{ conversation_id: string; sdk_session_id: string | null; active: boolean }>>(
+    `/code-agent/conversations/${encodeURIComponent(conversationId)}/session-status`
+  )
   return response.data
 }
 

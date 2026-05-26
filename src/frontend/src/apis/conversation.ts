@@ -97,6 +97,31 @@ export interface SearchResultEvent {
   found: number
 }
 
+/** 工具开始执行事件（通用） */
+export interface ToolStartEvent {
+  name: string
+  display_name: string
+  icon: string
+  input_summary: string
+}
+
+export interface SearchResult {
+  title: string
+  content: string
+  url: string
+}
+
+/** 工具执行完成事件（通用） */
+export interface ToolEndEvent {
+  name: string
+  display_name: string
+  icon: string
+  success: boolean
+  output_summary: string
+  found?: number
+  search_results?: SearchResult[]
+}
+
 /**
  * Agent 消息响应
  */
@@ -194,6 +219,8 @@ export async function streamMessageToAgent(
     onToken: (token: string) => void
     onSearchStart?: (data: SearchStartEvent) => void
     onSearchResult?: (data: SearchResultEvent) => void
+    onToolStart?: (data: ToolStartEvent) => void
+    onToolEnd?: (data: ToolEndEvent) => void
     onSources: (sources: RagSource[]) => void
     onDone: () => void
     onError?: (err: Error) => void
@@ -229,6 +256,14 @@ export async function streamMessageToAgent(
         if (data === '[DONE]') { callbacks.onDone(); return }
         if (data.startsWith('[SOURCES]')) {
           try { callbacks.onSources(JSON.parse(data.slice(9))) } catch { /* ignore */ }
+          continue
+        }
+        if (data.startsWith('[TOOL_START]')) {
+          try { callbacks.onToolStart?.(JSON.parse(data.slice(12))) } catch { /* ignore */ }
+          continue
+        }
+        if (data.startsWith('[TOOL_END]')) {
+          try { callbacks.onToolEnd?.(JSON.parse(data.slice(10))) } catch { /* ignore */ }
           continue
         }
         if (data.startsWith('[SEARCH_START]')) {

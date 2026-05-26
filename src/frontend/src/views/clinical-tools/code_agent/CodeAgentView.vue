@@ -211,10 +211,19 @@
               <div
                 v-else
                 class="message-item"
-                :class="message.event_type === 'todo' ? 'message-todo' : (message.event_type === 'skill_call' ? 'message-skill' : (message.role === 'user' ? 'message-user' : 'message-ai'))"
+                :class="message.event_type === 'sub_agent_call' ? 'message-sub-agent' : (message.event_type === 'todo' ? 'message-todo' : (message.event_type === 'skill_call' ? 'message-skill' : (message.role === 'user' ? 'message-user' : 'message-ai')))"
               >
+              <!-- Sub-Agent Call 事件：特殊可折叠卡片 -->
+              <template v-if="message.event_type === 'sub_agent_call'">
+                <SubAgentBlock
+                  :message="message"
+                  :conversation-id="selectedConversationId!"
+                  :is-streaming="sendingMessage"
+                />
+              </template>
+
               <!-- Skill Call 事件：橙色气泡（历史记录中的旧格式） -->
-              <template v-if="message.event_type === 'skill_call'">
+              <template v-else-if="message.event_type === 'skill_call'">
                 <div class="message-bubble bubble-skill">
                   <span class="skill-icon">🔧</span>
                   <span class="skill-name">{{ message.skill_name }}</span>
@@ -248,7 +257,7 @@
               </template>
 
               <!-- AI消息 -->
-              <template v-else-if="message.role === 'assistant'">
+              <template v-else-if="message.role === 'assistant' && !message.event_type">
                 <!-- 思考内容块 -->
                 <StreamingThinkingRenderer
                   v-if="message.thinking"
@@ -491,6 +500,7 @@ import {
 } from '@ant-design/icons-vue'
 import StreamingMarkdownRenderer from '@/components/markdown/StreamingMarkdownRenderer.vue'
 import StreamingThinkingRenderer from '@/components/markdown/StreamingThinkingRenderer.vue'
+import SubAgentBlock from '@/components/chat/SubAgentBlock.vue'
 import type {
   ChatMessage,
   ConversationInfo,
@@ -511,7 +521,9 @@ import {
   getSkillTask,
   listSkillTasks,
   deleteSkillTask,
-  exportConversation
+  exportConversation,
+  getSessionStatus,
+  getSubAgentMessages
 } from '@/apis/codeAgent'
 
 const { t } = useI18n()
@@ -776,7 +788,7 @@ const handleStreamChunk = async (
         messages.value.push({
           message_id: `todo_${Date.now()}`,
           conversation_id: selectedConversation.value!.conversation_id,
-          role: 'assistant',
+          role: null,
           content: '',
           event_type: 'todo',
           todo_list: event.data.todos,
@@ -787,7 +799,7 @@ const handleStreamChunk = async (
         messages.value.push({
           message_id: `skill_${Date.now()}`,
           conversation_id: selectedConversation.value!.conversation_id,
-          role: 'assistant',
+          role: null,
           content: '',
           event_type: 'skill_call',
           skill_name: event.data.toolName || 'Unknown Tool',
@@ -933,9 +945,13 @@ watch(allSkillTasks, (tasks) => {
 }, { deep: true })
 
 // 当前项目下的会话 ID 集合（用于按项目过滤 Work Flow）
-// 仅展示当前会话的任务，按创建时间倒序
+// 有会话选中时展示该会话任务；无会话选中时展示所有 running 任务（刷新后任务可见）
 const filteredSkillTasks = computed(() => {
-  if (!selectedConversationId.value) return []
+  if (!selectedConversationId.value) {
+    return allSkillTasks.value
+      .filter(t => t.status === 'running')
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  }
   return allSkillTasks.value
     .filter(t => t.conversation_id === selectedConversationId.value)
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
@@ -1166,6 +1182,24 @@ const handleStreamEvent = (event: CodeEventType, capturedSessionId: string | nul
           type: 'todo',
           data: { todos }
         })
+      } else if (toolName === 'Agent' || toolName === 'Task') {
+        // 子智能体调用：立即输出，不再暂存
+        // 注：agentId 在 tool_result 返回后才可知，流式阶段暂存 tool_use block id
+        // 会话结束后消息会由历史 JSONL 重新解析（含正确 agentId）
+        const prompt = toolEvent.input?.prompt || toolEvent.input?.description || ''
+        const toolId = toolEvent.toolId || toolEvent.tool_id || toolEvent.id || ''
+        messages.value.push({
+          message_id: `subagent_${Date.now()}_${toolId}`,
+          conversation_id: selectedConversation.value!.conversation_id,
+          role: null,
+          content: prompt,
+          event_type: 'sub_agent_call',
+          skill_name: 'Agent',
+          tool_use_id: toolId,
+          created_at: new Date().toISOString(),
+          loading: false
+        })
+        nextTick(() => scrollToBottom())
       } else {
         // 如果 toolName 是 "Skill"，从 input.skill 取具体技能名
         const displayName = (toolName === 'Skill' && toolEvent.input?.skill)
@@ -1365,6 +1399,10 @@ const selectConversation = async (conversation: ConversationInfo) => {
 
   selectedConversationId.value = conversation.conversation_id
   selectedConversation.value = conversation
+  // 保存到 localStorage，刷新后可恢复
+  localStorage.setItem(lastConvKey.value, conversation.conversation_id)
+  // 停止旧会话的活跃 session 轮询
+  stopActiveSessionPoller()
 
   loadingConversationDetail.value = true
 
@@ -1500,6 +1538,9 @@ const handleSendMessage = async () => {
   await nextTick()
   sendingMessage.value = true
 
+  // 停掉 onMounted 或上一次断流留下的轮询器，避免干扰当前 SSE 的 finally 判断
+  stopActiveSessionPoller()
+
   // 重置事件显示
   eventDisplay.value = null
   currentEventType.value = ''
@@ -1563,6 +1604,8 @@ const handleSendMessage = async () => {
 
   // 发送时锁定当前会话 ID，防止流式响应期间切换会话导致消息串入其他会话
   const streamingConversationId = selectedConversation.value!.conversation_id
+  // 标记是否主动切换到轮询模式（仅在 catch 中 SSE 断流时设为 true）
+  let keepPolling = false
 
   try {
     const stream = await streamChat({
@@ -1626,16 +1669,34 @@ const handleSendMessage = async () => {
       }
     }
   } catch (error) {
-    console.error('发送消息失败', error)
-    message.error(t('views_CodeAgentView.messages.sendFailed'))
-    // 移除失败的AI消息
-    const aiMsgIndex = messages.value.length - 1
-    if (messages.value[aiMsgIndex]) {
-      messages.value[aiMsgIndex].loading = false
+    console.error('SSE 断流或发送失败:', error)
+    // 检测后端 session 是否仍在运行，若是则无缝切换为轮询模式
+    try {
+      const statusRes = await getSessionStatus(streamingConversationId)
+      if (statusRes.code === 200 && statusRes.data?.active) {
+        keepPolling = true
+        sendingMessage.value = true
+        eventDisplay.value = { message: 'SSE 连接中断，已自动切换为轮询模式，正在同步进度...', type: 'loading' }
+        startActiveSessionPoller(streamingConversationId)
+        console.warn('[SSE断流] 已切换为轮询模式, convId:', streamingConversationId)
+      }
+    } catch (statusErr) {
+      console.debug('[SSE断流] session-status 检测失败:', statusErr)
+    }
+
+    if (!keepPolling) {
+      message.error(t('views_CodeAgentView.messages.sendFailed'))
+      const aiMsgIndex = messages.value.length - 1
+      if (messages.value[aiMsgIndex]) {
+        messages.value[aiMsgIndex].loading = false
+      }
     }
   } finally {
-    sendingMessage.value = false
-    currentSessionId.value = null
+    // SSE 正常完成或真实报错时始终重置；仅当主动切换轮询时保持 loading
+    if (!keepPolling) {
+      sendingMessage.value = false
+      currentSessionId.value = null
+    }
   }
 }
 
@@ -1698,15 +1759,91 @@ const handleKeyDown = (event: KeyboardEvent) => {
   }
 }
 
-// 组件挂载时加载对话列表
-onMounted(() => {
-  loadConversations()  // loadAllSkillTasks 在 loadConversations 完成后自动调用
+// localStorage key：按 project 存储上次选中的会话 ID
+const lastConvKey = computed(() => `last_conv_id_${currentProjectId.value ?? 'default'}`)
+
+// 活跃 session 轮询（刷新后追踪仍在运行的 Claude 进程）
+let activeSessionPoller: ReturnType<typeof setInterval> | null = null
+let activePollingConvId: string | null = null
+
+const stopActiveSessionPoller = () => {
+  if (activeSessionPoller !== null) {
+    clearInterval(activeSessionPoller)
+    activeSessionPoller = null
+    activePollingConvId = null
+  }
+}
+
+const startActiveSessionPoller = (conversationId: string) => {
+  stopActiveSessionPoller()
+  activePollingConvId = conversationId
+  activeSessionPoller = setInterval(async () => {
+    if (activePollingConvId !== conversationId) {
+      stopActiveSessionPoller()
+      return
+    }
+    try {
+      const statusRes = await getSessionStatus(conversationId)
+      if (statusRes.code !== 200 || !statusRes.data) {
+        stopActiveSessionPoller()
+        return
+      }
+      if (!statusRes.data.active) {
+        // Session 已结束，刷新一次消息后停止
+        const detail = await getConversationDetail(conversationId)
+        if (detail.code === 200 && detail.data && selectedConversationId.value === conversationId) {
+          messages.value = detail.data.messages || []
+          await nextTick()
+          scrollToBottom()
+        }
+        stopActiveSessionPoller()
+        sendingMessage.value = false
+        eventDisplay.value = null
+        return
+      }
+      // Session 仍活跃，刷新消息列表
+      const detail = await getConversationDetail(conversationId)
+      if (detail.code === 200 && detail.data && selectedConversationId.value === conversationId) {
+        messages.value = detail.data.messages || []
+        await nextTick()
+        scrollToBottom()
+      }
+    } catch (e) {
+      console.error('[ActivePoller] 轮询失败:', e)
+    }
+  }, 3000)
+}
+
+// 组件挂载时加载对话列表，并恢复上次选中的会话
+onMounted(async () => {
+  await loadConversations()  // loadAllSkillTasks 在 loadConversations 完成后自动调用
   messagesContainer.value?.addEventListener('scroll', handleScroll, { passive: true })
   setupResizeObserver()
+
+  // 恢复上次选中的会话（解决刷新后任务面板空白 + 用户上下文丢失）
+  const lastConvId = localStorage.getItem(lastConvKey.value)
+  if (lastConvId) {
+    const conv = conversations.value.find(c => c.conversation_id === lastConvId)
+    if (conv) {
+      await selectConversation(conv)
+      // 检测该会话 session 是否仍在后端运行，如果是则启动轮询追踪
+      try {
+        const statusRes = await getSessionStatus(lastConvId)
+        if (statusRes.code === 200 && statusRes.data?.active) {
+          sendingMessage.value = true
+          eventDisplay.value = { message: '检测到会话仍在运行，正在同步进度...', type: 'loading' }
+          startActiveSessionPoller(lastConvId)
+        }
+      } catch (e) {
+        console.error('[onMounted] session-status 检测失败:', e)
+      }
+    }
+  }
 })
 
 onUnmounted(() => {
   clearInterval(liveClockTimer)
+  stopActiveSessionPoller()
   for (const taskId of Object.keys(skillTaskPollers)) {
     clearInterval(skillTaskPollers[taskId])
     delete skillTaskPollers[taskId]
@@ -2595,6 +2732,13 @@ onUnmounted(() => {
 /* 用户消息右对齐 */
 .message-user {
   align-self: flex-end;
+}
+
+/* Sub-Agent 消息：全宽、无气泡内边距 */
+.message-sub-agent {
+  align-self: flex-start;
+  width: 100%;
+  padding: 2px 0;
 }
 
 /* Todo 消息左对齐 */

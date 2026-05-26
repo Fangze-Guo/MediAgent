@@ -346,6 +346,59 @@ class CodeAgentController(BaseController):
 
             return ResultUtils.success(success)
 
+        @self.router.get("/conversations/{conversation_id}/sub-agents/{tool_use_id}")
+        async def get_sub_agent_messages(
+            conversation_id: str,
+            tool_use_id: str,
+            user_vo: UserVO = Depends(self._get_current_user)
+        ) -> BaseResponse[dict]:
+            """
+            获取子智能体（Task 工具）的会话消息。
+
+            通过父会话的 session_id 定位项目目录，扫描 agent-*.jsonl 文件，
+            找到 parent_tool_use_id 匹配的子智能体会话并返回解析后的消息列表。
+            """
+            from src.server_agent.service.clinical_tools.JsonlSessionService import get_session_service
+            from src.server_agent.service.clinical_tools.message_parser import parse_jsonl_messages
+
+            conversation = await self.service.mapper.get_conversation_by_id(conversation_id)
+            if not conversation or not conversation.session_id:
+                return ResultUtils.success({"messages": [], "found": False})
+
+            session_service = get_session_service()
+            raw_entries = await session_service.get_sub_agent_messages_for_tool_use(
+                parent_session_id=conversation.session_id,
+                tool_use_id=tool_use_id,
+            )
+
+            if not raw_entries:
+                return ResultUtils.success({"messages": [], "found": False})
+
+            parsed = parse_jsonl_messages(raw_entries, conversation_id=f"sub_{tool_use_id}")
+            messages_list = [msg.model_dump() for msg in parsed]
+            return ResultUtils.success({"messages": messages_list, "found": True})
+
+        @self.router.get("/conversations/{conversation_id}/session-status")
+        async def get_session_status(
+            conversation_id: str,
+            user_vo: UserVO = Depends(self._get_current_user)
+        ) -> BaseResponse[dict]:
+            """
+            查询会话 session 活跃状态。
+            active=True 说明后台 Claude Task 仍在运行（即使 SSE 已断开），
+            前端可据此轮询 JSONL 获取最新内容。
+            """
+            from src.server_agent.service.clinical_tools.CodeAgentService import is_conversation_active
+            conversation = await self.service.mapper.get_conversation_by_id(conversation_id)
+            if not conversation:
+                raise NotFoundError(detail="会话不存在")
+            active = is_conversation_active(conversation_id)
+            return ResultUtils.success({
+                "conversation_id": conversation_id,
+                "sdk_session_id": conversation.session_id,
+                "active": active,
+            })
+
         @self.router.get("/sessions/{session_id}/messages")
         async def get_session_messages(
             session_id: str,

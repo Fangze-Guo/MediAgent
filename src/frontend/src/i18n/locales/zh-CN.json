@@ -579,7 +579,19 @@
     "ppt": "📊 PPT",
     "uploadFiles": "📁 上传文件",
     "more": "➕ 更多",
-    "placeholder": "发送消息或选择技能"
+    "placeholder": "发送消息或选择技能",
+    "nav": {
+      "chat": "开始对话",
+      "chatDesc": "与 AI 医学助手进行多轮对话，获取智能诊疗建议",
+      "files": "文件管理",
+      "filesDesc": "上传和管理医学影像、报告等文件资源",
+      "clinicalTools": "临床工具",
+      "clinicalToolsDesc": "基于 AI 的临床辅助决策与影像分析工具集",
+      "knowledgeBase": "知识库",
+      "knowledgeBaseDesc": "医学文献与临床指南管理，支持智能检索",
+      "skillStore": "技能仓库",
+      "skillStoreDesc": "浏览与安装 AI Agent 技能，扩展助手能力"
+    }
   },
   "views_LoginView": {
     "welcome": "欢迎！",
@@ -879,9 +891,6 @@
     "arrow": "箭头",
     "text": "文字",
     "saveReport": "保存诊断报告"
-  },
-  "views_WorkflowView": {
-    "comingSoon": "功能开发中，敬请期待"
   },
   "components_DocumentList": {
     "loading": "加载文档中...",

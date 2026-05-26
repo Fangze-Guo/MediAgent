@@ -1,7 +1,7 @@
 <template>
   <div class="sidebar">
     <!-- ==================== 顶部标题区 ==================== -->
-    <div class="sidebar-header">
+    <div class="sidebar-header" @click="router.push('/')" style="cursor:pointer;">
       <img src="/MedWiser.png" alt="MedWiser Logo" class="logo-image" />
       <h3>MedWiser Agent</h3>
     </div>
@@ -287,10 +287,6 @@ const selectedKeys = computed(() => {
     return ['knowledge-base']
   }
 
-  if (path === '/') {
-    return ['home']
-  }
-
   return []
 })
 
@@ -299,10 +295,11 @@ const selectedKeys = computed(() => {
  * 处理菜单点击事件
  * 根据菜单项的 key 跳转到对应页面
  */
-const handleMenuClick: MenuProps['onClick'] = ({key}) => {
+const handleMenuClick: MenuProps['onClick'] = async ({key}) => {
   if (key === 'home') {
-    // 跳转到首页（新建对话）
-    router.push('/')
+    // 直接创建新会话并跳转，跳过欢迎首页
+    const conv = await conversationsStore.createConversation()
+    router.push(`/conversation/${conv.id}`)
   } else if (key === 'files') {
     // 跳转到文件管理页面
     router.push('/files')

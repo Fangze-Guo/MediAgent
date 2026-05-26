@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass
 from typing import AsyncGenerator, Dict, List, Optional
 
@@ -14,15 +15,78 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langchain_core.tools import StructuredTool
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
+from src.server_agent.service.EmbeddingService import EmbeddingService
+
+_embedding_service = EmbeddingService()
 
 logger = logging.getLogger(__name__)
+
+TOOL_META: dict[str, dict] = {
+    "search_knowledge_base": {"display_name": "知识库检索", "icon": "📚"},
+    "web_search":            {"display_name": "网络搜索",   "icon": "🌐"},
+    "read_local_file":       {"display_name": "读取文件",   "icon": "📄"},
+    "get_datetime":          {"display_name": "获取时间",   "icon": "🕐"},
+}
+
+
+async def _web_search(query: str) -> str:
+    """网络搜索工具：使用 Tavily API（免费 1000 次/月，注册：https://tavily.com）。"""
+    from tavily import AsyncTavilyClient
+    client = AsyncTavilyClient(api_key=os.environ["TAVILY_API_KEY"])
+    try:
+        resp = await client.search(query, max_results=6, search_depth="basic")
+        lines: list[str] = []
+        for r in resp.get("results", []):
+            title = r.get("title", "")
+            content = r.get("content", "")[:300]
+            url = r.get("url", "")
+            lines.append(f"• {title}\n  {content}\n  {url}")
+        return "\n\n".join(lines) if lines else "（Tavily 未返回结果）"
+    except Exception as exc:
+        logger.warning("Tavily search failed: %s", exc)
+        return f"Tavily 搜索失败: {exc}"
+
+
+async def _read_local_file(path: str) -> str:
+    """读取本地文件内容。传入完整文件路径，返回文件文本（限 100 KB 以内）。"""
+    import pathlib
+    safe_dir = pathlib.Path(os.getenv("SAFE_READ_DIR", os.path.expanduser("~/mediagent"))).resolve()
+    try:
+        target = pathlib.Path(path).resolve()
+        target.relative_to(safe_dir)
+        if not target.is_file():
+            return f"文件不存在或不是普通文件: {path}"
+        size = target.stat().st_size
+        if size > 100 * 1024:
+            return f"文件过大（{size // 1024} KB），仅支持 100 KB 以内的文件"
+        return target.read_text(encoding="utf-8", errors="replace")
+    except ValueError:
+        return f"安全限制：只能读取 {safe_dir} 目录下的文件"
+    except Exception as exc:
+        return f"读取文件失败: {exc}"
+
+
+def _get_datetime() -> str:
+    """获取当前日期和时间（北京时间）。"""
+    from datetime import datetime
+    try:
+        import pytz
+        now = datetime.now(pytz.timezone("Asia/Shanghai"))
+    except Exception:
+        from datetime import timezone, timedelta
+        now = datetime.now(timezone(timedelta(hours=8)))
+    return now.strftime("%Y年%m月%d日 %H:%M:%S（北京时间）")
+
 
 SYSTEM_PROMPT = """\
 你是一个医疗工具助手，负责与用户直接对话，提供专业的医学信息与智能分析支持。
 
 当用户询问专业医学问题（如疾病诊断、用药方案、手术指征、检验指标解读、医学文献等）时，\
 请主动调用 search_knowledge_base 工具查询知识库获取循证依据。
-对于日常问候、简单对话、非医学问题，直接回答即可，无需调用工具。
+当用户需要查询网络上的最新资讯、新闻、实时数据时，调用 web_search 工具。
+当用户询问当前日期或时间时，调用 get_datetime 工具。
+当用户需要读取本地文件内容时，调用 read_local_file 工具。
+对于日常问候、简单对话等无需工具的场景，直接回答即可。
 
 【语言规则】
 - 若用户使用中文，全程中文回复。
@@ -118,11 +182,10 @@ class ReActAgent:
         collected_sources: List[dict] = []
         collected_tool_calls: List[dict] = []
         _sources_before: List[int] = [0]  # 可变容器，供闭包跨事件共享
+        _ws_results: List[dict] = []     # 最近一次 web_search 的结构化结果
 
         async def _search_kb(query: str) -> str:
             """搜索医疗知识库，获取相关医学文献、指南、诊疗规范。当需要专业医学信息时调用。"""
-            from src.server_agent.service.EmbeddingService import EmbeddingService
-
             if kb_mapper is None:
                 return "（知识库未配置）"
 
@@ -130,14 +193,15 @@ class ReActAgent:
             if not kbs:
                 return "（当前没有可用的知识库）"
 
-            embedding = EmbeddingService()
             all_results: List[dict] = []
             for kb in kbs:
                 try:
-                    results = await embedding.search(kb.id, query, top_k=3)
+                    results = await _embedding_service.search(kb.id, query, top_k=3)
                     for r in results:
                         r["kb_name"] = kb.name
-                    relevant = [r for r in results if r["score"] < 0.6]
+                    scores = [round(r["score"], 4) for r in results]
+                    logger.info("KB %d scores for query '%s': %s", kb.id, query[:60], scores)
+                    relevant = [r for r in results if r["score"] < 1.5]
                     all_results.extend(relevant)
                 except Exception as e:
                     logger.warning("KB %d 检索失败: %s", kb.id, e)
@@ -184,10 +248,47 @@ class ReActAgent:
             name="search_knowledge_base",
             description="搜索医疗知识库，获取相关医学文献、指南、诊疗规范。当需要专业医学信息时调用。",
         )
+        async def _web_search_cached(query: str) -> str:
+            """搜索互联网获取最新资讯、新闻、实时数据、百科知识。当用户需要网络上的最新信息时调用。"""
+            from tavily import AsyncTavilyClient
+            logger.info("[web_search] starting query: %s", query[:80])
+            client = AsyncTavilyClient(api_key=os.environ["TAVILY_API_KEY"])
+            try:
+                resp = await client.search(query, max_results=6, search_depth="basic")
+                logger.info("[web_search] raw resp type=%s keys=%s", type(resp).__name__, list(resp.keys()) if isinstance(resp, dict) else "N/A")
+                _ws_results.clear()
+                lines: list[str] = []
+                for r in resp.get("results", []):
+                    title = r.get("title", "")
+                    content = r.get("content", "")[:300]
+                    url = r.get("url", "")
+                    lines.append(f"• {title}\n  {content}\n  {url}")
+                    _ws_results.append({"title": title, "content": content, "url": url})
+                logger.info("[web_search] parsed %d results, _ws_results len=%d", len(lines), len(_ws_results))
+                return "\n\n".join(lines) if lines else "（Tavily 未返回结果）"
+            except Exception as exc:
+                logger.warning("[web_search] Tavily search failed: %s", exc)
+                return f"Tavily 搜索失败: {exc}"
+
+        web_search_tool = StructuredTool.from_function(
+            coroutine=_web_search_cached,
+            name="web_search",
+            description="搜索互联网获取最新资讯、新闻、实时数据、百科知识。当用户需要网络上的最新信息时调用。",
+        )
+        read_file_tool = StructuredTool.from_function(
+            coroutine=_read_local_file,
+            name="read_local_file",
+            description="读取本地文件内容。传入完整文件路径，返回文件的文本内容。",
+        )
+        datetime_tool = StructuredTool.from_function(
+            func=_get_datetime,
+            name="get_datetime",
+            description="获取当前日期和时间（北京时间）。当用户询问今天日期、当前时间时调用。",
+        )
 
         agent_graph = create_react_agent(
             model=self._llm,
-            tools=[search_tool],
+            tools=[search_tool, web_search_tool, read_file_tool, datetime_tool],
         )
 
         messages = self._build_messages(user_input, history, images)
@@ -200,35 +301,60 @@ class ReActAgent:
                 kind = event["event"]
                 name = event.get("name", "")
 
-                if kind == "on_tool_start" and name == "search_knowledge_base":
+                if kind == "on_tool_start":
                     tool_input = event.get("data", {}).get("input", {})
-                    query = (
-                        tool_input.get("query", "")
-                        if isinstance(tool_input, dict)
-                        else str(tool_input)
-                    )
-                    _sources_before[0] = len(collected_sources)
-                    collected_tool_calls.append({"name": "search_knowledge_base", "query": query, "status": "running"})
-                    yield (
-                        f"[SEARCH_START]"
-                        + json.dumps(
-                            {"kb": "知识库", "kb_id": 0, "query": query},
-                            ensure_ascii=False,
-                        )
-                    )
+                    meta = TOOL_META.get(name, {"display_name": name, "icon": "🔧"})
+                    if isinstance(tool_input, dict):
+                        input_summary = str(
+                            tool_input.get("query") or
+                            tool_input.get("path") or
+                            next(iter(tool_input.values()), "")
+                        )[:120]
+                    else:
+                        input_summary = str(tool_input)[:120]
 
-                elif kind == "on_tool_end" and name == "search_knowledge_base":
-                    found = len(collected_sources) - _sources_before[0]
-                    if collected_tool_calls:
-                        collected_tool_calls[-1]["status"] = "done"
-                        collected_tool_calls[-1]["found"] = found
-                    yield (
-                        f"[SEARCH_RESULT]"
-                        + json.dumps(
-                            {"kb": "知识库", "kb_id": 0, "found": found},
-                            ensure_ascii=False,
-                        )
-                    )
+                    collected_tool_calls.append({
+                        "name": name,
+                        "display_name": meta["display_name"],
+                        "icon": meta["icon"],
+                        "query": input_summary,
+                        "status": "running",
+                    })
+                    yield f"[TOOL_START]{json.dumps({'name': name, 'display_name': meta['display_name'], 'icon': meta['icon'], 'input_summary': input_summary}, ensure_ascii=False)}"
+
+                    if name == "search_knowledge_base":
+                        _sources_before[0] = len(collected_sources)
+                        yield f"[SEARCH_START]{json.dumps({'kb': '知识库', 'kb_id': 0, 'query': input_summary}, ensure_ascii=False)}"
+
+                elif kind == "on_tool_end":
+                    meta = TOOL_META.get(name, {"display_name": name, "icon": "🔧"})
+                    raw_output = event.get("data", {}).get("output", "")
+                    raw_str = raw_output.content if hasattr(raw_output, "content") else str(raw_output)
+                    output_summary = raw_str[:120] if raw_str else ""
+                    extra: dict = {}
+                    logger.info("[on_tool_end] name=%s raw_output type=%s raw_str[:80]=%s _ws_results=%d",
+                                name, type(raw_output).__name__, raw_str[:80], len(_ws_results))
+
+                    for tc in reversed(collected_tool_calls):
+                        if tc.get("name") == name and tc.get("status") == "running":
+                            tc["status"] = "done"
+                            tc["output_summary"] = output_summary
+                            break
+
+                    if name == "search_knowledge_base":
+                        found = len(collected_sources) - _sources_before[0]
+                        for tc in reversed(collected_tool_calls):
+                            if tc.get("name") == name:
+                                tc["found"] = found
+                                break
+                        yield f"[SEARCH_RESULT]{json.dumps({'kb': '知识库', 'kb_id': 0, 'found': found}, ensure_ascii=False)}"
+                        output_summary = f"找到 {found} 个相关片段"
+
+                    elif name == "web_search" and _ws_results:
+                        output_summary = f"找到 {len(_ws_results)} 条结果"
+                        extra["search_results"] = list(_ws_results)
+
+                    yield f"[TOOL_END]{json.dumps({'name': name, 'display_name': meta['display_name'], 'icon': meta['icon'], 'success': True, 'output_summary': output_summary, **extra}, ensure_ascii=False)}"
 
                 elif kind == "on_chat_model_stream":
                     chunk = event.get("data", {}).get("chunk")

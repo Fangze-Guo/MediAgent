@@ -16,9 +16,11 @@ class MessageResponse(BaseModel):
     content: Optional[str] = None
     thinking: Optional[str] = None
     created_at: Optional[str] = None
-    # Skill call 字段
-    event_type: Optional[str] = None  # "skill_call" | "todo" | None
+    # Skill call / tool call 字段
+    event_type: Optional[str] = None  # "skill_call" | "todo" | "sub_agent_call" | None
     skill_name: Optional[str] = None
     skill_arguments: Optional[str] = None
+    # 子智能体关联：Task tool_use block 的 id，用于查询子智能体会话
+    tool_use_id: Optional[str] = None
     # Todo 事件字段
     todo_list: Optional[List[dict]] = None
