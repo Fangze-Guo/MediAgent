@@ -83,6 +83,7 @@ class FileController(BaseController):
                 INLINE_TYPES = {
                     "application/pdf",
                     "text/plain",
+                    "text/html",
                     "text/markdown",
                     "text/csv",
                     "image/jpeg",

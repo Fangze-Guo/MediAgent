@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import mimetypes
+from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 from src.server_agent.agent.conversation_agent import ConversationAgent
 from src.server_agent.exceptions import NotFoundError, AuthorizationError, handle_service_exception
+from src.server_agent.mapper.paths import in_data
 from src.server_agent.mapper.ConversationMapper import ConversationMapper
 from src.server_agent.service.EmbeddingService import EmbeddingService
 from src.server_agent.service.OssService import OssService
@@ -32,6 +35,78 @@ class ConversationService:
 
     def _get_kb_mapper(self, request):
         return getattr(request.app.state, "kb_mapper", None)
+
+    def _prepare_dataset_attachments(
+        self,
+        attachments: Optional[List[dict]],
+        user_id: Optional[str],
+        user_role: str = "user",
+    ) -> Tuple[List[dict], str]:
+        """Validate dataset file references and build Graph context."""
+        if not attachments:
+            return [], ""
+
+        files_root = in_data("files")
+        safe_root = files_root.resolve()
+        validated: List[dict] = []
+
+        for att in attachments:
+            if not isinstance(att, dict) or att.get("type") != "dataset_file":
+                validated.append(att)
+                continue
+
+            raw_path = str(att.get("path") or "").strip().lstrip("/")
+            rel_path = Path(raw_path)
+            if not raw_path or rel_path.is_absolute() or ".." in rel_path.parts:
+                logger.warning("Invalid dataset attachment path ignored: %s", raw_path)
+                continue
+
+            parts = rel_path.parts
+            if len(parts) < 3 or parts[0] != "private":
+                logger.warning("Dataset attachment outside private ignored: %s", raw_path)
+                continue
+            owner_id = parts[1]
+            if user_role != "admin" and user_id and owner_id != str(user_id):
+                logger.warning("Dataset attachment denied for user=%s path=%s", user_id, raw_path)
+                continue
+            if len(parts) < 4 or parts[2] != "dataset":
+                logger.warning("Dataset attachment outside dataset ignored: %s", raw_path)
+                continue
+
+            abs_path = (files_root / rel_path).resolve()
+            try:
+                abs_path.relative_to(safe_root)
+            except ValueError:
+                logger.warning("Dataset attachment path traversal ignored: %s", raw_path)
+                continue
+            if not abs_path.is_file():
+                logger.warning("Dataset attachment missing ignored: %s", raw_path)
+                continue
+
+            mime_type = att.get("mime_type") or mimetypes.guess_type(str(abs_path))[0] or "application/octet-stream"
+            validated.append({
+                "type": "dataset_file",
+                "path": rel_path.as_posix(),
+                "name": att.get("name") or abs_path.name,
+                "mime_type": mime_type,
+                "size": abs_path.stat().st_size,
+            })
+
+        dataset_files = [a for a in validated if a.get("type") == "dataset_file"]
+        if not dataset_files:
+            return validated, ""
+
+        lines = [
+            "<selected_dataset_files>",
+            "用户本轮通过 @ 选择了以下数据集文件。它们是受后端校验过的文件引用。",
+            "如需读取文本内容，请调用 read_dataset_text_file；如需查看元数据，请调用 get_dataset_file_metadata；如需生成医学报告，请调用 generate_medical_report。",
+        ]
+        for idx, file in enumerate(dataset_files, 1):
+            lines.append(
+                f"{idx}. path={file['path']} name={file['name']} mime_type={file['mime_type']} size={file['size']}"
+            )
+        lines.append("</selected_dataset_files>")
+        return validated, "\n".join(lines)
 
     async def _fetch_rag_context(self, request, user_msg: str) -> Tuple[str, List[dict]]:
         """并行检索所有知识库，返回 (rag_context_string, sources_list)。"""
@@ -278,22 +353,33 @@ class ConversationService:
         self, request, conversation_uid: str, content: str,
         images: Optional[List[str]] = None,
         attachments: Optional[List[dict]] = None,
+        user_id: Optional[str] = None,
+        user_role: str = "user",
     ) -> AsyncGenerator[str, None]:
         """流式发送：ReAct agent 自主决策是否查知识库，逐 token yield，完成后持久化"""
         import json
         mapper = self._get_mapper(request)
         react_agent = self._get_react_agent(request)
         kb_mapper = self._get_kb_mapper(request)
+        validated_attachments, selected_files_context = self._prepare_dataset_attachments(
+            attachments, user_id=user_id, user_role=user_role
+        )
 
         history = await mapper.get_messages(conversation_uid)
-        await mapper.add_message(conversation_uid, "user", content, attachments)
+        await mapper.add_message(conversation_uid, "user", content, validated_attachments)
 
         sources_data: list = []
         tool_calls_data: list = []
         full_reply: List[str] = []
         try:
             async for event in react_agent.stream(
-                content, history, kb_mapper=kb_mapper, images=images
+                content,
+                history,
+                kb_mapper=kb_mapper,
+                images=images,
+                user_id=user_id,
+                user_role=user_role,
+                selected_files_context=selected_files_context,
             ):
                 if event.startswith("[SOURCES]"):
                     try:

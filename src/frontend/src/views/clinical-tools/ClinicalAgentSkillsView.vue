@@ -96,7 +96,9 @@
 
           <!-- 卡片内容 -->
           <h3 class="skill-name">{{ skill.name }}</h3>
-          <p class="skill-desc">{{ skill.description }}</p>
+          <a-tooltip :title="skill.description" placement="bottomLeft">
+            <p class="skill-desc">{{ skill.description }}</p>
+          </a-tooltip>
 
           <!-- 卡片底部 -->
           <div class="card-footer">

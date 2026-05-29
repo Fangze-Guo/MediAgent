@@ -25,13 +25,18 @@ export interface ConversationMessage {
   content: string
   /** 消息时间戳（可选，后端可能不提供） */
   timestamp?: string
-  /** 附件列表（图片 OSS URL 等） */
-  attachments?: { type: string; url: string }[]
+  /** 附件列表（图片 OSS URL、dataset 文件引用等） */
+  attachments?: ConversationAttachment[]
   /** RAG 来源引用 */
   sources?: RagSource[]
   /** 工具调用链路（持久化数据） */
-  tool_calls?: { name: string; query: string; status: string; found?: number }[]
+  tool_calls?: { name: string; query: string; status: string; found?: number; [key: string]: any }[]
 }
+
+export type ConversationAttachment =
+  | { type: 'image'; url: string }
+  | { type: 'dataset_file'; path: string; name?: string; mime_type?: string; size?: number }
+  | { type: string; [key: string]: any }
 
 /**
  * 创建对话请求参数
@@ -120,6 +125,8 @@ export interface ToolEndEvent {
   output_summary: string
   found?: number
   search_results?: SearchResult[]
+  report_result?: Record<string, any>
+  child_calls?: Record<string, any>[]
 }
 
 /**
@@ -227,12 +234,16 @@ export async function streamMessageToAgent(
   },
   signal?: AbortSignal,
   images?: string[],
-  attachments?: { type: string; url: string }[]
+  attachments?: ConversationAttachment[]
 ): Promise<void> {
   const url = `/api/conversation/stream`
+  const token = localStorage.getItem('medwiser_token')
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ conversation_id, content, images: images ?? [], attachments: attachments ?? [] }),
     signal,
   })

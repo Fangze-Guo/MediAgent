@@ -25,22 +25,16 @@
                   <!-- 解析并展示思考过程和回复内容 -->
                   <div v-if="m.parsedContent">
                     <!-- 工具调用链路（流式期间与完成后均显示） -->
-                    <template v-if="m.role === 'assistant' && m.toolCalls && m.toolCalls.length">
-                      <WebSearchBlock
-                        v-if="m.toolCalls.some(tc => tc.name === 'web_search')"
-                        :items="m.toolCalls.filter(tc => tc.name === 'web_search')"
-                      />
-                      <KnowledgeSearchBlock
-                        v-if="m.toolCalls.some(tc => tc.name === 'search_knowledge_base')"
-                        :items="m.toolCalls.filter(tc => tc.name === 'search_knowledge_base')"
-                        :sources="m.sources"
-                      />
+                    <div v-if="m.role === 'assistant' && m.toolCalls && m.toolCalls.length" class="execution-chain">
                       <ToolCallBlock
-                        v-for="(tc, ti) in m.toolCalls.filter(tc => tc.name !== 'web_search' && tc.name !== 'search_knowledge_base')"
+                        v-for="(tc, ti) in m.toolCalls"
                         :key="ti"
                         :item="tc"
+                        :index="ti"
+                        :total="m.toolCalls.length"
+                        :sources="m.sources"
                       />
-                    </template>
+                    </div>
                     <!-- 多个思考过程 -->
                     <div v-if="m.parsedContent.thinkingList && m.parsedContent.thinkingList.length > 0">
                       <div v-for="(thinking, thinkingIdx) in m.parsedContent.thinkingList" :key="thinkingIdx"
@@ -75,22 +69,16 @@
                   <!-- 原始内容（如果没有解析出思考过程） -->
                   <div v-else>
                     <!-- 工具调用链路（流式期间与完成后均显示） -->
-                    <template v-if="m.role === 'assistant' && m.toolCalls && m.toolCalls.length">
-                      <WebSearchBlock
-                        v-if="m.toolCalls.some(tc => tc.name === 'web_search')"
-                        :items="m.toolCalls.filter(tc => tc.name === 'web_search')"
-                      />
-                      <KnowledgeSearchBlock
-                        v-if="m.toolCalls.some(tc => tc.name === 'search_knowledge_base')"
-                        :items="m.toolCalls.filter(tc => tc.name === 'search_knowledge_base')"
-                        :sources="m.sources"
-                      />
+                    <div v-if="m.role === 'assistant' && m.toolCalls && m.toolCalls.length" class="execution-chain">
                       <ToolCallBlock
-                        v-for="(tc, ti) in m.toolCalls.filter(tc => tc.name !== 'web_search' && tc.name !== 'search_knowledge_base')"
+                        v-for="(tc, ti) in m.toolCalls"
                         :key="ti"
                         :item="tc"
+                        :index="ti"
+                        :total="m.toolCalls.length"
+                        :sources="m.sources"
                       />
-                    </template>
+                    </div>
                     <!-- 流式等待中：无内容且无运行中工具调用 → 显示打字动画 -->
                     <div v-if="m.role === 'assistant' && !m.typingComplete && !m.content
                       && !(m.toolCalls && m.toolCalls.some(tc => tc.status === 'running'))" class="typing-indicator">
@@ -112,6 +100,17 @@
                           class="message-image-thumb"
                           @click="selectedPreviewImage = img"
                         />
+                      </div>
+                      <div v-if="getDatasetAttachments(m).length" class="message-dataset-files">
+                        <div
+                          v-for="file in getDatasetAttachments(m)"
+                          :key="file.path"
+                          class="message-dataset-file"
+                          :title="file.path"
+                        >
+                          <FileOutlined />
+                          <span>{{ file.name || file.path }}</span>
+                        </div>
                       </div>
                       <MarkdownRenderer v-if="m.content" :content="m.content" />
                     </template>
@@ -218,6 +217,63 @@
                 style="display: none"
                 @change="handleFileSelect"
               />
+              <div v-if="showDatasetPicker" class="mention-file-picker">
+                <div class="dataset-picker">
+                  <div class="dataset-picker-toolbar">
+                    <div class="dataset-picker-path">
+                      <a-breadcrumb>
+                        <a-breadcrumb-item
+                          v-for="(part, idx) in datasetPathParts"
+                          :key="`${part}-${idx}`"
+                        >
+                          <a @click="navigateDatasetPath(idx)">{{ part }}</a>
+                        </a-breadcrumb-item>
+                      </a-breadcrumb>
+                    </div>
+                    <a-button size="small" :loading="datasetPickerLoading" @click="loadDatasetFiles(datasetPickerPath)">
+                      <template #icon><ReloadOutlined /></template>
+                      刷新
+                    </a-button>
+                  </div>
+
+                  <div class="dataset-picker-list">
+                    <div
+                      v-for="file in datasetFiles"
+                      :key="file.id"
+                      class="dataset-picker-row"
+                      :class="{ selected: selectedDatasetImageIds.has(file.id) }"
+                      @click="handleDatasetItemClick(file)"
+                    >
+                      <div class="dataset-picker-file">
+                        <FolderOutlined v-if="file.isDirectory" class="dataset-picker-icon folder" />
+                        <FileImageOutlined v-else-if="isDatasetImage(file)" class="dataset-picker-icon image" />
+                        <FileOutlined v-else class="dataset-picker-icon file" />
+                        <div class="dataset-picker-file-main">
+                          <span class="dataset-picker-name">{{ file.name }}</span>
+                          <span v-if="!file.isDirectory" class="dataset-picker-meta">{{ formatFileSize(file.size) }}</span>
+                        </div>
+                      </div>
+                      <a-checkbox
+                        v-if="!file.isDirectory"
+                        :checked="selectedDatasetImageIds.has(file.id)"
+                        @click.stop
+                        @change="toggleDatasetImage(file)"
+                      />
+                    </div>
+                    <div v-if="!datasetPickerLoading && datasetFiles.length === 0" class="dataset-picker-empty">
+                      当前目录没有文件
+                    </div>
+                  </div>
+
+                  <div class="dataset-picker-footer">
+                    <span>已选择 {{ selectedDatasetImages.length }} 个文件</span>
+                    <div class="dataset-picker-actions">
+                      <a-button @click="closeDatasetPicker">取消</a-button>
+                      <a-button type="primary" @click="confirmDatasetImages">确定</a-button>
+                    </div>
+                  </div>
+                </div>
+              </div>
               <!-- 待发送附件预览 -->
               <div v-if="pendingAttachments.length > 0" class="pending-attachments">
                 <div v-for="att in pendingAttachments" :key="att.id" class="attachment-item">
@@ -238,6 +294,20 @@
                   </button>
                 </div>
               </div>
+              <div v-if="selectedDatasetImages.length > 0" class="dataset-image-tags">
+                <div
+                  v-for="img in selectedDatasetImages"
+                  :key="img.id"
+                  class="dataset-image-tag"
+                  :title="img.id"
+                >
+                  <FileOutlined />
+                  <span>{{ img.name }}</span>
+                  <button class="dataset-tag-remove" @click="removeDatasetImage(img.id)" title="移除">
+                    <CloseOutlined />
+                  </button>
+                </div>
+              </div>
               <!-- 输入框 -->
               <div class="input-field">
                 <textarea 
@@ -245,7 +315,7 @@
                   class="message-input" 
                   :placeholder="t('views_ChatView.inputPlaceholder')" 
                   @keydown="handleKeyDown"
-                  @input="adjustTextareaHeight"
+                  @input="handleInput"
                   @paste="handlePaste"
                   rows="1"
                   ref="textareaRef"
@@ -265,7 +335,7 @@
                     @model-change="handleModelChange"
                   />
                   <!-- 有内容时显示发送/停止，无内容时显示功能图标 -->
-                  <template v-if="sending || inputMessage.trim() || pendingAttachments.length">
+                  <template v-if="sending || inputMessage.trim() || pendingAttachments.length || selectedDatasetImages.length">
                     <button
                       class="send-icon-btn"
                       @click="sending ? stopGeneration() : sendMessage()"
@@ -349,11 +419,11 @@ import { useConversationsStore } from '@/store/conversations'
 import FileUpload from '@/components/file/FileUpload.vue'
 import MarkdownRenderer from '@/components/markdown/MarkdownRenderer.vue'
 import ToolCallBlock from '@/components/chat/ToolCallBlock.vue'
-import WebSearchBlock from '@/components/chat/WebSearchBlock.vue'
-import KnowledgeSearchBlock from '@/components/chat/KnowledgeSearchBlock.vue'
 import ConversationGraph from '@/components/chat/ConversationGraph.vue'
 import ModelSelector from '@/components/model/ModelSelector.vue'
-import { type FileInfo, getChatImagePresignUrl, uploadToOss } from '@/apis/files'
+import { type FileInfo, getChatImagePresignUrl, getDataSetFiles, uploadToOss } from '@/apis/files'
+import type { ConversationAttachment } from '@/apis/conversation'
+import { useAuthStore } from '@/store/auth'
 import {
   ArrowUpOutlined,
   AudioOutlined,
@@ -365,7 +435,9 @@ import {
   FileImageOutlined,
   FileOutlined,
   FileTextOutlined,
+  FolderOutlined,
   PlusOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons-vue'
 
 // 路由相关
@@ -377,6 +449,7 @@ const { t } = useI18n()
 
 // 状态管理
 const conversationsStore = useConversationsStore()
+const authStore = useAuthStore()
 
 // 响应式数据
 /** 用户输入的消息内容 */
@@ -418,6 +491,18 @@ interface PendingAttachment {
   mimeType: string
 }
 const pendingAttachments = ref<PendingAttachment[]>([])
+interface DatasetImageSelection {
+  id: string
+  name: string
+  path: string
+  size: number
+}
+const selectedDatasetImages = ref<DatasetImageSelection[]>([])
+const showDatasetPicker = ref(false)
+const datasetPickerLoading = ref(false)
+const datasetPickerPath = ref('.')
+const datasetFiles = ref<FileInfo[]>([])
+const activeMentionRange = ref<{ start: number; end: number } | null>(null)
 /** 文件选择器 input 引用 */
 const fileInputRef = ref<HTMLInputElement | null>(null)
 /** 拖拽悬停状态 */
@@ -429,6 +514,21 @@ const selectedPreviewImage = ref<string | null>(null)
 
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024  // 10 MB
 const MAX_ATTACHMENTS = 6
+const MAX_DATASET_IMAGES = 12
+
+const selectedDatasetImageIds = computed(() => new Set(selectedDatasetImages.value.map(img => img.id)))
+const datasetPathParts = computed(() => datasetPickerPath.value.split('/').filter(Boolean))
+
+const getDatasetAttachments = (msg: any) => {
+  return ((msg.attachments || []) as ConversationAttachment[])
+    .filter((att: any) => att.type === 'dataset_file' && att.path) as Array<{
+      type: 'dataset_file'
+      path: string
+      name?: string
+      mime_type?: string
+      size?: number
+    }>
+}
 
 
 /**
@@ -666,6 +766,115 @@ const handleAttachClick = () => {
   fileInputRef.value?.click()
 }
 
+const getDefaultDatasetPath = () => {
+  const uid = authStore.user?.uid
+  return uid ? `private/${uid}/dataset` : '.'
+}
+
+const isDatasetImage = (file: FileInfo) => {
+  return file.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp|tiff?)$/i.test(file.name)
+}
+
+const loadDatasetFiles = async (path: string) => {
+  datasetPickerLoading.value = true
+  try {
+    const response = await getDataSetFiles(path)
+    datasetFiles.value = response.data.files
+    datasetPickerPath.value = response.data.currentPath || path
+  } catch (error) {
+    console.error('加载数据集文件失败:', error)
+    message.error('加载数据集文件失败')
+  } finally {
+    datasetPickerLoading.value = false
+  }
+}
+
+const openDatasetPicker = async () => {
+  showDatasetPicker.value = true
+  await loadDatasetFiles(datasetPickerPath.value === '.' ? getDefaultDatasetPath() : datasetPickerPath.value)
+}
+
+const closeDatasetPicker = () => {
+  showDatasetPicker.value = false
+  activeMentionRange.value = null
+}
+
+const navigateDatasetPath = async (index: number) => {
+  const parts = datasetPathParts.value.slice(0, index + 1)
+  await loadDatasetFiles(parts.join('/') || '.')
+}
+
+const handleDatasetItemClick = async (file: FileInfo) => {
+  if (file.isDirectory) {
+    await loadDatasetFiles(file.id)
+    return
+  }
+  toggleDatasetImage(file)
+}
+
+const toggleDatasetImage = (file: FileInfo) => {
+  if (file.isDirectory) return
+  if (selectedDatasetImageIds.value.has(file.id)) {
+    removeDatasetImage(file.id)
+    return
+  }
+  if (selectedDatasetImages.value.length >= MAX_DATASET_IMAGES) {
+    message.warning(`最多选择 ${MAX_DATASET_IMAGES} 个数据集文件`)
+    return
+  }
+  selectedDatasetImages.value.push({
+    id: file.id,
+    name: file.name,
+    path: file.path || file.id,
+    size: file.size,
+  })
+}
+
+const removeDatasetImage = (id: string) => {
+  selectedDatasetImages.value = selectedDatasetImages.value.filter(img => img.id !== id)
+}
+
+const confirmDatasetImages = () => {
+  removeActiveMentionToken()
+  closeDatasetPicker()
+  nextTick(() => textareaRef.value?.focus())
+}
+
+const getActiveMentionRange = () => {
+  const textarea = textareaRef.value
+  if (!textarea) return null
+  const cursor = textarea.selectionStart ?? inputMessage.value.length
+  const beforeCursor = inputMessage.value.slice(0, cursor)
+  const match = beforeCursor.match(/(^|\s)@([^\s@]*)$/)
+  if (!match) return null
+
+  const atIndex = beforeCursor.length - match[2].length - 1
+  const charBeforeAt = atIndex > 0 ? beforeCursor[atIndex - 1] : ''
+  if (charBeforeAt && !/\s/.test(charBeforeAt)) return null
+
+  return { start: atIndex, end: cursor }
+}
+
+const removeActiveMentionToken = () => {
+  const range = activeMentionRange.value
+  if (!range) return
+  inputMessage.value = `${inputMessage.value.slice(0, range.start)}${inputMessage.value.slice(range.end)}`.replace(/\s{2,}/g, ' ')
+  nextTick(() => adjustTextareaHeight())
+}
+
+const handleInput = () => {
+  adjustTextareaHeight()
+  const range = getActiveMentionRange()
+  if (!range) {
+    if (showDatasetPicker.value) closeDatasetPicker()
+    return
+  }
+  activeMentionRange.value = range
+  if (!showDatasetPicker.value) {
+    openDatasetPicker()
+  }
+}
+
 /**
  * 文件选择器 change 事件
  */
@@ -698,13 +907,6 @@ const handleFileUploadSuccess = (_file: FileInfo) => {
  */
 const handleFileUploadError = (error: string) => {
   console.error('文件上传失败:', error)
-}
-
-/**
- * 处理上传按钮点击
- */
-const handleUploadClick = () => {
-  showFileUpload.value = true
 }
 
 /**
@@ -984,7 +1186,7 @@ onUnmounted(() => {
 const sendMessageToAI = async (
   messageText: string,
   images?: string[],
-  attachments?: { type: string; url: string }[],
+  attachments?: ConversationAttachment[],
 ) => {
   if (!currentConversation.value || sending.value) return
   const ctrl = new AbortController()
@@ -1066,6 +1268,16 @@ const adjustTextareaHeight = () => {
  * @param event 键盘事件
  */
 const handleKeyDown = (event: KeyboardEvent) => {
+  if (showDatasetPicker.value && event.key === 'Escape') {
+    event.preventDefault()
+    closeDatasetPicker()
+    return
+  }
+  if (showDatasetPicker.value && event.key === 'Enter' && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+    event.preventDefault()
+    confirmDatasetImages()
+    return
+  }
   if (event.key === 'Enter') {
     if (event.ctrlKey || event.metaKey || event.shiftKey) {
       // Ctrl+Enter、Cmd+Enter 或 Shift+Enter：换行
@@ -1102,9 +1314,10 @@ const handleKeyDown = (event: KeyboardEvent) => {
 const sendMessage = async () => {
   const text = inputMessage.value.trim()
   const hasAttachments = pendingAttachments.value.length > 0
+  const hasDatasetImages = selectedDatasetImages.value.length > 0
 
   // 验证输入和状态
-  if ((!text && !hasAttachments) || sending.value) return
+  if ((!text && !hasAttachments && !hasDatasetImages) || sending.value) return
 
   // 构造最终文本：文本文件内容前置拼接
   const textFiles = pendingAttachments.value.filter(a => a.type === 'text')
@@ -1126,13 +1339,21 @@ const sendMessage = async () => {
   // 提取图片 OSS URL 和附件元数据
   const imageAttachments = pendingAttachments.value.filter(a => a.type === 'image' && a.ossUrl)
   const images = imageAttachments.map(a => a.ossUrl!)
-  const attachments: { type: string; url: string }[] = imageAttachments.map(a => ({
+  const imageAttachmentPayload: ConversationAttachment[] = imageAttachments.map(a => ({
     type: 'image',
     url: a.ossUrl!,
   }))
+  const datasetAttachmentPayload: ConversationAttachment[] = selectedDatasetImages.value.map(file => ({
+    type: 'dataset_file',
+    path: file.id,
+    name: file.name,
+    size: file.size,
+  }))
+  const attachments = [...imageAttachmentPayload, ...datasetAttachmentPayload]
 
   // 清空输入框和附件，revoke ObjectURL 释放内存
   inputMessage.value = ''
+  selectedDatasetImages.value = []
   // 需在 nextTick 后调用，否则 DOM 未更新 scrollHeight 仍是旧值
   nextTick(() => adjustTextareaHeight())
   const toRevoke = pendingAttachments.value.filter(a => a.dataUrl.startsWith('blob:'))
@@ -1153,7 +1374,7 @@ const sendMessage = async () => {
 
   // 发送消息给AI
   await sendMessageToAI(
-    finalContent || '请分析这些内容',
+    finalContent || '请处理选中的文件',
     images.length ? images : undefined,
     attachments.length ? attachments : undefined,
   )
@@ -1344,6 +1565,7 @@ const sendMessage = async () => {
 
 /* AI 消息内容 */
 .message.ai .message-content {
+  width: 100%;
   min-width: 0;
   line-height: 1.7;
   word-wrap: break-word;
@@ -1528,8 +1750,9 @@ const sendMessage = async () => {
   border: 1px solid rgba(0, 0, 0, 0.14);
   border-radius: 18px;
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.06);
-  overflow: hidden;
+  overflow: visible;
   background: var(--bg-primary);
+  position: relative;
 }
 
 .input-container:focus-within {
@@ -1661,6 +1884,14 @@ const sendMessage = async () => {
   font-size: 14px;
   line-height: 1.6;
   color: var(--text-primary);
+}
+
+.execution-chain {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 2px 0 12px;
+  width: 100%;
 }
 
 /* 打字等待指示器 */
@@ -2012,6 +2243,191 @@ const sendMessage = async () => {
   border-radius: 8px;
 }
 
+.dataset-image-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.dataset-image-tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  height: 30px;
+  padding: 0 6px 0 10px;
+  border: 1px solid color-mix(in srgb, var(--link-color) 25%, var(--border-color));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--link-color) 6%, var(--bg-primary));
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.dataset-image-tag span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dataset-tag-remove {
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.dataset-tag-remove:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.mention-file-picker {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 10px);
+  z-index: 1200;
+  padding: 0 2px;
+}
+
+.mention-file-picker .dataset-picker {
+  min-height: 0;
+  max-height: min(520px, 62vh);
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-primary);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+}
+
+.mention-file-picker .dataset-picker-list {
+  min-height: 180px;
+  max-height: min(360px, 42vh);
+}
+
+.dataset-picker {
+  display: flex;
+  flex-direction: column;
+  min-height: 460px;
+}
+
+.dataset-picker-toolbar,
+.dataset-picker-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dataset-picker-toolbar {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.dataset-picker-path {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.dataset-picker-list {
+  flex: 1;
+  min-height: 320px;
+  max-height: 480px;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.dataset-picker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.dataset-picker-row:hover {
+  background: var(--hover-bg, var(--bg-secondary));
+}
+
+.dataset-picker-row.selected {
+  background: color-mix(in srgb, var(--link-color) 8%, var(--bg-primary));
+}
+
+.dataset-picker-row.disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.dataset-picker-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.dataset-picker-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.dataset-picker-icon.folder {
+  color: #faad14;
+}
+
+.dataset-picker-icon.image {
+  color: var(--link-color);
+}
+
+.dataset-picker-file-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.dataset-picker-name {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dataset-picker-meta,
+.dataset-picker-empty {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.dataset-picker-empty {
+  padding: 40px 0;
+  text-align: center;
+}
+
+.dataset-picker-footer {
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.dataset-picker-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .upload-spinner {
   display: block;
   width: 22px;
@@ -2054,6 +2470,33 @@ const sendMessage = async () => {
 
 .message-image-thumb:hover {
   opacity: 0.85;
+}
+
+.message-dataset-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.message-dataset-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 260px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.message-dataset-file span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ─── 图片 Lightbox ─── */

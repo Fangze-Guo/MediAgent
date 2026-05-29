@@ -53,7 +53,11 @@ class ConversationController(BaseController):
         ) -> BaseResponse[Dict[str, Any]]:
             """发送消息，等待完整回复，返回 {reply, sources}"""
             result = await conversation_service.send_message(
-                request, body.conversation_id, body.content, body.images, body.attachments
+                request,
+                body.conversation_id,
+                body.content,
+                body.images,
+                body.attachments,
             )
             return ResultUtils.success(result)
 
@@ -61,12 +65,19 @@ class ConversationController(BaseController):
         async def streamMessage(
             body: StreamMessageRequest,
             request: Request,
+            current_user: UserVO = Depends(get_current_user),
             conversation_service: ConversationService = Depends(get_conversation_service),
         ):
             """流式发送消息，SSE 逐 token 返回；结束时发送 [DONE]"""
             async def generator():
                 async for token in conversation_service.stream_message(
-                    request, body.conversation_id, body.content, body.images, body.attachments
+                    request,
+                    body.conversation_id,
+                    body.content,
+                    body.images,
+                    body.attachments,
+                    user_id=str(current_user.uid),
+                    user_role=current_user.role,
                 ):
                     yield {"data": token.replace("\n", "%0A")}
                 yield {"data": "[DONE]"}

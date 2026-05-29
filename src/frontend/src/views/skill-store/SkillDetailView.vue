@@ -27,7 +27,7 @@
             <div v-else class="skill-icon-large">{{ getSkillIcon(skill.type) }}</div>
             <div class="skill-header-info">
               <h1 class="skill-title">{{ skill.name }}</h1>
-              <div class="skill-provider">{{ t('views_SkillDetailView.provider', { author: skill.author }) }}</div>
+              <div class="skill-description">{{ skill.description || skill.author }}</div>
               <div class="skill-meta">
                 <span class="meta-item">
                   <TagOutlined />
@@ -297,9 +297,10 @@ onMounted(() => {
   color: var(--text-primary);
 }
 
-.skill-provider {
+.skill-description {
   font-size: 14px;
   color: var(--text-secondary);
+  line-height: 1.6;
   margin-bottom: 16px;
 }
 

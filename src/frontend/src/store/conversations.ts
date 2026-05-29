@@ -6,7 +6,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { createConversation as createConversationAPI, addMessageToAgent, streamMessageToAgent as streamMessageToAgentAPI, getMessages, getUserConversations as getUserConversationsAPI, deleteConversation as deleteConversationAPI } from '@/apis/conversation'
-import type { RagSource, ToolStartEvent, ToolEndEvent, SearchResult } from '@/apis/conversation'
+import type { ConversationAttachment, RagSource, ToolStartEvent, ToolEndEvent, SearchResult } from '@/apis/conversation'
 import { useAuthStore } from '@/store/auth'
 
 /**
@@ -25,6 +25,26 @@ export type ToolCallItem = {
   inputSummary?: string
   outputSummary?: string
   searchResults?: SearchResult[]
+  reportResult?: Record<string, any>
+  childCalls?: ToolCallItem[]
+}
+
+function normalizeToolCallItem(tc: any): ToolCallItem {
+  const status = tc.status === 'running' || tc.status === 'error' ? tc.status : 'done'
+  return {
+    name: tc.name,
+    displayName: tc.displayName ?? tc.display_name,
+    icon: tc.icon,
+    query: tc.query ?? tc.inputSummary ?? tc.input_summary ?? '',
+    inputSummary: tc.inputSummary ?? tc.input_summary ?? tc.query ?? '',
+    outputSummary: tc.outputSummary ?? tc.output_summary,
+    status,
+    found: tc.found,
+    searchResults: tc.searchResults ?? tc.search_results,
+    reportResult: tc.reportResult ?? tc.report_result,
+    childCalls: (tc.childCalls ?? tc.child_calls)?.map((child: any) => normalizeToolCallItem(child)),
+    expanded: Boolean(tc.expanded),
+  }
 }
 
 export type ChatMessage = { 
@@ -42,6 +62,8 @@ export type ChatMessage = {
   toolCalls?: ToolCallItem[]
   /** 图片附件 base64 列表（仅客户端，不持久化） */
   images?: string[]
+  /** 持久化附件 */
+  attachments?: ConversationAttachment[]
   /** 消息时间（HH:MM） */
   timestamp?: string
 }
@@ -211,27 +233,17 @@ export const useConversationsStore = defineStore('conversations', () => {
       
       // 转换消息格式，将 attachments 中的图片 URL 还原到 images 字段
       conversation.messages = messages.map(msg => {
-        const attachments: { type: string; url: string }[] = msg.attachments ?? []
+        const attachments: ConversationAttachment[] = msg.attachments ?? []
         const images = attachments
           .filter((a) => a.type === 'image' && a.url)
-          .map((a) => a.url)
-        const toolCalls = (msg.tool_calls ?? []).map((tc: any) => ({
-          name: tc.name,
-          displayName: tc.display_name,
-          icon: tc.icon,
-          query: tc.query ?? tc.input_summary ?? '',
-          inputSummary: tc.input_summary ?? tc.query ?? '',
-          outputSummary: tc.output_summary,
-          status: 'done' as const,
-          found: tc.found,
-          searchResults: tc.search_results,
-          expanded: false,
-        }))
+          .map((a: any) => a.url)
+        const toolCalls = (msg.tool_calls ?? []).map((tc: any) => normalizeToolCallItem(tc))
         return {
           role: msg.role as 'user' | 'assistant',
           content: msg.content || '',
           typingComplete: true,
           images: images.length ? images : undefined,
+          attachments: attachments.length ? attachments : undefined,
           sources: msg.sources?.length ? msg.sources : undefined,
           toolCalls: toolCalls.length ? toolCalls : undefined,
           timestamp: msg.timestamp,
@@ -339,14 +351,21 @@ export const useConversationsStore = defineStore('conversations', () => {
     id: string,
     content: string,
     images?: string[],
-    attachments?: { type: string; url: string }[],
+    attachments?: ConversationAttachment[],
     signal?: AbortSignal,
   ): Promise<void> {
     const conversation = getConversation(id)
     if (!conversation) throw new Error(`会话 ${id} 不存在`)
 
     const nowIso = new Date().toISOString()
-    appendMessage(id, { role: 'user', content, typingComplete: true, images: images?.length ? images : undefined, timestamp: nowIso })
+    appendMessage(id, {
+      role: 'user',
+      content,
+      typingComplete: true,
+      images: images?.length ? images : undefined,
+      attachments: attachments?.length ? attachments : undefined,
+      timestamp: nowIso,
+    })
     appendMessage(id, { role: 'assistant', content: '', typingComplete: false, timestamp: nowIso })
 
     // rAF 批量更新：同一帧内的 token 合并后一次性写入，DOM 最多 60fps 刷新
@@ -393,6 +412,8 @@ export const useConversationsStore = defineStore('conversations', () => {
               item.outputSummary = data.output_summary
               if (data.found !== undefined) item.found = data.found
               if (data.search_results) item.searchResults = data.search_results
+              if (data.report_result) item.reportResult = data.report_result
+              if (data.child_calls) item.childCalls = data.child_calls.map((tc: any) => normalizeToolCallItem(tc))
               break
             }
           }
@@ -522,27 +543,17 @@ export const useConversationsStore = defineStore('conversations', () => {
             id,
             title,
             messages: messages.map(msg => {
-              const attachments: { type: string; url: string }[] = msg.attachments ?? []
+              const attachments: ConversationAttachment[] = msg.attachments ?? []
               const images = attachments
                 .filter((a) => a.type === 'image' && a.url)
-                .map((a) => a.url)
-              const toolCalls = (msg.tool_calls ?? []).map((tc: any) => ({
-                name: tc.name,
-                displayName: tc.display_name,
-                icon: tc.icon,
-                query: tc.query ?? tc.input_summary ?? '',
-                inputSummary: tc.input_summary ?? tc.query ?? '',
-                outputSummary: tc.output_summary,
-                status: 'done' as const,
-                found: tc.found,
-                searchResults: tc.search_results,
-                expanded: false,
-              }))
+                .map((a: any) => a.url)
+              const toolCalls = (msg.tool_calls ?? []).map((tc: any) => normalizeToolCallItem(tc))
               return {
                 role: msg.role as 'user' | 'assistant',
                 content: msg.content || '',
                 typingComplete: true,
                 images: images.length ? images : undefined,
+                attachments: attachments.length ? attachments : undefined,
                 sources: msg.sources?.length ? msg.sources : undefined,
                 toolCalls: toolCalls.length ? toolCalls : undefined,
                 timestamp: msg.timestamp,

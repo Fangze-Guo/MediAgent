@@ -73,7 +73,9 @@
               </div>
 
               <h3 class="skill-name">{{ skill.name }}</h3>
-              <p class="skill-desc">{{ skill.description }}</p>
+              <a-tooltip :title="skill.description" placement="bottomLeft">
+                <p class="skill-desc">{{ skill.description }}</p>
+              </a-tooltip>
 
               <div class="card-footer">
                 <span class="skill-author">

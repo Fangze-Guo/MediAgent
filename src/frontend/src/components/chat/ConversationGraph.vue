@@ -55,6 +55,16 @@
                     运行中
                   </span>
                 </div>
+                <div v-if="tc.childCalls?.length" class="node-children">
+                  <div
+                    v-for="(child, ci) in tc.childCalls"
+                    :key="`${child.name}-${ci}`"
+                    class="node-child"
+                  >
+                    <span>{{ child.icon || toolIcon(child.name) }}</span>
+                    <span>{{ child.displayName || toolLabel(child.name) }}</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -98,15 +108,27 @@ const props = defineProps<{ messages: ChatMessage[] }>()
 defineEmits<{ close: [] }>()
 
 const TOOL_LABEL: Record<string, string> = {
-  search_knowledge_base: '知识库检索',
-  web_search: '网络搜索',
-  read_local_file: '读取文件',
-  get_datetime: '获取时间',
+  search_knowledge_base: 'Knowledge Search',
+  web_search: 'Web Search',
+  read_local_file: 'Read Local File',
+  list_dataset_files: 'Dataset Browser',
+  read_dataset_text_file: 'Read Dataset File',
+  get_dataset_file_metadata: 'Dataset Metadata',
+  generate_medical_report: 'Medical Report Generation',
+  MedicalImageReportAgent: 'Medical Image Report Agent',
+  render_medical_report: 'Report Renderer',
+  get_datetime: 'Date Time',
 }
 const TOOL_ICON: Record<string, string> = {
   search_knowledge_base: '📚',
   web_search: '🌐',
   read_local_file: '📄',
+  list_dataset_files: '📁',
+  read_dataset_text_file: '📄',
+  get_dataset_file_metadata: 'ℹ️',
+  generate_medical_report: '📝',
+  MedicalImageReportAgent: '🧠',
+  render_medical_report: '📄',
   get_datetime: '🕐',
 }
 
@@ -303,6 +325,23 @@ const turns = computed(() => {
   background: rgba(99,102,241,0.1);
   padding: 2px 7px;
   border-radius: 8px;
+}
+
+.node-children {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.node-child {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-secondary, #64748b);
+  font-size: 11px;
 }
 
 /* ───── Connectors ───── */
