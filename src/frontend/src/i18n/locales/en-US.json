@@ -310,6 +310,7 @@
       "typeText": "Text",
       "typeOthers": "Others",
       "preview": "Preview",
+      "download": "Download",
       "rename": "Rename",
       "delete": "Delete"
     },
@@ -348,7 +349,9 @@
       "createSuccess": "Folder created successfully",
       "createFailed": "Failed to create folder",
       "renameSuccess": "Renamed successfully",
-      "renameFailed": "Rename failed"
+      "renameFailed": "Rename failed",
+      "downloadSuccess": "File download started",
+      "downloadFailed": "Failed to download file"
     },
     "deleteFile": {
       "confirmTitle": "Confirm Delete",

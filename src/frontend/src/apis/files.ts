@@ -99,6 +99,25 @@ export async function getTaskFiles(path: string = '.'): Promise<FileListResponse
 }
 
 /**
+ * 下载数据集文件
+ * @param fileId 文件ID（相对路径）
+ * @param fileName 下载时使用的文件名
+ */
+export async function downloadFile(fileId: string, fileName: string): Promise<void> {
+    const encodedPath = fileId.split('/').map(part => encodeURIComponent(part)).join('/')
+    const response = await get<Blob>(`/files/serve/${encodedPath}`, { responseType: 'blob' })
+    const downloadUrl = URL.createObjectURL(response.data)
+    const link = document.createElement('a')
+
+    link.href = downloadUrl
+    link.download = fileName
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(downloadUrl)
+}
+
+/**
  * 上传文件到数据集
  * @param file 要上传的文件
  * @param targetDir 目标目录，默认为当前目录

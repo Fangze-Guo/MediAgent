@@ -96,6 +96,10 @@
                 :title="t('components_DatasetFileBrowser.fileList.preview')" @click="previewFileHandler(record)">
                 <EyeOutlined />
               </a-button>
+              <a-button v-if="!record.isDirectory" type="text" size="small"
+                :title="t('components_DatasetFileBrowser.fileList.download')" @click="downloadFileHandler(record)">
+                <DownloadOutlined />
+              </a-button>
               <a-button v-if="canRenameFile(record)" type="text" size="small"
                 :title="t('components_DatasetFileBrowser.fileList.rename')" @click="showRenameModal(record)">
                 <EditOutlined />
@@ -171,6 +175,7 @@ import { message, Modal } from 'ant-design-vue'
 import {
   ArrowUpOutlined,
   DeleteOutlined,
+  DownloadOutlined,
   EditOutlined,
   EyeOutlined,
   FileExcelOutlined,
@@ -258,7 +263,7 @@ const columns = computed(() => [
     width: 180,
     sorter: (a: any, b: any) => new Date(a.modifiedTime).getTime() - new Date(b.modifiedTime).getTime(),
   },
-  { title: t('components_DatasetFileBrowser.fileList.actions'), dataIndex: 'actions', key: 'actions', width: 150 },
+  { title: t('components_DatasetFileBrowser.fileList.actions'), dataIndex: 'actions', key: 'actions', width: 180 },
 ])
 
 // 数据源
@@ -571,6 +576,12 @@ const handleBatchDelete = () => {
 const previewFileHandler = (file: any) => {
   previewFile.value = file
   previewVisible.value = true
+}
+
+const downloadFileHandler = async (file: any) => {
+  const ok = await fileStore.downloadFileById(file.id, file.name)
+  if (ok) message.success(t('components_DatasetFileBrowser.messages.downloadSuccess'))
+  else message.error(fileStore.error || t('components_DatasetFileBrowser.messages.downloadFailed'))
 }
 
 const isImageFile = (file: any) => {

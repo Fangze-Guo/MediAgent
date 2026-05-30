@@ -310,6 +310,7 @@
       "typeText": "文本",
       "typeOthers": "其他",
       "preview": "预览",
+      "download": "下载",
       "rename": "重命名",
       "delete": "删除"
     },
@@ -348,7 +349,9 @@
       "createSuccess": "文件夹创建成功",
       "createFailed": "创建文件夹失败",
       "renameSuccess": "重命名成功",
-      "renameFailed": "重命名失败"
+      "renameFailed": "重命名失败",
+      "downloadSuccess": "文件下载已开始",
+      "downloadFailed": "下载文件失败"
     },
     "deleteFile": {
       "confirmTitle": "确认删除",

@@ -4,7 +4,7 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { getDataSetFiles, deleteFile, batchDeleteFiles, createFolder, renameFile, type FileListResponse, type FileInfo } from '@/apis/files'
+import { getDataSetFiles, deleteFile, batchDeleteFiles, createFolder, renameFile, downloadFile, type FileListResponse, type FileInfo } from '@/apis/files'
 
 // 文件信息类型已从 @/apis/files 导入
 
@@ -170,16 +170,16 @@ export const useFileStore = defineStore('files', () => {
     }
   }
 
-  // 下载文件（暂时移除，因为后端没有实现）
-  const downloadFileById = async (_fileId: string) => {
+  // 下载文件
+  const downloadFileById = async (fileId: string, fileName: string) => {
     try {
       setError(null)
-      setError('文件下载功能暂未实现')
-      return { success: false, downloadUrl: null }
+      await downloadFile(fileId, fileName)
+      return true
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '下载文件失败'
       setError(errorMessage)
-      return { success: false, downloadUrl: null }
+      return false
     }
   }
 
