@@ -343,6 +343,7 @@ class ClaudeAgent:
         # ClaudeSDKClient 实例（每个会话一个）
         self._clients: dict[str, ClaudeSDKClient] = {}  # session_id -> client
         self._session_last_active: dict[str, float] = {}
+        self._dead_sessions: set[str] = set()
 
         # sdk_session_id -> conversation_id 映射，供 hook 提取 conversation_id
         self._session_conversation_map: dict[str, str] = {}
@@ -378,6 +379,29 @@ class ClaudeAgent:
     def _touch_session(self, session_id: Optional[str]):
         if session_id:
             self._session_last_active[session_id] = time.time()
+
+    def _rekey_session(self, old_session_id: str, new_session_id: str) -> None:
+        """Replace the SDK startup handle with Claude CLI's persisted session ID."""
+        if not old_session_id or not new_session_id or old_session_id == new_session_id:
+            return
+
+        for mapping in (
+            self._clients,
+            self._active_sessions,
+            self._session_last_active,
+            self._session_conversation_map,
+        ):
+            if old_session_id in mapping:
+                mapping[new_session_id] = mapping.pop(old_session_id)
+
+        if old_session_id in self._dead_sessions:
+            self._dead_sessions.discard(old_session_id)
+            self._dead_sessions.add(new_session_id)
+
+        if self._last_session_id == old_session_id:
+            self._last_session_id = new_session_id
+
+        logger.info(f"[SESSION] Rekeyed startup handle {old_session_id} -> {new_session_id}")
 
     def _start_cleanup_task_if_needed(self):
         if self._cleanup_task is not None and not self._cleanup_task.done():
@@ -859,15 +883,10 @@ class ClaudeAgent:
         """
         captured_session_id = session_id
 
-        # 如果没有 session_id，生成一个新的
+        # SDK client 启动前需要一个内部句柄。该 UUID 不是 Claude CLI 最终写入
+        # JSONL 的 session_id，因此不能发送给前端或持久化到数据库。
         if not captured_session_id:
             captured_session_id = str(uuid.uuid4())
-            yield NormalizedMessage(
-                kind=MessageKind.SESSION_CREATED,
-                session_id=captured_session_id,
-                new_session_id=captured_session_id,
-                is_new_session=True,
-            )
 
         # 创建中断事件
         interrupt_event = asyncio.Event()
@@ -937,6 +956,13 @@ class ClaudeAgent:
 
                         # 标准化消息（一条 SDK 消息可能对应多个 block）
                         for normalized in self._normalize_message(message, captured_session_id):
+                            if (
+                                normalized.kind == MessageKind.SESSION_CREATED
+                                and normalized.session_id
+                                and normalized.session_id != captured_session_id
+                            ):
+                                self._rekey_session(captured_session_id, normalized.session_id)
+                                captured_session_id = normalized.session_id
                             if ws_callback:
                                 ws_callback(normalized)
                             yield normalized

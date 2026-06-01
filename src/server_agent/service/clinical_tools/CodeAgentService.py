@@ -147,7 +147,7 @@ class CodeAgentService:
                     init_session_id = chunk_data.get("sessionId") or chunk_data.get("newSessionId")
                     if init_session_id:
                         logger.info(f"[CodeAgentService] SDK session created: {init_session_id}")
-                        if not existing.session_id:
+                        if existing.session_id != init_session_id:
                             await self.mapper.update_conversation_session_id(conversation_id, init_session_id)
                             existing.session_id = init_session_id
                     chunk_data["conversation_id"] = conversation_id

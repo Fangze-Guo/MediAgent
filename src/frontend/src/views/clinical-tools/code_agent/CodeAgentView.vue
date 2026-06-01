@@ -191,12 +191,24 @@
               v-if="messages.length === 0 && !loadingConversationDetail && currentProjectId === 'nice-bcx'"
               class="conversation-empty-intro"
             >
-              <p
-                v-for="(paragraph, idx) in sessionInitParagraphs"
-                :key="`init-${idx}`"
-                class="conversation-empty-intro-p"
-              >
-                {{ paragraph }}
+              <p class="conversation-empty-intro-p conversation-empty-intro-summary">
+                {{ t('views_CodeAgentView.sessionInitSummaryNiceBcx') }}
+              </p>
+              <p class="conversation-empty-intro-heading">
+                {{ t('views_CodeAgentView.sessionInitWorkflowTitleNiceBcx') }}
+              </p>
+              <div class="conversation-empty-workflow">
+                <div
+                  v-for="prompt in niceBcxSuggestedPrompts"
+                  :key="`empty-${prompt.icon}`"
+                  class="conversation-empty-workflow-item"
+                >
+                  <span class="conversation-empty-workflow-index">{{ prompt.icon }}</span>
+                  <span>{{ prompt.text }}</span>
+                </div>
+              </div>
+              <p class="conversation-empty-intro-question">
+                {{ t('views_CodeAgentView.sessionInitQuestionNiceBcx') }}
               </p>
             </div>
 
@@ -542,13 +554,6 @@ const projectDisplayName = computed(() => {
   if (route.name === 'ClinicalAgent') return (route.query.name as string) || currentProjectId.value || t('views_CodeAgentView.title')
   return t('views_CodeAgentView.title')
 })
-
-const sessionInitParagraphs = computed(() =>
-  t('views_CodeAgentView.sessionInitDescNiceBcx')
-    .split('\n')
-    .map(s => s.trim())
-    .filter(Boolean)
-)
 
 // 搜索关键词
 const searchKeyword = ref('')
@@ -1461,6 +1466,8 @@ const niceBcxSuggestedPrompts = computed(() => [
   { icon: '5', text: t('views_CodeAgentView.suggestedPrompt5') },
   { icon: '6', text: t('views_CodeAgentView.suggestedPrompt6') },
   { icon: '7', text: t('views_CodeAgentView.suggestedPrompt7') },
+  { icon: '8', text: t('views_CodeAgentView.suggestedPrompt8') },
+  { icon: '9', text: t('views_CodeAgentView.suggestedPrompt9') },
 ])
 
 // 点击建议提示（纯展示，无操作）
@@ -1814,22 +1821,21 @@ const startActiveSessionPoller = (conversationId: string) => {
   }, 3000)
 }
 
-// 组件挂载时加载对话列表，并恢复上次选中的会话
+// 组件挂载时加载对话列表。仅恢复仍在运行的会话，普通进入页面保留欢迎页。
 onMounted(async () => {
   await loadConversations()  // loadAllSkillTasks 在 loadConversations 完成后自动调用
   messagesContainer.value?.addEventListener('scroll', handleScroll, { passive: true })
   setupResizeObserver()
 
-  // 恢复上次选中的会话（解决刷新后任务面板空白 + 用户上下文丢失）
+  // 刷新时继续追踪仍在后端运行的进程；已结束的历史会话由用户手动选择。
   const lastConvId = localStorage.getItem(lastConvKey.value)
   if (lastConvId) {
     const conv = conversations.value.find(c => c.conversation_id === lastConvId)
     if (conv) {
-      await selectConversation(conv)
-      // 检测该会话 session 是否仍在后端运行，如果是则启动轮询追踪
       try {
         const statusRes = await getSessionStatus(lastConvId)
         if (statusRes.code === 200 && statusRes.data?.active) {
+          await selectConversation(conv)
           sendingMessage.value = true
           eventDisplay.value = { message: '检测到会话仍在运行，正在同步进度...', type: 'loading' }
           startActiveSessionPoller(lastConvId)
@@ -2486,7 +2492,8 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   text-align: center;
-  max-width: 900px;
+  width: 100%;
+  max-width: 1180px;
   margin: 0 auto;
 }
 
@@ -2525,51 +2532,86 @@ onUnmounted(() => {
   color: var(--text-tertiary, #8c8c8c);
   margin: 0 0 40px 0;
   line-height: 1.8;
-  max-width: 600px;
+  max-width: 900px;
   text-align: center;
   white-space: pre-line;
 }
 
 .conversation-empty-intro {
-  max-width: 760px;
+  width: min(1080px, calc(100% - 32px));
   margin: 24px auto 14px auto;
-  padding: 14px 18px 14px 18px;
-  border-left: 3px solid rgba(24, 144, 255, 0.42);
-  border-radius: 0 10px 10px 0;
-  background: linear-gradient(90deg, rgba(24, 144, 255, 0.028) 0%, rgba(24, 144, 255, 0.006) 24%, transparent 100%);
+  padding: 18px 20px;
+  border: 1px solid rgba(24, 144, 255, 0.16);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(24, 144, 255, 0.045) 0%, rgba(114, 46, 209, 0.018) 100%);
   color: var(--text-secondary);
 }
 
 .conversation-empty-intro-p {
   margin: 0;
   padding: 0;
-  line-height: 1.92;
+  line-height: 1.85;
   font-size: 14px;
   color: var(--text-secondary);
-  white-space: pre-line;
 }
 
-.conversation-empty-intro-p + .conversation-empty-intro-p {
-  margin-top: 12px;
-}
-
-.conversation-empty-intro-p:last-child {
-  margin-bottom: 4px;
-}
-
-.conversation-empty-intro-p:first-child {
-  font-size: 15px;
-  line-height: 1.85;
+.conversation-empty-intro-summary {
   color: var(--text-primary);
   font-weight: 500;
+}
+
+.conversation-empty-intro-heading {
+  margin: 14px 0 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.conversation-empty-workflow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.conversation-empty-workflow-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid rgba(24, 144, 255, 0.18);
+  border-radius: 999px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.conversation-empty-workflow-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(24, 144, 255, 0.1);
+  color: #1890ff;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.conversation-empty-intro-question {
+  margin: 14px 0 0;
+  color: var(--text-primary);
+  font-size: 14px;
 }
 
 .suggested-chain {
   display: flex;
   align-items: flex-start;
+  flex-wrap: wrap;
+  row-gap: 18px;
   gap: 0;
   width: 100%;
-  max-width: 700px;
+  max-width: 1120px;
   justify-content: center;
 }
 
