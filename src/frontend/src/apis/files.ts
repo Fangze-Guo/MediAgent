@@ -2,6 +2,7 @@
  * 文件管理API接口 - 简化版，只管理数据集文件
  */
 import { get, post } from '@/utils/request'
+import { SafeStorage, StorageKeys } from '@/utils/storage'
 
 /**
  * 通用响应接口 - 与后端BaseResponse同步
@@ -105,16 +106,64 @@ export async function getTaskFiles(path: string = '.'): Promise<FileListResponse
  */
 export async function downloadFile(fileId: string, fileName: string): Promise<void> {
     const encodedPath = fileId.split('/').map(part => encodeURIComponent(part)).join('/')
-    const response = await get<Blob>(`/files/serve/${encodedPath}`, { responseType: 'blob' })
-    const downloadUrl = URL.createObjectURL(response.data)
+    const baseURL = (import.meta as any).env?.VITE_API_BASE || '/api'
     const link = document.createElement('a')
 
-    link.href = downloadUrl
+    link.href = `${baseURL}/files/serve/${encodedPath}?download=true`
     link.download = fileName
     document.body.appendChild(link)
     link.click()
     link.remove()
-    URL.revokeObjectURL(downloadUrl)
+}
+
+/**
+ * 将选中的文件和目录打包下载
+ * @param fileIds 文件或目录ID列表
+ * @param archiveName ZIP 文件名
+ */
+export function downloadArchive(fileIds: string[], archiveName: string = 'dataset-download.zip'): void {
+    const token = SafeStorage.getString(StorageKeys.TOKEN)
+    if (!token) {
+        throw new Error('用户未登录')
+    }
+
+    const baseURL = (import.meta as any).env?.VITE_API_BASE || '/api'
+    const frame = document.createElement('iframe')
+    const form = document.createElement('form')
+    const frameName = `archive-download-${Date.now()}-${Math.random().toString(36).slice(2)}`
+
+    frame.name = frameName
+    frame.style.display = 'none'
+    form.method = 'POST'
+    form.action = `${baseURL}/files/archive`
+    form.target = frameName
+    form.style.display = 'none'
+
+    for (const fileId of fileIds) {
+        const input = document.createElement('input')
+        input.type = 'hidden'
+        input.name = 'file_ids'
+        input.value = fileId
+        form.appendChild(input)
+    }
+
+    const tokenInput = document.createElement('input')
+    tokenInput.type = 'hidden'
+    tokenInput.name = 'token'
+    tokenInput.value = token
+    form.appendChild(tokenInput)
+
+    const archiveNameInput = document.createElement('input')
+    archiveNameInput.type = 'hidden'
+    archiveNameInput.name = 'archive_name'
+    archiveNameInput.value = archiveName
+    form.appendChild(archiveNameInput)
+
+    document.body.appendChild(frame)
+    document.body.appendChild(form)
+    form.submit()
+    form.remove()
+    window.setTimeout(() => frame.remove(), 60 * 60_000)
 }
 
 /**

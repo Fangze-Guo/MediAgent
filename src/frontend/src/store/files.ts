@@ -4,7 +4,7 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { getDataSetFiles, deleteFile, batchDeleteFiles, createFolder, renameFile, downloadFile, type FileListResponse, type FileInfo } from '@/apis/files'
+import { getDataSetFiles, deleteFile, batchDeleteFiles, createFolder, renameFile, downloadFile, downloadArchive, type FileListResponse, type FileInfo } from '@/apis/files'
 
 // 文件信息类型已从 @/apis/files 导入
 
@@ -183,6 +183,19 @@ export const useFileStore = defineStore('files', () => {
     }
   }
 
+  // 将文件和目录打包下载
+  const downloadArchiveByIds = (fileIds: string[], archiveName?: string) => {
+    try {
+      setError(null)
+      downloadArchive(fileIds, archiveName)
+      return true
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : '下载文件失败'
+      setError(errorMessage)
+      return false
+    }
+  }
+
   // 添加文件到列表（上传成功后调用）
   const addFile = (file: FileInfo) => {
     // 检查文件是否已存在
@@ -295,6 +308,7 @@ export const useFileStore = defineStore('files', () => {
     removeFile,
     removeFiles,
     downloadFileById,
+    downloadArchiveByIds,
     addFile,
     updateFile,
     getFileById,

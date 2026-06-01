@@ -2,11 +2,16 @@
 文件管理API控制器 - 简化版，只管理数据集文件
 """
 
-from typing import List
+from typing import Iterator, List
+import io
 import pathlib
+import queue
+import threading
+from urllib.parse import quote
+import zipfile
 
-from fastapi import UploadFile, File, Form, Depends, Header
-from fastapi.responses import FileResponse
+from fastapi import UploadFile, File, Form, Depends, Header, Query
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from src.server_agent.common import BaseResponse
@@ -14,7 +19,7 @@ from src.server_agent.common.ResultUtils import ResultUtils
 from src.server_agent.model import DeleteFileRequest, CreateFolderRequest, BatchDeleteFilesRequest, RenameFileRequest, FileInfo, FileListVO, UserVO
 from src.server_agent.service import FileService, UserService
 from src.server_agent.service.OssService import OssService
-from src.server_agent.exceptions import AuthenticationError
+from src.server_agent.exceptions import AuthenticationError, ValidationError
 from src.server_agent.constants.CommonConstants import DATASET_PATH
 from .base import BaseController
 
@@ -23,6 +28,36 @@ class PresignRequest(BaseModel):
     conversation_id: str
     filename: str
     content_type: str
+
+
+class _ZipStreamWriter(io.RawIOBase):
+    """将 zipfile 产生的数据块转交给 StreamingResponse。"""
+
+    def __init__(self, chunks: queue.Queue, stopped: threading.Event):
+        self.chunks = chunks
+        self.stopped = stopped
+        self.offset = 0
+
+    def writable(self) -> bool:
+        return True
+
+    def seekable(self) -> bool:
+        return False
+
+    def tell(self) -> int:
+        return self.offset
+
+    def write(self, data: bytes) -> int:
+        if not data:
+            return 0
+        while not self.stopped.is_set():
+            try:
+                self.chunks.put(data, timeout=0.5)
+                self.offset += len(data)
+                return len(data)
+            except queue.Full:
+                continue
+        raise BrokenPipeError("download cancelled")
 
 
 class FileController(BaseController):
@@ -53,7 +88,10 @@ class FileController(BaseController):
             return ResultUtils.success(result)
 
         @self.router.get("/serve/{file_id:path}")
-        async def serveFile(file_id: str):
+        async def serveFile(
+            file_id: str,
+            download: bool = Query(False, description="是否强制下载文件"),
+        ):
             """提供文件下载/预览接口"""
             try:
                 # 获取文件完整路径 - file_id 是相对于 DATASET_PATH 的路径
@@ -93,7 +131,13 @@ class FileController(BaseController):
                     "image/svg+xml",
                 }
 
-                if content_type in INLINE_TYPES:
+                if download:
+                    return FileResponse(
+                        path=file_path,
+                        filename=file_path.name,
+                        media_type=content_type,
+                    )
+                elif content_type in INLINE_TYPES:
                     return FileResponse(
                         path=file_path,
                         media_type=content_type,
@@ -107,6 +151,34 @@ class FileController(BaseController):
                     )
             except Exception as e:
                 return ResultUtils.error(500, f"Error serving file: {str(e)}")
+
+        @self.router.post("/archive")
+        async def downloadArchive(
+            file_ids: List[str] = Form(...),
+            token: str = Form(...),
+            archive_name: str = Form("dataset-download.zip"),
+        ) -> StreamingResponse:
+            """将选中的文件和目录打包为 ZIP，并以流式响应下载。"""
+            userVO = await self.userService.get_user_by_token(token)
+            if not userVO:
+                raise AuthenticationError(detail="Invalid token")
+
+            targets = self._resolve_archive_targets(file_ids, userVO)
+            archive_name = pathlib.Path(archive_name).name
+            if not archive_name.lower().endswith(".zip"):
+                archive_name = f"{archive_name}.zip"
+            headers = {
+                "Content-Disposition": (
+                    'attachment; filename="dataset-download.zip"; '
+                    f"filename*=UTF-8''{quote(archive_name)}"
+                ),
+                "Cache-Control": "no-store",
+            }
+            return StreamingResponse(
+                self._stream_zip(targets),
+                media_type="application/zip",
+                headers=headers,
+            )
 
         @self.router.get("/dataset")
         async def getDataSetFiles(
@@ -214,6 +286,83 @@ class FileController(BaseController):
                 return ResultUtils.error(400, f"重命名失败: {error_message}")
 
     # ==================== 工具方法 ====================
+
+    @staticmethod
+    def _resolve_archive_targets(file_ids: List[str], userVO: UserVO) -> List[pathlib.Path]:
+        dataset_root = pathlib.Path(DATASET_PATH).resolve()
+        targets = []
+
+        for file_id in dict.fromkeys(file_ids):
+            target = (dataset_root / file_id).resolve()
+            try:
+                relative_path = target.relative_to(dataset_root)
+            except ValueError:
+                raise ValidationError(detail="访问被拒绝", context={"path": file_id})
+
+            if not target.exists():
+                raise ValidationError(detail="文件或目录不存在", context={"path": file_id})
+
+            parts = relative_path.parts
+            if userVO.role != "admin":
+                is_public = len(parts) >= 1 and parts[0] == "public"
+                is_own_private = (
+                    len(parts) >= 2
+                    and parts[0] == "private"
+                    and parts[1] == str(userVO.uid)
+                )
+                if not is_public and not is_own_private:
+                    raise ValidationError(detail="无权下载该文件或目录", context={"path": file_id})
+
+            targets.append(target)
+
+        if not targets:
+            raise ValidationError(detail="请选择要下载的文件或目录")
+        return targets
+
+    @staticmethod
+    def _stream_zip(targets: List[pathlib.Path]) -> Iterator[bytes]:
+        chunks: queue.Queue = queue.Queue(maxsize=16)
+        stopped = threading.Event()
+        completed = object()
+
+        def produce_zip():
+            writer = _ZipStreamWriter(chunks, stopped)
+            try:
+                with zipfile.ZipFile(writer, "w", compression=zipfile.ZIP_STORED) as archive:
+                    for target in targets:
+                        if target.is_symlink():
+                            continue
+                        if target.is_file():
+                            archive.write(target, arcname=target.name)
+                            continue
+
+                        wrote_entry = False
+                        for child in target.rglob("*"):
+                            if child.is_symlink():
+                                continue
+                            archive_name = pathlib.Path(target.name) / child.relative_to(target)
+                            if child.is_dir():
+                                archive.writestr(f"{archive_name.as_posix()}/", "")
+                            elif child.is_file():
+                                archive.write(child, arcname=archive_name.as_posix())
+                            wrote_entry = True
+                        if not wrote_entry:
+                            archive.writestr(f"{target.name}/", "")
+            except BrokenPipeError:
+                pass
+            finally:
+                if not stopped.is_set():
+                    chunks.put(completed)
+
+        threading.Thread(target=produce_zip, daemon=True).start()
+        try:
+            while True:
+                chunk = chunks.get()
+                if chunk is completed:
+                    break
+                yield chunk
+        finally:
+            stopped.set()
 
     async def _get_current_user(self, authorization: str = Header(None)) -> UserVO:
         """根据token获取用户信息的依赖函数"""

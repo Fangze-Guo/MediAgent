@@ -297,6 +297,7 @@
       "uploadToCurrent": "Upload to Current Directory",
       "createFolder": "Create Folder",
       "totalFiles": "Total {count} files",
+      "batchDownload": "Download Selected ({count})",
       "batchDelete": "Batch Delete ({count})"
     },
     "fileList": {
@@ -351,6 +352,8 @@
       "renameSuccess": "Renamed successfully",
       "renameFailed": "Rename failed",
       "downloadSuccess": "File download started",
+      "archiveDownloadSuccess": "ZIP archive download started",
+      "batchDownloadSuccess": "Selected item downloads started",
       "downloadFailed": "Failed to download file"
     },
     "deleteFile": {
@@ -681,7 +684,9 @@
     "welcomeSubtitle": "Professional medical AI assistant to support your medical research and clinical work",
     "welcomeSubtitleNiceBcx": "Lung Cancer Neoadjuvant Immunotherapy Combined Chemotherapy Efficacy Evaluation Assistant",
     "welcomeDescNiceBcx": "NICE-BCX is an AI agent system built on multi-scale imaging analysis, specifically designed for patients with non-small cell lung cancer (NSCLC) receiving neoadjuvant chemoimmunotherapy. By integrating multi-dimensional features spanning clinical data, tumor characteristics, and whole-body composition, the system dynamically predicts treatment response and survival outcomes, providing objective, quantifiable evidence to support clinical decision-making.",
-    "sessionInitDescNiceBcx": "Hello! I am the NICE-BCX AI Agent, an intelligent system dedicated to neoadjuvant chemoimmunotherapy outcome prediction for non-small cell lung cancer (NSCLC). Built on multi-scale imaging analysis, I integrate clinical data, tumor features, and whole-body composition to dynamically predict treatment response and survival.\nMy core workflow includes:\n• Data loading\n• Lung and tumor segmentation\n• Spine segmentation\n• Body composition segmentation\n• Whole-body composition quantification within T1–T12\n• Tumor quantification and MPR evaluation\nHow can I assist you with NICE-BCX analysis today?",
+    "sessionInitSummaryNiceBcx": "Hello! I am the NICE-BCX AI Agent, an intelligent system dedicated to neoadjuvant chemoimmunotherapy outcome prediction for non-small cell lung cancer (NSCLC). Built on multi-scale imaging analysis, I integrate clinical data, tumor features, and whole-body composition to dynamically predict treatment response and survival.",
+    "sessionInitWorkflowTitleNiceBcx": "My core workflow includes:",
+    "sessionInitQuestionNiceBcx": "How can I assist you with NICE-BCX analysis today?",
     "unnamedConversation": "Unnamed Session",
     "featureMedical": "Medical Consultation",
     "featureMedicalDesc": "Professional medical Q&A",
@@ -696,6 +701,8 @@
     "suggestedPrompt5": "Body Composition Quantification",
     "suggestedPrompt6": "Tumor Quantification",
     "suggestedPrompt7": "Efficacy Evaluation",
+    "suggestedPrompt8": "Prognosis Evaluation",
+    "suggestedPrompt9": "BC Type Classification",
     "taskManager": {
       "title": "Task Manager",
       "clearConfirm": "Clear all completed/failed tasks? Running tasks will not be removed.",

@@ -297,6 +297,7 @@
       "uploadToCurrent": "上传到当前目录",
       "createFolder": "新建文件夹",
       "totalFiles": "共 {count} 个文件",
+      "batchDownload": "下载选中项 ({count})",
       "batchDelete": "批量删除 ({count})"
     },
     "fileList": {
@@ -351,6 +352,8 @@
       "renameSuccess": "重命名成功",
       "renameFailed": "重命名失败",
       "downloadSuccess": "文件下载已开始",
+      "archiveDownloadSuccess": "ZIP 打包下载已开始",
+      "batchDownloadSuccess": "选中项下载已开始",
       "downloadFailed": "下载文件失败"
     },
     "deleteFile": {
@@ -681,7 +684,9 @@
     "welcomeSubtitle": "专业的医学 AI 助手，助力您的医学研究与临床工作",
     "welcomeSubtitleNiceBcx": "肺癌新辅助免疫联合化疗疗效评估助手",
     "welcomeDescNiceBcx": "NICE-BCX 是一款基于多尺度影像 AI 构建的智能体系统，专为非小细胞肺癌新辅助化免治疗场景设计。它整合了从临床信息、肿瘤到全身体成分的多维度特征，能够动态预测患者的治疗疗效与生存获益，为临床决策提供可量化的客观依据。",
-    "sessionInitDescNiceBcx": "你好！我是 NICE-BCX AI 智能体，专注于非小细胞肺癌新辅助化免治疗的疗效与生存预测。我基于多尺度影像分析构建，整合临床信息、肿瘤特征与全身体成分，实现动态预测。\n我的核心分析流程包括：\n・数据加载\n・肺与肿瘤分割\n・脊柱分割\n・体成分分割\n・T1–T12 范围内体成分定量\n・肿瘤定量与 MPR 评估\n请问你需要我为你提供哪方面的 NICE-BCX 分析帮助？",
+    "sessionInitSummaryNiceBcx": "你好！我是 NICE-BCX AI 智能体，专注于非小细胞肺癌新辅助化免治疗的疗效与生存预测。我基于多尺度影像分析构建，整合临床信息、肿瘤特征与全身体成分，实现动态预测。",
+    "sessionInitWorkflowTitleNiceBcx": "我的核心分析流程包括：",
+    "sessionInitQuestionNiceBcx": "请问你需要我为你提供哪方面的 NICE-BCX 分析帮助？",
     "unnamedConversation": "未命名会话",
     "featureMedical": "医学咨询",
     "featureMedicalDesc": "专业医学问题解答",
@@ -696,6 +701,8 @@
     "suggestedPrompt5": "体成分量化",
     "suggestedPrompt6": "肿瘤量化",
     "suggestedPrompt7": "疗效评估",
+    "suggestedPrompt8": "预后评估",
+    "suggestedPrompt9": "BC type 分类",
     "taskManager": {
       "title": "任务管理器",
       "clearConfirm": "确认要清空所有已完成/失败的任务吗？运行中的任务不会被清理。",

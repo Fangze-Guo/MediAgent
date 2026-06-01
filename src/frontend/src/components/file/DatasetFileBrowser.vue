@@ -47,6 +47,12 @@
           count:
             fileStore.fileList.length
         }) }}</span>
+        <a-button v-if="fileStore.selectedCount > 0" @click="handleBatchDownload">
+          <template #icon>
+            <DownloadOutlined />
+          </template>
+          {{ t('components_DatasetFileBrowser.pathNavigation.batchDownload', { count: fileStore.selectedCount }) }}
+        </a-button>
         <a-button v-if="canDelete && fileStore.selectedCount > 0" danger @click="handleBatchDelete">
           <template #icon>
             <DeleteOutlined />
@@ -96,7 +102,7 @@
                 :title="t('components_DatasetFileBrowser.fileList.preview')" @click="previewFileHandler(record)">
                 <EyeOutlined />
               </a-button>
-              <a-button v-if="!record.isDirectory" type="text" size="small"
+              <a-button type="text" size="small"
                 :title="t('components_DatasetFileBrowser.fileList.download')" @click="downloadFileHandler(record)">
                 <DownloadOutlined />
               </a-button>
@@ -573,14 +579,34 @@ const handleBatchDelete = () => {
   })
 }
 
+const handleBatchDownload = async () => {
+  let allSucceeded = true
+  for (const file of fileStore.selectedFiles) {
+    const ok = file.isDirectory
+      ? fileStore.downloadArchiveByIds([file.id], `${file.name}.zip`)
+      : await fileStore.downloadFileById(file.id, file.name)
+    allSucceeded = allSucceeded && ok
+  }
+
+  if (allSucceeded) message.success(t('components_DatasetFileBrowser.messages.batchDownloadSuccess'))
+  else message.error(fileStore.error || t('components_DatasetFileBrowser.messages.downloadFailed'))
+}
+
 const previewFileHandler = (file: any) => {
   previewFile.value = file
   previewVisible.value = true
 }
 
 const downloadFileHandler = async (file: any) => {
-  const ok = await fileStore.downloadFileById(file.id, file.name)
-  if (ok) message.success(t('components_DatasetFileBrowser.messages.downloadSuccess'))
+  const ok = file.isDirectory
+    ? fileStore.downloadArchiveByIds([file.id], `${file.name}.zip`)
+    : await fileStore.downloadFileById(file.id, file.name)
+  if (ok) {
+    const messageKey = file.isDirectory
+      ? 'components_DatasetFileBrowser.messages.archiveDownloadSuccess'
+      : 'components_DatasetFileBrowser.messages.downloadSuccess'
+    message.success(t(messageKey))
+  }
   else message.error(fileStore.error || t('components_DatasetFileBrowser.messages.downloadFailed'))
 }
 
