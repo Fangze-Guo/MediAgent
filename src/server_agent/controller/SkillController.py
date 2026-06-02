@@ -10,7 +10,7 @@ from src.server_agent.controller.base import BaseController
 from src.server_agent.exceptions import AuthenticationError, AuthorizationError
 from src.server_agent.model import UserVO
 from src.server_agent.service.SkillService import SkillService
-from src.server_agent.service.UserService import UserService
+from src.server_agent.dependencies.services import get_user_service
 from src.server_agent.exceptions.error_codes import ErrorCode
 
 
@@ -20,7 +20,7 @@ class SkillController(BaseController):
     def __init__(self):
         super().__init__(prefix="/skills", tags=["技能仓库"])
         self.default_skill_service = SkillService()
-        self.user_service = UserService()
+        self.user_service = get_user_service()
         self._register_routes()
 
     def _get_service(self, project_id: Optional[str]) -> SkillService:

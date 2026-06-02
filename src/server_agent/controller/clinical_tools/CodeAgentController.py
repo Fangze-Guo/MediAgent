@@ -439,7 +439,7 @@ class CodeAgentController(BaseController):
 
     async def _get_current_user(self, authorization: str = Header(None)) -> UserVO:
         from src.server_agent.exceptions import AuthenticationError
-        from src.server_agent.service.UserService import UserService
+        from src.server_agent.dependencies.services import get_user_service
 
         if not authorization:
             raise AuthenticationError(
@@ -449,7 +449,7 @@ class CodeAgentController(BaseController):
 
         token = authorization[7:] if authorization.startswith("Bearer ") else authorization
 
-        user_service = UserService()
+        user_service = get_user_service()
         user_vo: UserVO = await user_service.get_user_by_token(token)
         if not user_vo:
             raise AuthenticationError(

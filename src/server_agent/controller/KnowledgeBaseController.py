@@ -14,7 +14,7 @@ from src.server_agent.model.dto.knowledge_base import CreateKnowledgeBaseRequest
 from src.server_agent.model.vo.KnowledgeBaseVO import KnowledgeBaseVO, KbDocumentVO
 from src.server_agent.model.vo.UserVO import UserVO
 from src.server_agent.service.KnowledgeBaseService import KnowledgeBaseService
-from src.server_agent.service.UserService import UserService
+from src.server_agent.dependencies.services import get_user_service
 from .base import BaseController
 
 
@@ -24,7 +24,7 @@ class KnowledgeBaseController(BaseController):
     def __init__(self):
         super().__init__(prefix="/knowledge-base", tags=["知识库管理"])
         self.kb_service = KnowledgeBaseService()
-        self.user_service = UserService()
+        self.user_service = get_user_service()
         self._register_routes()
 
     def _register_routes(self):

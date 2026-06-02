@@ -21,6 +21,7 @@ from src.server_agent.service import FileService, UserService
 from src.server_agent.service.OssService import OssService
 from src.server_agent.exceptions import AuthenticationError, ValidationError
 from src.server_agent.constants.CommonConstants import DATASET_PATH
+from src.server_agent.dependencies.services import get_user_service
 from .base import BaseController
 
 
@@ -66,7 +67,7 @@ class FileController(BaseController):
     def __init__(self):
         super().__init__(prefix="/files", tags=[["文件管理"]])
         self.fileService = FileService()
-        self.userService = UserService()
+        self.userService = get_user_service()
         self.ossService = OssService()
         self._register_routes()
 
