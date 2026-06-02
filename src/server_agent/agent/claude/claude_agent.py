@@ -357,10 +357,9 @@ class ClaudeAgent:
         # 会话取消/异常时可撤销，防止僵尸 watcher 改写已终态的任务
         self._bg_watchers: dict[str, asyncio.Task] = {}
 
-        # Skill 脚本映射缓存：{脚本文件名: skill_name}
-        # 用于二级检测：当命令中不含 .claude/skills/ 路径时，通过脚本名反查 skill
-        # 只扫描 skill 目录顶层的 .py/.sh，不递归子目录
-        self._skill_script_map: dict[str, str] = {}
+        # Skill 脚本映射缓存：{脚本文件名: skill_name | None}
+        # 用于命令仅执行相对路径脚本时反查 skill。重名脚本标记为 None，避免误归类。
+        self._skill_script_map: dict[str, Optional[str]] = {}
         if project_config:
             skills_dir = project_config.base_dir / ".claude" / "skills"
             if skills_dir.is_dir():
@@ -368,9 +367,15 @@ class ClaudeAgent:
                     if not skill_dir.is_dir():
                         continue
                     skill_name = skill_dir.name
-                    for script in skill_dir.iterdir():
-                        if script.is_file() and script.suffix in (".py", ".sh"):
-                            self._skill_script_map[script.name] = skill_name
+                    for script in skill_dir.rglob("*"):
+                        if not script.is_file() or script.suffix not in (".py", ".sh"):
+                            continue
+                        existing = self._skill_script_map.get(script.name)
+                        if existing is None and script.name in self._skill_script_map:
+                            continue
+                        self._skill_script_map[script.name] = (
+                            skill_name if existing in (None, skill_name) else None
+                        )
                 logger.info(f"[ClaudeAgent] Skill script map: {len(self._skill_script_map)} entries")
 
         self._cleanup_task: Optional[asyncio.Task] = None
@@ -379,6 +384,33 @@ class ClaudeAgent:
     def _touch_session(self, session_id: Optional[str]):
         if session_id:
             self._session_last_active[session_id] = time.time()
+
+    def _detect_skill_from_bash_command(self, command: str) -> Optional[str]:
+        """Return the skill whose executable script is actually invoked by a Bash command."""
+        import re
+
+        if not command or re.search(r"(?:^|\s)(?:--help|-h)(?:\s|$)", command):
+            return None
+
+        # Match interpreter-backed entrypoints such as:
+        #   python /.../.claude/skills/lung-crop/scripts/run_lung_crop.py
+        #   cd /.../.claude/skills/foo/scripts && python run_predict.py
+        script_match = re.search(
+            r"(?:^|[;&|]\s*|\s)"
+            r"(?:\S*/)?(?:python[0-9.]*|bash|sh|perl|ruby|node)"
+            r"\s+(?:(?:-[^\s]+\s+)*)"
+            r"(?P<script>[^\s;&|]+?\.(?:py|sh))(?=\s|$)",
+            command,
+        )
+        if not script_match:
+            return None
+
+        script_path = script_match.group("script").strip("\"'")
+        explicit_skill = re.search(r"[/~][^\s]*?/\.claude/skills/([^/\s]+)", script_path)
+        if explicit_skill:
+            return explicit_skill.group(1)
+
+        return self._skill_script_map.get(Path(script_path).name)
 
     def _rekey_session(self, old_session_id: str, new_session_id: str) -> None:
         """Replace the SDK startup handle with Claude CLI's persisted session ID."""
@@ -577,36 +609,9 @@ class ClaudeAgent:
             command = input_data.get("command", "") if isinstance(input_data, dict) else ""
             run_in_background = input_data.get("run_in_background", False) if isinstance(input_data, dict) else False
 
-            import re
-            _skills_pattern = re.compile(r'[/~][^\s]*?/\.claude/skills/([^/\s]+)')
-            _cd_pattern = re.compile(r'cd\s+[^\s]*?/\.claude/skills/([^/\s]+)')
-            _exec_pattern = re.compile(r'\b(python[0-9.]*|bash|sh|perl|ruby|node)\b|\.py\b|\.sh\b')
-
-            def _extract_skill_name_from_cmd(cmd: str):
-                """从命令中提取 ~/.claude/skills/<name>/ 路径里的 skill 名"""
-                m = _cd_pattern.search(cmd)
-                if m:
-                    return m.group(1)
-                m = _skills_pattern.search(cmd)
-                if m:
-                    return m.group(1)
-                return None
-
-            detected_skill = None
-            skill_candidate = _extract_skill_name_from_cmd(command)
-            if skill_candidate and _exec_pattern.search(command):
-                detected_skill = skill_candidate
+            detected_skill = self._detect_skill_from_bash_command(command)
+            if detected_skill:
                 logger.info(f"[PERMISSION] Skill detected: '{detected_skill}' (background={run_in_background})")
-
-            # ===== 二级检测：通过脚本名反查 skill（兜底 cd 省略的情况） =====
-            if not detected_skill and self._skill_script_map:
-                m = re.search(r'(?:python[0-9.]*|bash|sh)\s+(\S+\.(?:py|sh))', command)
-                if m:
-                    script_path = m.group(1)
-                    script_name = Path(script_path).name  # 取文件名，如 scripts/run_xxx.py → run_xxx.py
-                    detected_skill = self._skill_script_map.get(script_name)
-                    if detected_skill:
-                        logger.info(f"[PERMISSION] Skill detected by script mapping: '{detected_skill}' (script={script_name})")
 
             if detected_skill:
                 skill_name = detected_skill

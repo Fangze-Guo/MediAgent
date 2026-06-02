@@ -36,6 +36,16 @@ def is_conversation_active(conversation_id: str) -> bool:
     return task is not None and not task.done()
 
 
+async def shutdown_background_tasks() -> None:
+    """取消仍在运行的 Claude worker，避免应用退出后遗留子资源。"""
+    tasks = [task for task in _background_tasks.values() if not task.done()]
+    for task in tasks:
+        task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+    _background_tasks.clear()
+
+
 class CodeAgentService:
     """Code 智能体服务 - SDK 模式"""
 
@@ -78,6 +88,9 @@ class CodeAgentService:
         existing = await self.mapper.get_conversation_by_id(conversation_id)
         if not existing:
             raise NotFoundError(resource_type="conversation", resource_id=conversation_id)
+
+        if is_conversation_active(conversation_id):
+            raise ValidationError(detail="当前会话仍在处理中，请等待任务完成后再发送消息")
 
         sdk_session_id = existing.session_id
         code_agent = self._get_agent_for_project(existing.project_id)
@@ -211,7 +224,7 @@ class CodeAgentService:
 
     async def interrupt_session(self, session_id: str) -> bool:
         """中断会话"""
-        agent = get_code_agent()
+        agent = find_agent_by_session(session_id) or get_code_agent()
         return await agent.interrupt(session_id)
 
     @handle_service_exception

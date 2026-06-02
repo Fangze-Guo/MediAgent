@@ -949,13 +949,10 @@ watch(allSkillTasks, (tasks) => {
   }
 }, { deep: true })
 
-// 当前项目下的会话 ID 集合（用于按项目过滤 Work Flow）
-// 有会话选中时展示该会话任务；无会话选中时展示所有 running 任务（刷新后任务可见）
+// 任务管理器只展示当前选中会话的任务；欢迎页不关联任何任务。
 const filteredSkillTasks = computed(() => {
   if (!selectedConversationId.value) {
-    return allSkillTasks.value
-      .filter(t => t.status === 'running')
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    return []
   }
   return allSkillTasks.value
     .filter(t => t.conversation_id === selectedConversationId.value)
