@@ -49,6 +49,10 @@ class KnowledgeBaseService:
         self.mapper = KnowledgeBaseMapper()
         self.embedding = EmbeddingService()
 
+    async def close(self) -> None:
+        """关闭服务持有的数据库连接池。"""
+        await self.mapper.close()
+
     # ==================== 知识库 CRUD ====================
 
     @handle_service_exception

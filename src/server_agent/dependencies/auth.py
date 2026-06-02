@@ -34,10 +34,10 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> UserV
     else:
         token = authorization  # 直接使用 token
 
-    # 延迟导入避免循环依赖
-    from src.server_agent.service.UserService import UserService
-    
-    user_service = UserService()
+    # 复用进程级服务实例，避免每个鉴权请求遗留一个 SQLite 连接池。
+    from src.server_agent.dependencies.services import get_user_service
+
+    user_service = get_user_service()
     user = await user_service.get_user_by_token(token)
     
     if not user:

@@ -51,6 +51,8 @@ async def lifespan(app: FastAPI):
     app.state.code_agent_mapper = code_agent_mapper
     app.state.conv_mapper = conv_mapper
     app.state.kb_mapper = kb_mapper
+    app.state.code_agent_service.mapper = code_agent_mapper
+    app.state.kb_service.mapper = kb_mapper
 
     # ---- Agent mapper (临床智能体 & 全局技能仓库) ----
     from src.server_agent.mapper.AgentMapper import AgentMapper
@@ -119,10 +121,18 @@ async def lifespan(app: FastAPI):
     finally:
         logger.info("[LIFESPAN] Application shutdown started")
         from src.server_agent.agent.claude.claude_agent import shutdown_all_agents
+        from src.server_agent.dependencies.services import close_service_cache
+        from src.server_agent.service.clinical_tools.CodeAgentService import shutdown_background_tasks
+
+        await shutdown_background_tasks()
         await shutdown_all_agents()
+        for service in getattr(app.state, "shutdown_services", []):
+            await service.close()
+        await close_service_cache()
         await code_agent_mapper.close()
         await conv_mapper.close()
         await agent_mapper.close()
+        await kb_mapper.close()
         logger.info("[LIFESPAN] Application shutdown completed")
 
 
@@ -162,6 +172,12 @@ def create_app() -> FastAPI:
     code_agent_controller = CodeAgentController()
     knowledge_base_controller = KnowledgeBaseController()
     agent_controller = AgentController()
+    app.state.shutdown_services = [
+        code_agent_controller.service,
+        knowledge_base_controller.kb_service,
+    ]
+    app.state.code_agent_service = code_agent_controller.service
+    app.state.kb_service = knowledge_base_controller.kb_service
 
     # 注册路由
     app.include_router(file_controller.router)

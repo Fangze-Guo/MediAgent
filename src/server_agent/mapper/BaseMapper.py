@@ -24,6 +24,7 @@ class BaseMapper(ABC):
         self._connection_pool = asyncio.Queue(maxsize=10)
         self._pool_size = 0
         self._max_pool_size = 10
+        self._pool_lock = asyncio.Lock()
 
     def _ensure_db_directory(self):
         """确保数据库目录存在"""
@@ -31,6 +32,7 @@ class BaseMapper(ABC):
 
     async def _create_connection(self) -> aiosqlite.Connection:
         """创建新的数据库连接"""
+        db = None
         try:
             db = await aiosqlite.connect(
                 self.db_path,
@@ -48,6 +50,11 @@ class BaseMapper(ABC):
 
             return db
         except Exception as e:
+            if db is not None:
+                try:
+                    await db.close()
+                except Exception:
+                    pass
             logger.error(f"Failed to create database connection: {e}")
             raise DatabaseError(
                 detail="Failed to create database connection",
@@ -58,35 +65,37 @@ class BaseMapper(ABC):
     async def _get_connection(self) -> aiosqlite.Connection:
         """获取数据库连接（从连接池或创建新连接）"""
         try:
-            # 尝试从连接池获取连接
-            if not self._connection_pool.empty():
-                return self._connection_pool.get_nowait()
+            return self._connection_pool.get_nowait()
+        except asyncio.QueueEmpty:
+            pass
 
-            # 如果连接池为空且未达到最大连接数，创建新连接
+        async with self._pool_lock:
+            try:
+                return self._connection_pool.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+
             if self._pool_size < self._max_pool_size:
                 self._pool_size += 1
-                return await self._create_connection()
+                try:
+                    return await self._create_connection()
+                except BaseException:
+                    self._pool_size -= 1
+                    raise
 
-            # 等待连接池中的连接
-            return await self._connection_pool.get()
-
-        except asyncio.QueueEmpty:
-            # 连接池为空，创建新连接
-            self._pool_size += 1
-            return await self._create_connection()
+        return await self._connection_pool.get()
 
     async def _return_connection(self, conn: aiosqlite.Connection):
         """归还连接到连接池"""
         try:
-            if self._connection_pool.qsize() < self._max_pool_size:
-                self._connection_pool.put_nowait(conn)
-            else:
-                await conn.close()
-                self._pool_size -= 1
+            self._connection_pool.put_nowait(conn)
+        except asyncio.QueueFull:
+            await conn.close()
+            self._pool_size = max(0, self._pool_size - 1)
         except Exception as e:
             logger.warning(f"Failed to return connection to pool: {e}")
             await conn.close()
-            self._pool_size -= 1
+            self._pool_size = max(0, self._pool_size - 1)
 
     @asynccontextmanager
     async def get_connection(self):
@@ -189,7 +198,7 @@ class BaseMapper(ABC):
             try:
                 conn = self._connection_pool.get_nowait()
                 await conn.close()
-                self._pool_size -= 1
+                self._pool_size = max(0, self._pool_size - 1)
             except asyncio.QueueEmpty:
                 break
 

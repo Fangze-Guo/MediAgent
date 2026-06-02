@@ -77,3 +77,10 @@ def clear_service_cache():
     _conversation_service = None
     _file_service = None
     _model_config_service = None
+
+
+async def close_service_cache():
+    """关闭缓存服务持有的资源，并清空实例缓存。"""
+    if _user_service is not None:
+        await _user_service.userMapper.close_all_connections()
+    clear_service_cache()

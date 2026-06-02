@@ -216,6 +216,12 @@ class KnowledgeBaseMapper:
                 chunk_count, doc_id,
             )
 
+    async def close(self) -> None:
+        """关闭连接池。"""
+        if self._pool:
+            await self._pool.close()
+            self._pool = None
+
     # ==================== 内部工具 ====================
 
     @staticmethod
