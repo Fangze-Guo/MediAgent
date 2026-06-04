@@ -25,6 +25,7 @@
     "home": "Home",
     "conversation": "Conversation",
     "files": "File Management",
+    "patients": "Patient Dataset",
     "settings": "Settings",
     "skillStore": "Skill Repository",
     "skillDetail": "Skill Detail",
@@ -465,6 +466,7 @@
     "home": "New Conversation",
     "workspace": "Workspace",
     "files": "File Management",
+    "patients": "Patient Dataset",
     "skillStore": "Skill Repository",
     "clinicalTools": "Clinical Tools",
     "modelConfig": "Model Configuration",
@@ -655,6 +657,92 @@
     "export": "Export",
     "clearData": "Clear All Data",
     "clear": "Clear"
+  },
+  "views_PatientManageView": {
+    "eyebrow": "GLOBAL PATIENT REGISTRY",
+    "title": "Patient Dataset",
+    "subtitle": "Maintain global NICE-BCX patient baseline records. CT images, metrics, and reports will be archived by patient ID.",
+    "createPatient": "New Patient",
+    "editPatient": "Edit Patient",
+    "create": "Create",
+    "save": "Save",
+    "searchPlaceholder": "Search patient ID, name, or phone",
+    "deleteConfirm": "Hard delete this patient? The database record and patient data directory will both be deleted.",
+    "identityInfo": "Identity Information",
+    "clinicalInfo": "Clinical Baseline",
+    "totalPatients": "{count} patients",
+    "columns": {
+      "patient": "Patient",
+      "sex": "Sex",
+      "age": "Age",
+      "phone": "Phone",
+      "height": "Height",
+      "smoking": "Smoking Status",
+      "pathology": "Pathology Type",
+      "pdL1": "PD-L1 Status",
+      "updatedAt": "Updated At",
+      "actions": "Actions"
+    },
+    "fields": {
+      "patientId": "Patient ID",
+      "name": "Name",
+      "sex": "Sex",
+      "age": "Age",
+      "phone": "Phone",
+      "height": "Height cm",
+      "smoking": "Smoking Status",
+      "pathology": "Pathology Type",
+      "pdL1": "PD-L1 Status"
+    },
+    "placeholders": {
+      "patientId": "e.g. G12770",
+      "name": "e.g. Zhang San",
+      "sex": "Select sex",
+      "smoking": "Select smoking status",
+      "pathology": "Select pathology type",
+      "pdL1": "Select PD-L1 status"
+    },
+    "options": {
+      "sex": {
+        "male": "Male",
+        "female": "Female",
+        "other": "Other"
+      },
+      "smoking": {
+        "never": "Never",
+        "former": "Former",
+        "current": "Current",
+        "unknown": "Unknown"
+      },
+      "pathology": {
+        "adenocarcinoma": "Adenocarcinoma",
+        "squamous": "Squamous cell carcinoma",
+        "largeCell": "Large cell carcinoma",
+        "smallCell": "Small cell lung cancer",
+        "other": "Other",
+        "unknown": "Unknown"
+      },
+      "pdL1": {
+        "high": "High expression",
+        "low": "Low expression",
+        "negative": "Negative",
+        "positive": "Positive",
+        "unknown": "Unknown"
+      }
+    },
+    "validation": {
+      "patientIdRequired": "Please enter patient ID",
+      "patientIdPattern": "Only letters, numbers, dots, underscores, and hyphens are supported",
+      "nameRequired": "Please enter name"
+    },
+    "messages": {
+      "loadFailed": "Failed to load patient list",
+      "created": "Patient created",
+      "updated": "Patient information updated",
+      "deleted": "Patient hard deleted",
+      "saveFailed": "Failed to save patient",
+      "deleteFailed": "Failed to delete patient"
+    }
   },
   "views_CodeAgentView": {
     "title": "Medical AI Agent",

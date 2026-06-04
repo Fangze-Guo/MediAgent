@@ -23,6 +23,7 @@ from .ConversationController import ConversationController
 from .FileController import FileController
 from .KnowledgeBaseController import KnowledgeBaseController
 from .ModelController import ModelController
+from .PatientController import PatientController
 from .SkillController import SkillController
 from .UserController import UserController
 
@@ -53,6 +54,7 @@ async def lifespan(app: FastAPI):
     app.state.kb_mapper = kb_mapper
     app.state.code_agent_service.mapper = code_agent_mapper
     app.state.kb_service.mapper = kb_mapper
+    await app.state.patient_service.init()
 
     # ---- Agent mapper (临床智能体 & 全局技能仓库) ----
     from src.server_agent.mapper.AgentMapper import AgentMapper
@@ -133,6 +135,7 @@ async def lifespan(app: FastAPI):
         await conv_mapper.close()
         await agent_mapper.close()
         await kb_mapper.close()
+        await app.state.patient_service.close()
         logger.info("[LIFESPAN] Application shutdown completed")
 
 
@@ -168,6 +171,7 @@ def create_app() -> FastAPI:
     user_controller = UserController()
     conversation_controller = ConversationController()
     model_controller = ModelController()
+    patient_controller = PatientController()
     skill_controller = SkillController()
     code_agent_controller = CodeAgentController()
     knowledge_base_controller = KnowledgeBaseController()
@@ -178,12 +182,14 @@ def create_app() -> FastAPI:
     ]
     app.state.code_agent_service = code_agent_controller.service
     app.state.kb_service = knowledge_base_controller.kb_service
+    app.state.patient_service = patient_controller.service
 
     # 注册路由
     app.include_router(file_controller.router)
     app.include_router(user_controller.router)
     app.include_router(conversation_controller.router)
     app.include_router(model_controller.router)
+    app.include_router(patient_controller.router)
     app.include_router(skill_controller.router)
     app.include_router(code_agent_controller.router)
     app.include_router(knowledge_base_controller.router)
@@ -201,6 +207,7 @@ __all__ = [
     "UserController",
     "ConversationController",
     "ModelController",
+    "PatientController",
     "SkillController",
     "CodeAgentController",
     "KnowledgeBaseController",

@@ -147,10 +147,8 @@ import {
   MedicineBoxOutlined,
   RobotOutlined,
   SettingOutlined,
-  ToolOutlined,
   UnorderedListOutlined
 } from '@ant-design/icons-vue'
-import { Icon } from '@iconify/vue'
 import { MenuProps, message, Modal } from 'ant-design-vue'
 import { computed, h, nextTick, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -224,6 +222,11 @@ const items = computed(() =>[
     label: t('components_Sidebar.files'),
   },
   {
+    key: 'patients',
+    icon: () => h(UnorderedListOutlined),
+    label: t('components_Sidebar.patients'),
+  },
+  {
     key: 'clinical-tools',
     icon: () => h(MedicineBoxOutlined),
     label: t('components_Sidebar.clinicalTools'),
@@ -271,6 +274,10 @@ const selectedKeys = computed(() => {
     return ['files']
   }
 
+  if (path === '/patients') {
+    return ['patients']
+  }
+
   if (path === '/model-config') {
     return ['model-config']
   }
@@ -303,6 +310,8 @@ const handleMenuClick: MenuProps['onClick'] = async ({key}) => {
   } else if (key === 'files') {
     // 跳转到文件管理页面
     router.push('/files')
+  } else if (key === 'patients') {
+    router.push('/patients')
   } else if (key === 'clinical-tools') {
     // 跳转到临床工具主页面
     router.push('/clinical-tools')

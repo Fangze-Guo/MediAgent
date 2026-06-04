@@ -25,6 +25,7 @@
     "home": "首页",
     "conversation": "对话",
     "files": "文件管理",
+    "patients": "患者数据集",
     "settings": "设置",
     "skillStore": "Skill 仓库",
     "skillDetail": "Skill 详情",
@@ -465,6 +466,7 @@
     "home": "新建对话",
     "workspace": "工作区",
     "files": "文件管理",
+    "patients": "患者数据集",
     "skillStore": "Skill 仓库",
     "clinicalTools": "临床工具",
     "modelConfig": "模型配置",
@@ -655,6 +657,92 @@
     "export": "导出",
     "clearData": "清除所有数据",
     "clear": "清除"
+  },
+  "views_PatientManageView": {
+    "eyebrow": "全局患者注册库",
+    "title": "患者数据集",
+    "subtitle": "统一维护 NICE-BCX 研究患者基础资料，后续 CT、指标和报告都会按患者编号归档。",
+    "createPatient": "新增患者",
+    "editPatient": "编辑患者",
+    "create": "创建",
+    "save": "保存",
+    "searchPlaceholder": "搜索患者编号、姓名或电话",
+    "deleteConfirm": "确认硬删除该患者？数据库记录和患者数据目录都会被删除。",
+    "identityInfo": "身份信息",
+    "clinicalInfo": "临床基础信息",
+    "totalPatients": "共 {count} 位患者",
+    "columns": {
+      "patient": "患者",
+      "sex": "性别",
+      "age": "年龄",
+      "phone": "电话",
+      "height": "身高",
+      "smoking": "吸烟状态",
+      "pathology": "病理类型",
+      "pdL1": "PD-L1 状态",
+      "updatedAt": "更新时间",
+      "actions": "操作"
+    },
+    "fields": {
+      "patientId": "患者编号",
+      "name": "姓名",
+      "sex": "性别",
+      "age": "年龄",
+      "phone": "电话",
+      "height": "身高 cm",
+      "smoking": "吸烟状态",
+      "pathology": "病理类型",
+      "pdL1": "PD-L1 状态"
+    },
+    "placeholders": {
+      "patientId": "例如 G12770",
+      "name": "例如 Zhang San",
+      "sex": "选择性别",
+      "smoking": "选择吸烟状态",
+      "pathology": "选择病理类型",
+      "pdL1": "选择 PD-L1 状态"
+    },
+    "options": {
+      "sex": {
+        "male": "男",
+        "female": "女",
+        "other": "其他"
+      },
+      "smoking": {
+        "never": "从不吸烟",
+        "former": "既往吸烟",
+        "current": "当前吸烟",
+        "unknown": "未知"
+      },
+      "pathology": {
+        "adenocarcinoma": "腺癌",
+        "squamous": "鳞状细胞癌",
+        "largeCell": "大细胞癌",
+        "smallCell": "小细胞肺癌",
+        "other": "其他",
+        "unknown": "未知"
+      },
+      "pdL1": {
+        "high": "高表达",
+        "low": "低表达",
+        "negative": "阴性",
+        "positive": "阳性",
+        "unknown": "未知"
+      }
+    },
+    "validation": {
+      "patientIdRequired": "请输入患者编号",
+      "patientIdPattern": "仅支持字母、数字、点、下划线和短横线",
+      "nameRequired": "请输入姓名"
+    },
+    "messages": {
+      "loadFailed": "患者列表加载失败",
+      "created": "患者已创建",
+      "updated": "患者信息已更新",
+      "deleted": "患者已硬删除",
+      "saveFailed": "保存患者失败",
+      "deleteFailed": "删除患者失败"
+    }
   },
   "views_CodeAgentView": {
     "title": "医学智能体",
