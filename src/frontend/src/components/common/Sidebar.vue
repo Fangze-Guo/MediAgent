@@ -274,7 +274,7 @@ const selectedKeys = computed(() => {
     return ['files']
   }
 
-  if (path === '/patients') {
+  if (path === '/patients' || path.startsWith('/patients/')) {
     return ['patients']
   }
 

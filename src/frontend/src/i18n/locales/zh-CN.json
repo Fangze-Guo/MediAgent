@@ -37,6 +37,7 @@
     "knowledgeBase": "知识库",
     "knowledgeBaseDetail": "知识库详情",
     "documentDetail": "文档详情",
+    "patientDetail": "患者详情",
     "clinicalAgent": "临床智能体",
     "clinicalAgentSkills": "Skill 管理"
   },
@@ -673,6 +674,8 @@
     "totalPatients": "共 {count} 位患者",
     "columns": {
       "patient": "患者",
+      "patientId": "患者 ID",
+      "name": "姓名",
       "sex": "性别",
       "age": "年龄",
       "phone": "电话",
@@ -742,6 +745,79 @@
       "deleted": "患者已硬删除",
       "saveFailed": "保存患者失败",
       "deleteFailed": "删除患者失败"
+    }
+  },
+  "views_PatientDetailView": {
+    "eyebrow": "患者详情",
+    "baseline": "患者基础信息",
+    "workflow": "数据流程",
+    "emptyStatus": "待导入",
+    "notConfigured": "暂未配置",
+    "notFound": "未找到患者",
+    "loadFailed": "患者详情加载失败",
+    "pre": {
+      "title": "治疗前 Pre 数据",
+      "empty": "暂无治疗前 CT 文件"
+    },
+    "post": {
+      "title": "治疗后 Post 数据",
+      "empty": "暂无治疗后 CT 文件"
+    },
+    "ct": {
+      "empty": "未上传",
+      "ready": "已上传",
+      "uploadPre": "上传 Pre CT",
+      "uploadPost": "上传 Post CT",
+      "replace": "替换 CT",
+      "delete": "删除 CT 数据",
+      "deleteConfirmPre": "确认删除该患者的 Pre CT 数据？文件和预览都会被删除。",
+      "deleteConfirmPost": "确认删除该患者的 Post CT 数据？文件和预览都会被删除。",
+      "uploaded": "CT 已上传",
+      "uploadFailed": "CT 上传失败",
+      "deleted": "CT 数据已删除",
+      "deleteFailed": "CT 数据删除失败"
+    },
+    "workflowSteps": {
+      "pre": {
+        "title": "导入治疗前数据",
+        "desc": "收集 pre CT、肿瘤分割和基础影像预览。"
+      },
+      "post": {
+        "title": "导入治疗后数据",
+        "desc": "收集 post CT、分割结果和治疗后影像预览。"
+      },
+      "body": {
+        "title": "计算 Body Composition",
+        "desc": "生成 SMVI、VFVI、SAVI 等体成分指标。"
+      },
+      "report": {
+        "title": "生成 NICE-BCX 报告",
+        "desc": "整合 pre/post、指标和模型结果生成报告。"
+      }
+    },
+    "bodyComposition": {
+      "title": "Body Composition",
+      "import": "导入指标",
+      "columns": {
+        "index": "指标",
+        "pre": "Pre-treatment",
+        "post": "Post-treatment",
+        "change": "Change"
+      }
+    },
+    "modules": {
+      "bc": {
+        "title": "Clinical BC Type",
+        "desc": "展示 SMVI、VAVI、SAVI 组合后的体成分分型。"
+      },
+      "mpr": {
+        "title": "MPR Assessment",
+        "desc": "展示肿瘤 MPR 概率、特征组和综合 MPR 概率。"
+      },
+      "report": {
+        "title": "NICE-BCX Report",
+        "desc": "查看或生成患者 NICE-BCX 评估报告。"
+      }
     }
   },
   "views_CodeAgentView": {

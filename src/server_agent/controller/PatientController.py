@@ -1,4 +1,5 @@
-from fastapi import Depends, Query
+from fastapi import Depends, File, Query, UploadFile
+from fastapi.responses import FileResponse
 
 from src.server_agent.common import BaseResponse, ResultUtils
 from src.server_agent.dependencies import get_current_user
@@ -44,6 +45,46 @@ class PatientController(BaseController):
         ) -> BaseResponse[PatientInfo]:
             patient = await self.service.get_patient(patient_id)
             return ResultUtils.success(patient)
+
+        @self.router.get("/{patient_id}/ct/{phase}")
+        async def get_ct_status(
+            patient_id: str,
+            phase: str,
+            current_user: UserVO = Depends(get_current_user),
+        ) -> BaseResponse[dict]:
+            status = await self.service.get_ct_status(patient_id, phase)
+            return ResultUtils.success(status)
+
+        @self.router.post("/{patient_id}/ct/{phase}")
+        async def upload_ct_file(
+            patient_id: str,
+            phase: str,
+            ct_file: UploadFile = File(...),
+            current_user: UserVO = Depends(get_current_user),
+        ) -> BaseResponse[dict]:
+            status = await self.service.upload_ct_file(patient_id, phase, ct_file)
+            return ResultUtils.success(status)
+
+        @self.router.get("/{patient_id}/ct/{phase}/preview")
+        async def get_ct_preview(
+            patient_id: str,
+            phase: str,
+        ):
+            preview_path = await self.service.get_ct_preview_path(patient_id, phase)
+            return FileResponse(
+                path=preview_path,
+                media_type="image/png",
+                headers={"Content-Disposition": "inline"},
+            )
+
+        @self.router.delete("/{patient_id}/ct/{phase}")
+        async def delete_ct_data(
+            patient_id: str,
+            phase: str,
+            current_user: UserVO = Depends(get_current_user),
+        ) -> BaseResponse[dict]:
+            status = await self.service.delete_ct_data(patient_id, phase)
+            return ResultUtils.success(status)
 
         @self.router.put("/{patient_id}")
         async def update_patient(

@@ -40,6 +40,17 @@ export interface PatientListResult {
   size: number
 }
 
+export type CtPhase = 'pre' | 'post'
+
+export interface PatientCtStatus {
+  phase: CtPhase
+  status: 'empty' | 'ready'
+  file_name?: string | null
+  file_size?: number | null
+  uploaded_at?: string | null
+  preview_url?: string | null
+}
+
 export async function listPatients(params: {
   keyword?: string
   page?: number
@@ -58,6 +69,11 @@ export async function createPatient(payload: PatientPayload): Promise<PatientInf
   return response.data.data
 }
 
+export async function getPatient(patientId: string): Promise<PatientInfo> {
+  const response = await get<BaseResponse<PatientInfo>>(`/patients/${encodeURIComponent(patientId)}`)
+  return response.data.data
+}
+
 export async function updatePatient(patientId: string, payload: PatientPayload): Promise<PatientInfo> {
   const response = await put<BaseResponse<PatientInfo>>(`/patients/${encodeURIComponent(patientId)}`, payload)
   return response.data.data
@@ -66,6 +82,30 @@ export async function updatePatient(patientId: string, payload: PatientPayload):
 export async function deletePatient(patientId: string): Promise<{ patient_id: string; directory_deleted: boolean }> {
   const response = await del<BaseResponse<{ patient_id: string; directory_deleted: boolean }>>(
     `/patients/${encodeURIComponent(patientId)}`
+  )
+  return response.data.data
+}
+
+export async function getPatientCtStatus(patientId: string, phase: CtPhase): Promise<PatientCtStatus> {
+  const response = await get<BaseResponse<PatientCtStatus>>(
+    `/patients/${encodeURIComponent(patientId)}/ct/${phase}`
+  )
+  return response.data.data
+}
+
+export async function uploadPatientCt(patientId: string, phase: CtPhase, file: File): Promise<PatientCtStatus> {
+  const formData = new FormData()
+  formData.append('ct_file', file)
+  const response = await post<BaseResponse<PatientCtStatus>>(
+    `/patients/${encodeURIComponent(patientId)}/ct/${phase}`,
+    formData
+  )
+  return response.data.data
+}
+
+export async function deletePatientCt(patientId: string, phase: CtPhase): Promise<PatientCtStatus> {
+  const response = await del<BaseResponse<PatientCtStatus>>(
+    `/patients/${encodeURIComponent(patientId)}/ct/${phase}`
   )
   return response.data.data
 }

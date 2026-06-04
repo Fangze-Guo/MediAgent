@@ -30,25 +30,26 @@
         </div>
 
         <a-table
+          :key="locale"
           :columns="columns"
           :data-source="patients"
           :loading="loading"
           :row-key="getRowKey"
           :pagination="pagination"
-          :scroll="{ x: 1180 }"
           size="middle"
           class="patient-table"
           @change="handleTableChange"
         >
           <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'identity'">
-              <div class="patient-identity">
-                <span class="patient-avatar">{{ initials(record.name) }}</span>
-                <span class="patient-main">
-                  <span class="patient-name">{{ record.name }}</span>
-                  <span class="patient-id">{{ record.patient_id }}</span>
-                </span>
-              </div>
+            <template v-if="column.key === 'patient_id'">
+              <button class="text-link patient-id-link" @click="openDetail(record.patient_id)">
+                {{ record.patient_id }}
+              </button>
+            </template>
+            <template v-else-if="column.key === 'name'">
+              <button class="text-link patient-name-link" @click="openDetail(record.patient_id)">
+                {{ record.name }}
+              </button>
             </template>
             <template v-else-if="column.key === 'sex'">
               <a-tag v-if="record.sex" :color="sexColor(record.sex)">{{ formatOption('sex', record.sex) }}</a-tag>
@@ -58,7 +59,9 @@
               <span>{{ record.age ?? '-' }}</span>
             </template>
             <template v-else-if="column.key === 'phone'">
-              <span :class="{ muted: !record.phone }">{{ record.phone || '-' }}</span>
+              <span class="compact-cell" :class="{ muted: !record.phone }" :title="record.phone || ''">
+                {{ record.phone || '-' }}
+              </span>
             </template>
             <template v-else-if="column.key === 'height_cm'">
               <span>{{ record.height_cm == null ? '-' : `${record.height_cm} cm` }}</span>
@@ -80,6 +83,9 @@
             </template>
             <template v-else-if="column.key === 'actions'">
               <div class="actions">
+                <a-button type="text" size="small" :title="t('common.view')" @click="openDetail(record.patient_id)">
+                  <template #icon><EyeOutlined /></template>
+                </a-button>
                 <a-button type="text" size="small" :title="t('common.edit')" @click="openEditModal(record)">
                   <template #icon><EditOutlined /></template>
                 </a-button>
@@ -174,9 +180,10 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import type { TablePaginationConfig } from 'ant-design-vue'
 import { message } from 'ant-design-vue'
-import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+import { DeleteOutlined, EditOutlined, EyeOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import {
   createPatient,
   deletePatient,
@@ -189,7 +196,8 @@ import {
 type PatientForm = PatientPayload & { patient_id?: string }
 type OptionGroup = 'sex' | 'smoking' | 'pathology' | 'pdL1'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
+const router = useRouter()
 
 const loading = ref(false)
 const saving = ref(false)
@@ -214,16 +222,17 @@ const form = reactive<PatientForm>({
 })
 
 const columns = computed(() => [
-  { title: t('views_PatientManageView.columns.patient'), key: 'identity', width: 190 },
-  { title: t('views_PatientManageView.columns.sex'), dataIndex: 'sex', key: 'sex', width: 90 },
-  { title: t('views_PatientManageView.columns.age'), dataIndex: 'age', key: 'age', width: 80 },
-  { title: t('views_PatientManageView.columns.phone'), dataIndex: 'phone', key: 'phone', width: 160 },
-  { title: t('views_PatientManageView.columns.height'), key: 'height_cm', width: 100 },
-  { title: t('views_PatientManageView.columns.smoking'), dataIndex: 'smoking_status', key: 'smoking_status', width: 130 },
-  { title: t('views_PatientManageView.columns.pathology'), dataIndex: 'pathology_type', key: 'pathology_type', width: 170 },
-  { title: t('views_PatientManageView.columns.pdL1'), dataIndex: 'pd_l1_status', key: 'pd_l1_status', width: 150 },
-  { title: t('views_PatientManageView.columns.updatedAt'), key: 'updated_at', width: 170 },
-  { title: t('views_PatientManageView.columns.actions'), key: 'actions', width: 100, fixed: 'right' as const },
+  { title: t('views_PatientManageView.columns.patientId'), dataIndex: 'patient_id', key: 'patient_id', width: 118 },
+  { title: t('views_PatientManageView.columns.name'), dataIndex: 'name', key: 'name', width: 128 },
+  { title: t('views_PatientManageView.columns.sex'), dataIndex: 'sex', key: 'sex', width: 74 },
+  { title: t('views_PatientManageView.columns.age'), dataIndex: 'age', key: 'age', width: 62 },
+  { title: t('views_PatientManageView.columns.phone'), dataIndex: 'phone', key: 'phone', width: 128 },
+  { title: t('views_PatientManageView.columns.height'), key: 'height_cm', width: 82 },
+  { title: t('views_PatientManageView.columns.smoking'), dataIndex: 'smoking_status', key: 'smoking_status', width: 108 },
+  { title: t('views_PatientManageView.columns.pathology'), dataIndex: 'pathology_type', key: 'pathology_type', width: 142 },
+  { title: t('views_PatientManageView.columns.pdL1'), dataIndex: 'pd_l1_status', key: 'pd_l1_status', width: 116 },
+  { title: t('views_PatientManageView.columns.updatedAt'), key: 'updated_at', width: 112 },
+  { title: t('views_PatientManageView.columns.actions'), key: 'actions', width: 104 },
 ])
 
 const sexOptions = computed(() => [
@@ -256,7 +265,7 @@ const pdL1Options = computed(() => [
   { value: 'Unknown', label: t('views_PatientManageView.options.pdL1.unknown') },
 ])
 
-const rules = {
+const rules = computed(() => ({
   patient_id: [
     { required: true, message: t('views_PatientManageView.validation.patientIdRequired'), trigger: 'blur' },
     {
@@ -266,7 +275,7 @@ const rules = {
     },
   ],
   name: [{ required: true, message: t('views_PatientManageView.validation.nameRequired'), trigger: 'blur' }],
-}
+}))
 
 const getRowKey = (record: PatientInfo) => record.patient_id
 
@@ -338,6 +347,10 @@ function closeModal() {
   modalOpen.value = false
 }
 
+function openDetail(patientId: string) {
+  router.push(`/patients/${encodeURIComponent(patientId)}`)
+}
+
 function normalizedPayload(): PatientPayload {
   return {
     patient_id: form.patient_id?.trim(),
@@ -406,15 +419,7 @@ function handleTableChange(nextPagination: TablePaginationConfig) {
 
 function formatDateTime(value: string) {
   if (!value) return '-'
-  return new Date(value).toLocaleString()
-}
-
-function initials(name: string) {
-  const clean = (name || '').trim()
-  if (!clean) return 'P'
-  const parts = clean.split(/\s+/).filter(Boolean)
-  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase()
-  return clean.slice(0, 2).toUpperCase()
+  return new Date(value).toLocaleDateString()
 }
 
 function sexColor(sex?: string | null) {
@@ -523,52 +528,43 @@ function formatOption(group: OptionGroup, value?: string | null) {
   color: #475467;
   font-size: 12px;
   font-weight: 700;
+  padding: 10px 8px;
 }
 
 .patient-table :deep(.ant-table-tbody > tr > td) {
   border-bottom: 1px solid #edf0f5;
+  padding: 10px 8px;
 }
 
 .patient-table :deep(.ant-table-tbody > tr:hover > td) {
   background: #f8fbff;
 }
 
-.patient-identity {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.text-link {
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.patient-avatar {
-  display: inline-flex;
-  width: 36px;
-  height: 36px;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  border-radius: 8px;
-  background: #e8f3f1;
+.patient-id-link {
   color: #0f766e;
-  font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
-.patient-main {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.patient-name {
+.patient-name-link {
   color: #111827;
   font-weight: 600;
-  line-height: 1.35;
 }
 
-.patient-id {
-  color: #667085;
-  font-size: 12px;
+.text-link:hover {
+  text-decoration: underline;
 }
 
 .muted {
@@ -580,9 +576,10 @@ function formatOption(group: OptionGroup, value?: string | null) {
   font-size: 12px;
 }
 
+.compact-cell,
 .truncate-cell {
   display: inline-block;
-  max-width: 160px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   vertical-align: bottom;
@@ -591,7 +588,7 @@ function formatOption(group: OptionGroup, value?: string | null) {
 
 .actions {
   display: flex;
-  gap: 4px;
+  gap: 2px;
 }
 
 .patient-form {

@@ -58,6 +58,15 @@ const routes: RouteRecordRaw[] = [
         }
     },
     {
+        path: '/patients/:patientId',
+        name: 'PatientDetail',
+        component: () => import('@/views/patient/PatientDetailView.vue'),
+        meta: {
+            title: 'MedWiser - Patient Detail',
+            requiresAuth: true
+        }
+    },
+    {
         path: '/skill-repository',
         name: 'SkillStore',
         component: () => import('@/views/skill-store/SkillStoreView.vue'),

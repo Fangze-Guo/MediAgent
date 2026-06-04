@@ -37,6 +37,7 @@
     "knowledgeBase": "Knowledge Base",
     "knowledgeBaseDetail": "Knowledge Base Detail",
     "documentDetail": "Document Detail",
+    "patientDetail": "Patient Detail",
     "clinicalAgent": "Clinical Agent",
     "clinicalAgentSkills": "Skill Management"
   },
@@ -673,6 +674,8 @@
     "totalPatients": "{count} patients",
     "columns": {
       "patient": "Patient",
+      "patientId": "Patient ID",
+      "name": "Name",
       "sex": "Sex",
       "age": "Age",
       "phone": "Phone",
@@ -742,6 +745,79 @@
       "deleted": "Patient hard deleted",
       "saveFailed": "Failed to save patient",
       "deleteFailed": "Failed to delete patient"
+    }
+  },
+  "views_PatientDetailView": {
+    "eyebrow": "PATIENT DETAIL",
+    "baseline": "Patient Baseline",
+    "workflow": "Data Workflow",
+    "emptyStatus": "Pending",
+    "notConfigured": "Not configured",
+    "notFound": "Patient not found",
+    "loadFailed": "Failed to load patient detail",
+    "pre": {
+      "title": "Pre-treatment Data",
+      "empty": "No pre-treatment CT file yet"
+    },
+    "post": {
+      "title": "Post-treatment Data",
+      "empty": "No post-treatment CT file yet"
+    },
+    "ct": {
+      "empty": "Not uploaded",
+      "ready": "Uploaded",
+      "uploadPre": "Upload Pre CT",
+      "uploadPost": "Upload Post CT",
+      "replace": "Replace CT",
+      "delete": "Delete CT Data",
+      "deleteConfirmPre": "Delete this patient's Pre CT data? The file and preview will both be removed.",
+      "deleteConfirmPost": "Delete this patient's Post CT data? The file and preview will both be removed.",
+      "uploaded": "CT uploaded",
+      "uploadFailed": "Failed to upload CT",
+      "deleted": "CT data deleted",
+      "deleteFailed": "Failed to delete CT data"
+    },
+    "workflowSteps": {
+      "pre": {
+        "title": "Import Pre-treatment Data",
+        "desc": "Collect pre CT, tumor segmentation, and baseline image previews."
+      },
+      "post": {
+        "title": "Import Post-treatment Data",
+        "desc": "Collect post CT, segmentation results, and post-treatment previews."
+      },
+      "body": {
+        "title": "Compute Body Composition",
+        "desc": "Generate body composition metrics including SMVI, VFVI, and SAVI."
+      },
+      "report": {
+        "title": "Generate NICE-BCX Report",
+        "desc": "Integrate pre/post data, metrics, and model outputs into the report."
+      }
+    },
+    "bodyComposition": {
+      "title": "Body Composition",
+      "import": "Import Metrics",
+      "columns": {
+        "index": "Index",
+        "pre": "Pre-treatment",
+        "post": "Post-treatment",
+        "change": "Change"
+      }
+    },
+    "modules": {
+      "bc": {
+        "title": "Clinical BC Type",
+        "desc": "Show the body composition type derived from SMVI, VAVI, and SAVI."
+      },
+      "mpr": {
+        "title": "MPR Assessment",
+        "desc": "Show tumor MPR probability, feature groups, and integrated MPR probability."
+      },
+      "report": {
+        "title": "NICE-BCX Report",
+        "desc": "View or generate the patient's NICE-BCX assessment report."
+      }
     }
   },
   "views_CodeAgentView": {
