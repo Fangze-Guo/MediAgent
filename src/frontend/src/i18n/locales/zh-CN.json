@@ -777,6 +777,22 @@
       "deleted": "CT 数据已删除",
       "deleteFailed": "CT 数据删除失败"
     },
+    "mask": {
+      "empty": "未上传",
+      "ready": "已上传",
+      "pre": "Pre Mask",
+      "post": "Post Mask",
+      "upload": "上传 Mask",
+      "replace": "替换 Mask",
+      "delete": "删除 Mask",
+      "deleteConfirm": "确认删除该 Mask 数据？文件和预览都会被删除。",
+      "deleteConfirmBody": "确认删除该患者的 Body Composition Mask？文件和预览都会被删除。",
+      "deleteConfirmSpine": "确认删除该患者的 Spine Mask？文件和预览都会被删除。",
+      "uploaded": "Mask 已上传",
+      "uploadFailed": "Mask 上传失败",
+      "deleted": "Mask 已删除",
+      "deleteFailed": "Mask 删除失败"
+    },
     "workflowSteps": {
       "pre": {
         "title": "导入治疗前数据",
@@ -798,12 +814,18 @@
     "bodyComposition": {
       "title": "Body Composition",
       "import": "导入指标",
+      "empty": "暂无 Body Composition 图像或指标结果",
       "columns": {
         "index": "指标",
         "pre": "Pre-treatment",
         "post": "Post-treatment",
         "change": "Change"
       }
+    },
+    "spine": {
+      "title": "Spine",
+      "empty": "暂无 Spine 影像或分析结果",
+      "import": "导入 Spine 数据"
     },
     "modules": {
       "bc": {

@@ -55,6 +55,16 @@ class PatientController(BaseController):
             status = await self.service.get_ct_status(patient_id, phase)
             return ResultUtils.success(status)
 
+        @self.router.get("/{patient_id}/mask/{mask_type}/{phase}")
+        async def get_mask_status(
+            patient_id: str,
+            mask_type: str,
+            phase: str,
+            current_user: UserVO = Depends(get_current_user),
+        ) -> BaseResponse[dict]:
+            status = await self.service.get_mask_status(patient_id, mask_type, phase)
+            return ResultUtils.success(status)
+
         @self.router.post("/{patient_id}/ct/{phase}")
         async def upload_ct_file(
             patient_id: str,
@@ -63,6 +73,17 @@ class PatientController(BaseController):
             current_user: UserVO = Depends(get_current_user),
         ) -> BaseResponse[dict]:
             status = await self.service.upload_ct_file(patient_id, phase, ct_file)
+            return ResultUtils.success(status)
+
+        @self.router.post("/{patient_id}/mask/{mask_type}/{phase}")
+        async def upload_mask_file(
+            patient_id: str,
+            mask_type: str,
+            phase: str,
+            mask_file: UploadFile = File(...),
+            current_user: UserVO = Depends(get_current_user),
+        ) -> BaseResponse[dict]:
+            status = await self.service.upload_mask_file(patient_id, mask_type, phase, mask_file)
             return ResultUtils.success(status)
 
         @self.router.get("/{patient_id}/ct/{phase}/preview")
@@ -77,6 +98,19 @@ class PatientController(BaseController):
                 headers={"Content-Disposition": "inline"},
             )
 
+        @self.router.get("/{patient_id}/mask/{mask_type}/{phase}/preview")
+        async def get_mask_preview(
+            patient_id: str,
+            mask_type: str,
+            phase: str,
+        ):
+            preview_path = await self.service.get_mask_preview_path(patient_id, mask_type, phase)
+            return FileResponse(
+                path=preview_path,
+                media_type="image/png",
+                headers={"Content-Disposition": "inline"},
+            )
+
         @self.router.delete("/{patient_id}/ct/{phase}")
         async def delete_ct_data(
             patient_id: str,
@@ -84,6 +118,16 @@ class PatientController(BaseController):
             current_user: UserVO = Depends(get_current_user),
         ) -> BaseResponse[dict]:
             status = await self.service.delete_ct_data(patient_id, phase)
+            return ResultUtils.success(status)
+
+        @self.router.delete("/{patient_id}/mask/{mask_type}/{phase}")
+        async def delete_mask_data(
+            patient_id: str,
+            mask_type: str,
+            phase: str,
+            current_user: UserVO = Depends(get_current_user),
+        ) -> BaseResponse[dict]:
+            status = await self.service.delete_mask_data(patient_id, mask_type, phase)
             return ResultUtils.success(status)
 
         @self.router.put("/{patient_id}")

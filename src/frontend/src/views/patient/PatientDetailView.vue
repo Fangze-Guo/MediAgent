@@ -48,7 +48,6 @@
               <div class="panel-header">
                 <div>
                   <div class="panel-kicker">PRE</div>
-                  <h2>{{ t('views_PatientDetailView.pre.title') }}</h2>
                 </div>
                 <a-tag :color="ctStatusColor(preCt.status)">{{ ctStatusLabel(preCt.status) }}</a-tag>
               </div>
@@ -96,7 +95,6 @@
               <div class="panel-header">
                 <div>
                   <div class="panel-kicker">POST</div>
-                  <h2>{{ t('views_PatientDetailView.post.title') }}</h2>
                 </div>
                 <a-tag :color="ctStatusColor(postCt.status)">{{ ctStatusLabel(postCt.status) }}</a-tag>
               </div>
@@ -149,24 +147,82 @@
             @change="handleCtFileChange"
           />
 
-          <section class="panel">
-            <div class="panel-header">
-              <div>
-                <div class="panel-kicker">BODY COMPOSITION</div>
-                <h2>{{ t('views_PatientDetailView.bodyComposition.title') }}</h2>
+          <div class="section-grid two">
+            <section v-for="group in maskGroups" :key="group.key" class="panel feature-panel full-span">
+              <div class="panel-header">
+                <div>
+                  <div class="panel-kicker">{{ group.title }}</div>
+                </div>
               </div>
-              <a-button disabled>{{ t('views_PatientDetailView.bodyComposition.import') }}</a-button>
-            </div>
-            <a-table
-              :key="locale"
-              :columns="bodyColumns"
-              :data-source="bodyRows"
-              :pagination="false"
-              size="middle"
-              row-key="index"
-              class="metric-table"
-            />
-          </section>
+              <div class="mask-slot-grid">
+                <div v-for="slot in group.slots" :key="slot.phase" class="mask-slot">
+                  <div class="mask-slot-header">
+                    <strong>{{ slot.label }}</strong>
+                    <a-tag :color="maskStatusColor(slot.status.status)">{{ maskStatusLabel(slot.status.status) }}</a-tag>
+                  </div>
+                  <div v-if="slot.status.status === 'ready'" class="ct-ready">
+                    <template v-if="slot.status.preview_url">
+                      <img
+                        :src="withApiBase(slot.status.preview_url)"
+                        :alt="slot.status.file_name || `${group.title} ${slot.label}`"
+                        class="ct-preview-image"
+                      />
+                      <div class="ct-image-caption">
+                        <strong>{{ slot.status.file_name }}</strong>
+                        <span>{{ formatFileSize(slot.status.file_size) }} · {{ formatDateTime(slot.status.uploaded_at) }}</span>
+                      </div>
+                    </template>
+                    <div v-else class="ct-file-summary">
+                      <component :is="group.icon" />
+                      <div>
+                        <strong>{{ slot.status.file_name }}</strong>
+                        <span>{{ formatFileSize(slot.status.file_size) }} · {{ formatDateTime(slot.status.uploaded_at) }}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-else class="feature-window">
+                    <component :is="group.icon" />
+                    <span>{{ group.emptyText }}</span>
+                  </div>
+                  <div class="ct-action-bar">
+                    <a-button
+                      class="ct-primary-action"
+                      :loading="uploadingMaskKey === maskKey(group.maskType, slot.phase)"
+                      @click="triggerMaskUpload(group.maskType, slot.phase)"
+                    >
+                      <template #icon><UploadOutlined /></template>
+                      {{ slot.status.status === 'ready' ? t('views_PatientDetailView.mask.replace') : t('views_PatientDetailView.mask.upload') }}
+                    </a-button>
+                    <a-popconfirm
+                      v-if="slot.status.status === 'ready'"
+                      :title="t('views_PatientDetailView.mask.deleteConfirm')"
+                      :ok-text="t('common.delete')"
+                      :cancel-text="t('common.cancel')"
+                      ok-type="danger"
+                      @confirm="handleDeleteMask(group.maskType, slot.phase)"
+                    >
+                      <a-button
+                        class="ct-icon-action"
+                        danger
+                        :loading="deletingMaskKey === maskKey(group.maskType, slot.phase)"
+                        :title="t('views_PatientDetailView.mask.delete')"
+                      >
+                        <template #icon><DeleteOutlined /></template>
+                      </a-button>
+                    </a-popconfirm>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <input
+            ref="maskInputRef"
+            type="file"
+            class="hidden-file-input"
+            accept=".nii,.gz"
+            @change="handleMaskFileChange"
+          />
 
           <div class="section-grid three">
             <section v-for="module in analysisModules" :key="module.key" class="panel module-panel">
@@ -202,15 +258,20 @@ import {
 } from '@ant-design/icons-vue'
 import {
   deletePatientCt,
+  deletePatientMask,
   getPatient,
   getPatientCtStatus,
+  getPatientMaskStatus,
   uploadPatientCt,
+  uploadPatientMask,
   type CtPhase,
+  type MaskType,
   type PatientCtStatus,
   type PatientInfo,
+  type PatientMaskStatus,
 } from '@/apis/patients'
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
@@ -218,12 +279,29 @@ const patient = ref<PatientInfo | null>(null)
 const patientId = computed(() => String(route.params.patientId || ''))
 const emptyPreCt = (): PatientCtStatus => ({ phase: 'pre', status: 'empty', file_name: null, file_size: null, uploaded_at: null })
 const emptyPostCt = (): PatientCtStatus => ({ phase: 'post', status: 'empty', file_name: null, file_size: null, uploaded_at: null })
+const emptyMask = (maskType: MaskType, phase: CtPhase): PatientMaskStatus => ({
+  mask_type: maskType,
+  phase,
+  status: 'empty',
+  file_name: null,
+  file_size: null,
+  uploaded_at: null,
+  preview_url: null,
+})
 const preCt = ref<PatientCtStatus>(emptyPreCt())
 const postCt = ref<PatientCtStatus>(emptyPostCt())
+const bodyPreMask = ref<PatientMaskStatus>(emptyMask('body-composition', 'pre'))
+const bodyPostMask = ref<PatientMaskStatus>(emptyMask('body-composition', 'post'))
+const spinePreMask = ref<PatientMaskStatus>(emptyMask('spine', 'pre'))
+const spinePostMask = ref<PatientMaskStatus>(emptyMask('spine', 'post'))
 const selectedUploadPhase = ref<CtPhase | null>(null)
 const uploadingPhase = ref<CtPhase | null>(null)
 const deletingPhase = ref<CtPhase | null>(null)
 const ctInputRef = ref<HTMLInputElement | null>(null)
+const selectedMaskTarget = ref<{ maskType: MaskType; phase: CtPhase } | null>(null)
+const uploadingMaskKey = ref<string | null>(null)
+const deletingMaskKey = ref<string | null>(null)
+const maskInputRef = ref<HTMLInputElement | null>(null)
 
 const baselineItems = computed(() => [
   { label: t('views_PatientManageView.fields.sex'), value: formatOption('sex', patient.value?.sex) },
@@ -262,19 +340,6 @@ const workflowSteps = computed(() => [
   },
 ])
 
-const bodyColumns = computed(() => [
-  { title: t('views_PatientDetailView.bodyComposition.columns.index'), dataIndex: 'index', key: 'index' },
-  { title: t('views_PatientDetailView.bodyComposition.columns.pre'), dataIndex: 'pre', key: 'pre' },
-  { title: t('views_PatientDetailView.bodyComposition.columns.post'), dataIndex: 'post', key: 'post' },
-  { title: t('views_PatientDetailView.bodyComposition.columns.change'), dataIndex: 'change', key: 'change' },
-])
-
-const bodyRows = computed(() => [
-  { index: 'SMVI (Skeletal Muscle)', pre: '-', post: '-', change: '-' },
-  { index: 'VFVI (Visceral Fat)', pre: '-', post: '-', change: '-' },
-  { index: 'SAVI (Subcutaneous Fat)', pre: '-', post: '-', change: '-' },
-])
-
 const analysisModules = computed(() => [
   {
     key: 'bc',
@@ -296,6 +361,31 @@ const analysisModules = computed(() => [
   },
 ])
 
+const maskGroups = computed(() => [
+  {
+    key: 'body-composition',
+    maskType: 'body-composition' as MaskType,
+    title: 'BODY COMPOSITION',
+    icon: BarChartOutlined,
+    emptyText: t('views_PatientDetailView.bodyComposition.empty'),
+    slots: [
+      { phase: 'pre' as CtPhase, label: t('views_PatientDetailView.mask.pre'), status: bodyPreMask.value },
+      { phase: 'post' as CtPhase, label: t('views_PatientDetailView.mask.post'), status: bodyPostMask.value },
+    ],
+  },
+  {
+    key: 'spine',
+    maskType: 'spine' as MaskType,
+    title: 'SPINE',
+    icon: FundProjectionScreenOutlined,
+    emptyText: t('views_PatientDetailView.spine.empty'),
+    slots: [
+      { phase: 'pre' as CtPhase, label: t('views_PatientDetailView.mask.pre'), status: spinePreMask.value },
+      { phase: 'post' as CtPhase, label: t('views_PatientDetailView.mask.post'), status: spinePostMask.value },
+    ],
+  },
+])
+
 onMounted(() => {
   fetchPatientDetail()
 })
@@ -303,14 +393,22 @@ onMounted(() => {
 async function fetchPatientDetail() {
   loading.value = true
   try {
-    const [patientInfo, preStatus, postStatus] = await Promise.all([
+    const [patientInfo, preStatus, postStatus, bodyPreStatus, bodyPostStatus, spinePreStatus, spinePostStatus] = await Promise.all([
       getPatient(patientId.value),
       getPatientCtStatus(patientId.value, 'pre'),
       getPatientCtStatus(patientId.value, 'post'),
+      getPatientMaskStatus(patientId.value, 'body-composition', 'pre'),
+      getPatientMaskStatus(patientId.value, 'body-composition', 'post'),
+      getPatientMaskStatus(patientId.value, 'spine', 'pre'),
+      getPatientMaskStatus(patientId.value, 'spine', 'post'),
     ])
     patient.value = patientInfo
     preCt.value = preStatus
     postCt.value = postStatus
+    bodyPreMask.value = bodyPreStatus
+    bodyPostMask.value = bodyPostStatus
+    spinePreMask.value = spinePreStatus
+    spinePostMask.value = spinePostStatus
   } catch (error) {
     console.error('Load patient detail failed:', error)
     message.error(t('views_PatientDetailView.loadFailed'))
@@ -368,6 +466,60 @@ async function handleDeleteCt(phase: CtPhase) {
   }
 }
 
+function maskKey(maskType: MaskType, phase: CtPhase) {
+  return `${maskType}:${phase}`
+}
+
+function setMaskStatus(status: PatientMaskStatus) {
+  if (status.mask_type === 'body-composition' && status.phase === 'pre') bodyPreMask.value = status
+  else if (status.mask_type === 'body-composition' && status.phase === 'post') bodyPostMask.value = status
+  else if (status.mask_type === 'spine' && status.phase === 'pre') spinePreMask.value = status
+  else spinePostMask.value = status
+}
+
+function triggerMaskUpload(maskType: MaskType, phase: CtPhase) {
+  selectedMaskTarget.value = { maskType, phase }
+  if (maskInputRef.value) {
+    maskInputRef.value.value = ''
+    maskInputRef.value.click()
+  }
+}
+
+async function handleMaskFileChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  const target = selectedMaskTarget.value
+  if (!file || !target) return
+
+  uploadingMaskKey.value = maskKey(target.maskType, target.phase)
+  try {
+    const status = await uploadPatientMask(patientId.value, target.maskType, target.phase, file)
+    setMaskStatus(status)
+    message.success(t('views_PatientDetailView.mask.uploaded'))
+  } catch (error: any) {
+    console.error('Upload mask failed:', error)
+    message.error(error?.message || t('views_PatientDetailView.mask.uploadFailed'))
+  } finally {
+    uploadingMaskKey.value = null
+    selectedMaskTarget.value = null
+    input.value = ''
+  }
+}
+
+async function handleDeleteMask(maskType: MaskType, phase: CtPhase) {
+  deletingMaskKey.value = maskKey(maskType, phase)
+  try {
+    const status = await deletePatientMask(patientId.value, maskType, phase)
+    setMaskStatus(status)
+    message.success(t('views_PatientDetailView.mask.deleted'))
+  } catch (error: any) {
+    console.error('Delete mask failed:', error)
+    message.error(error?.message || t('views_PatientDetailView.mask.deleteFailed'))
+  } finally {
+    deletingMaskKey.value = null
+  }
+}
+
 function ctStatusLabel(status: PatientCtStatus['status']) {
   return status === 'ready'
     ? t('views_PatientDetailView.ct.ready')
@@ -375,6 +527,16 @@ function ctStatusLabel(status: PatientCtStatus['status']) {
 }
 
 function ctStatusColor(status: PatientCtStatus['status']) {
+  return status === 'ready' ? 'green' : 'default'
+}
+
+function maskStatusLabel(status: PatientMaskStatus['status']) {
+  return status === 'ready'
+    ? t('views_PatientDetailView.mask.ready')
+    : t('views_PatientDetailView.mask.empty')
+}
+
+function maskStatusColor(status: PatientMaskStatus['status']) {
   return status === 'ready' ? 'green' : 'default'
 }
 
@@ -526,6 +688,10 @@ function formatOption(group: OptionGroup, value?: string | null) {
   margin-top: 14px;
 }
 
+.full-span {
+  grid-column: 1 / -1;
+}
+
 .panel {
   background: #fff;
   border: 1px solid #e4e9f1;
@@ -629,6 +795,52 @@ function formatOption(group: OptionGroup, value?: string | null) {
   border: 1px dashed #cbd5e1;
   border-radius: 8px;
   color: #667085;
+}
+
+.feature-window {
+  min-height: 340px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  color: #667085;
+}
+
+.feature-window :deep(svg) {
+  font-size: 30px;
+  color: #0f766e;
+}
+
+.mask-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.mask-slot {
+  min-width: 0;
+}
+
+.mask-slot-header {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.mask-slot-header strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #111827;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ct-ready {
@@ -737,18 +949,6 @@ function formatOption(group: OptionGroup, value?: string | null) {
   color: #0f766e;
 }
 
-.metric-table :deep(.ant-table-container) {
-  border: 1px solid #edf0f5;
-  border-radius: 8px;
-}
-
-.metric-table :deep(.ant-table-thead > tr > th) {
-  background: #f7f9fc;
-  color: #475467;
-  font-size: 12px;
-  font-weight: 700;
-}
-
 .module-panel {
   min-height: 210px;
 }
@@ -776,13 +976,15 @@ function formatOption(group: OptionGroup, value?: string | null) {
 @media (max-width: 980px) {
   .info-grid,
   .section-grid.two,
-  .section-grid.three {
+  .section-grid.three,
+  .mask-slot-grid {
     grid-template-columns: 1fr;
   }
 
   .baseline-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
 }
 
 @media (max-width: 640px) {

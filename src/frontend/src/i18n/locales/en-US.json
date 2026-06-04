@@ -777,6 +777,22 @@
       "deleted": "CT data deleted",
       "deleteFailed": "Failed to delete CT data"
     },
+    "mask": {
+      "empty": "Not uploaded",
+      "ready": "Uploaded",
+      "pre": "Pre Mask",
+      "post": "Post Mask",
+      "upload": "Upload Mask",
+      "replace": "Replace Mask",
+      "delete": "Delete Mask",
+      "deleteConfirm": "Delete this mask data? The file and preview will both be removed.",
+      "deleteConfirmBody": "Delete this patient's Body Composition Mask? The file and preview will both be removed.",
+      "deleteConfirmSpine": "Delete this patient's Spine Mask? The file and preview will both be removed.",
+      "uploaded": "Mask uploaded",
+      "uploadFailed": "Failed to upload mask",
+      "deleted": "Mask deleted",
+      "deleteFailed": "Failed to delete mask"
+    },
     "workflowSteps": {
       "pre": {
         "title": "Import Pre-treatment Data",
@@ -798,12 +814,18 @@
     "bodyComposition": {
       "title": "Body Composition",
       "import": "Import Metrics",
+      "empty": "No Body Composition image or metrics yet",
       "columns": {
         "index": "Index",
         "pre": "Pre-treatment",
         "post": "Post-treatment",
         "change": "Change"
       }
+    },
+    "spine": {
+      "title": "Spine",
+      "empty": "No Spine image or analysis result yet",
+      "import": "Import Spine Data"
     },
     "modules": {
       "bc": {

@@ -41,8 +41,19 @@ export interface PatientListResult {
 }
 
 export type CtPhase = 'pre' | 'post'
+export type MaskType = 'body-composition' | 'spine'
 
 export interface PatientCtStatus {
+  phase: CtPhase
+  status: 'empty' | 'ready'
+  file_name?: string | null
+  file_size?: number | null
+  uploaded_at?: string | null
+  preview_url?: string | null
+}
+
+export interface PatientMaskStatus {
+  mask_type: MaskType
   phase: CtPhase
   status: 'empty' | 'ready'
   file_name?: string | null
@@ -106,6 +117,30 @@ export async function uploadPatientCt(patientId: string, phase: CtPhase, file: F
 export async function deletePatientCt(patientId: string, phase: CtPhase): Promise<PatientCtStatus> {
   const response = await del<BaseResponse<PatientCtStatus>>(
     `/patients/${encodeURIComponent(patientId)}/ct/${phase}`
+  )
+  return response.data.data
+}
+
+export async function getPatientMaskStatus(patientId: string, maskType: MaskType, phase: CtPhase): Promise<PatientMaskStatus> {
+  const response = await get<BaseResponse<PatientMaskStatus>>(
+    `/patients/${encodeURIComponent(patientId)}/mask/${maskType}/${phase}`
+  )
+  return response.data.data
+}
+
+export async function uploadPatientMask(patientId: string, maskType: MaskType, phase: CtPhase, file: File): Promise<PatientMaskStatus> {
+  const formData = new FormData()
+  formData.append('mask_file', file)
+  const response = await post<BaseResponse<PatientMaskStatus>>(
+    `/patients/${encodeURIComponent(patientId)}/mask/${maskType}/${phase}`,
+    formData
+  )
+  return response.data.data
+}
+
+export async function deletePatientMask(patientId: string, maskType: MaskType, phase: CtPhase): Promise<PatientMaskStatus> {
+  const response = await del<BaseResponse<PatientMaskStatus>>(
+    `/patients/${encodeURIComponent(patientId)}/mask/${maskType}/${phase}`
   )
   return response.data.data
 }
