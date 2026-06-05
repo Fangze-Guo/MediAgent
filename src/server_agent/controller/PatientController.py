@@ -95,7 +95,28 @@ class PatientController(BaseController):
             return FileResponse(
                 path=preview_path,
                 media_type="image/png",
-                headers={"Content-Disposition": "inline"},
+                headers={
+                    "Content-Disposition": "inline",
+                    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                    "Pragma": "no-cache",
+                },
+            )
+
+        @self.router.get("/{patient_id}/ct/{phase}/preview/{plane}")
+        async def get_ct_preview_plane(
+            patient_id: str,
+            phase: str,
+            plane: str,
+        ):
+            preview_path = await self.service.get_ct_preview_plane_path(patient_id, phase, plane)
+            return FileResponse(
+                path=preview_path,
+                media_type="image/png",
+                headers={
+                    "Content-Disposition": "inline",
+                    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                    "Pragma": "no-cache",
+                },
             )
 
         @self.router.get("/{patient_id}/mask/{mask_type}/{phase}/preview")
@@ -108,7 +129,29 @@ class PatientController(BaseController):
             return FileResponse(
                 path=preview_path,
                 media_type="image/png",
-                headers={"Content-Disposition": "inline"},
+                headers={
+                    "Content-Disposition": "inline",
+                    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                    "Pragma": "no-cache",
+                },
+            )
+
+        @self.router.get("/{patient_id}/mask/{mask_type}/{phase}/preview/{plane}")
+        async def get_mask_preview_plane(
+            patient_id: str,
+            mask_type: str,
+            phase: str,
+            plane: str,
+        ):
+            preview_path = await self.service.get_mask_preview_plane_path(patient_id, mask_type, phase, plane)
+            return FileResponse(
+                path=preview_path,
+                media_type="image/png",
+                headers={
+                    "Content-Disposition": "inline",
+                    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                    "Pragma": "no-cache",
+                },
             )
 
         @self.router.delete("/{patient_id}/ct/{phase}")

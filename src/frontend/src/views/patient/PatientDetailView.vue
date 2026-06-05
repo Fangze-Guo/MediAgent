@@ -52,8 +52,14 @@
                 <a-tag :color="ctStatusColor(preCt.status)">{{ ctStatusLabel(preCt.status) }}</a-tag>
               </div>
               <div v-if="preCt.status === 'ready'" class="ct-ready">
-                <template v-if="preCt.preview_url">
-                  <img :src="withApiBase(preCt.preview_url)" :alt="preCt.file_name || 'Pre CT'" class="ct-preview-image" />
+                <div v-if="hasPreviewPlanes(preCt)" class="mpr-preview-grid">
+                  <div v-for="plane in previewPlaneEntries(preCt)" :key="plane.key" class="mpr-preview-pane">
+                    <img :src="previewSrc(plane.url, preCt)" :alt="`${plane.label} ${preCt.file_name || 'Pre CT'}`" />
+                    <span>{{ plane.label }}</span>
+                  </div>
+                </div>
+                <template v-else-if="preCt.preview_url">
+                  <img :src="previewSrc(preCt.preview_url, preCt)" :alt="preCt.file_name || 'Pre CT'" class="ct-preview-image" />
                   <div class="ct-image-caption">
                     <strong>{{ preCt.file_name }}</strong>
                     <span>{{ formatFileSize(preCt.file_size) }} · {{ formatDateTime(preCt.uploaded_at) }}</span>
@@ -99,8 +105,14 @@
                 <a-tag :color="ctStatusColor(postCt.status)">{{ ctStatusLabel(postCt.status) }}</a-tag>
               </div>
               <div v-if="postCt.status === 'ready'" class="ct-ready">
-                <template v-if="postCt.preview_url">
-                  <img :src="withApiBase(postCt.preview_url)" :alt="postCt.file_name || 'Post CT'" class="ct-preview-image" />
+                <div v-if="hasPreviewPlanes(postCt)" class="mpr-preview-grid">
+                  <div v-for="plane in previewPlaneEntries(postCt)" :key="plane.key" class="mpr-preview-pane">
+                    <img :src="previewSrc(plane.url, postCt)" :alt="`${plane.label} ${postCt.file_name || 'Post CT'}`" />
+                    <span>{{ plane.label }}</span>
+                  </div>
+                </div>
+                <template v-else-if="postCt.preview_url">
+                  <img :src="previewSrc(postCt.preview_url, postCt)" :alt="postCt.file_name || 'Post CT'" class="ct-preview-image" />
                   <div class="ct-image-caption">
                     <strong>{{ postCt.file_name }}</strong>
                     <span>{{ formatFileSize(postCt.file_size) }} · {{ formatDateTime(postCt.uploaded_at) }}</span>
@@ -161,9 +173,15 @@
                     <a-tag :color="maskStatusColor(slot.status.status)">{{ maskStatusLabel(slot.status.status) }}</a-tag>
                   </div>
                   <div v-if="slot.status.status === 'ready'" class="ct-ready">
-                    <template v-if="slot.status.preview_url">
+                    <div v-if="hasPreviewPlanes(slot.status)" class="mpr-preview-grid">
+                      <div v-for="plane in previewPlaneEntries(slot.status)" :key="plane.key" class="mpr-preview-pane">
+                        <img :src="previewSrc(plane.url, slot.status)" :alt="`${plane.label} ${slot.status.file_name || group.title}`" />
+                        <span>{{ plane.label }} mask</span>
+                      </div>
+                    </div>
+                    <template v-else-if="slot.status.preview_url">
                       <img
-                        :src="withApiBase(slot.status.preview_url)"
+                        :src="previewSrc(slot.status.preview_url, slot.status)"
                         :alt="slot.status.file_name || `${group.title} ${slot.label}`"
                         class="ct-preview-image"
                       />
@@ -287,6 +305,7 @@ const emptyMask = (maskType: MaskType, phase: CtPhase): PatientMaskStatus => ({
   file_size: null,
   uploaded_at: null,
   preview_url: null,
+  preview_planes: null,
 })
 const preCt = ref<PatientCtStatus>(emptyPreCt())
 const postCt = ref<PatientCtStatus>(emptyPostCt())
@@ -559,6 +578,27 @@ function withApiBase(url: string) {
   return `${baseURL}${url.startsWith('/') ? url : `/${url}`}`
 }
 
+function previewSrc(url: string, status: Pick<PatientCtStatus | PatientMaskStatus, 'uploaded_at' | 'file_size'>) {
+  const fullUrl = withApiBase(url)
+  if (!fullUrl) return fullUrl
+  const cacheKey = `${status.uploaded_at || ''}:${status.file_size || ''}`
+  const separator = fullUrl.includes('?') ? '&' : '?'
+  return `${fullUrl}${separator}v=${encodeURIComponent(cacheKey)}`
+}
+
+function hasPreviewPlanes(status: PatientCtStatus | PatientMaskStatus) {
+  return previewPlaneEntries(status).length === 3
+}
+
+function previewPlaneEntries(status: PatientCtStatus | PatientMaskStatus) {
+  const planes = status.preview_planes || {}
+  return [
+    { key: 'axial', label: 'Axial', url: planes.axial },
+    { key: 'coronal', label: 'Coronal', url: planes.coronal },
+    { key: 'sagittal', label: 'Sagittal', url: planes.sagittal },
+  ].filter((plane): plane is { key: string; label: string; url: string } => Boolean(plane.url))
+}
+
 function initials(name: string) {
   const clean = (name || '').trim()
   if (!clean) return 'P'
@@ -606,6 +646,7 @@ function formatOption(group: OptionGroup, value?: string | null) {
 
 <style scoped>
 .detail-page {
+  --patient-preview-height: 400px;
   min-height: 100%;
   padding: 28px;
   background: linear-gradient(180deg, #f5f7fb 0%, #eef3f8 100%);
@@ -785,7 +826,8 @@ function formatOption(group: OptionGroup, value?: string | null) {
 }
 
 .scan-placeholder {
-  min-height: 340px;
+  height: var(--patient-preview-height);
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -798,7 +840,8 @@ function formatOption(group: OptionGroup, value?: string | null) {
 }
 
 .feature-window {
-  min-height: 340px;
+  height: var(--patient-preview-height);
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -817,7 +860,7 @@ function formatOption(group: OptionGroup, value?: string | null) {
 
 .mask-slot-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 14px;
 }
 
@@ -844,7 +887,8 @@ function formatOption(group: OptionGroup, value?: string | null) {
 }
 
 .ct-ready {
-  min-height: 340px;
+  height: var(--patient-preview-height);
+  box-sizing: border-box;
   position: relative;
   display: flex;
   align-items: center;
@@ -860,10 +904,51 @@ function formatOption(group: OptionGroup, value?: string | null) {
 
 .ct-preview-image {
   width: 100%;
-  height: 340px;
+  height: 100%;
   display: block;
   object-fit: contain;
   background: #0b0f19;
+}
+
+.mpr-preview-grid {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.mpr-preview-pane {
+  min-width: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #05070c;
+  border-right: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.mpr-preview-pane:last-child {
+  border-right: 0;
+}
+
+.mpr-preview-pane img {
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+  object-fit: contain;
+}
+
+.mpr-preview-pane span {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  color: #d1d5db;
+  font-size: 10px;
+  line-height: 1;
 }
 
 .ct-image-caption {

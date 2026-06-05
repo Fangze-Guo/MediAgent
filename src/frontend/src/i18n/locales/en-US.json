@@ -814,7 +814,7 @@
     "bodyComposition": {
       "title": "Body Composition",
       "import": "Import Metrics",
-      "empty": "No Body Composition image or metrics yet",
+      "empty": "No Body Composition Mask yet",
       "columns": {
         "index": "Index",
         "pre": "Pre-treatment",
@@ -824,7 +824,7 @@
     },
     "spine": {
       "title": "Spine",
-      "empty": "No Spine image or analysis result yet",
+      "empty": "No Spine Mask yet",
       "import": "Import Spine Data"
     },
     "modules": {

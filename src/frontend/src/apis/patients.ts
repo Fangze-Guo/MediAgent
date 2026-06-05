@@ -50,6 +50,7 @@ export interface PatientCtStatus {
   file_size?: number | null
   uploaded_at?: string | null
   preview_url?: string | null
+  preview_planes?: PreviewPlanes | null
 }
 
 export interface PatientMaskStatus {
@@ -60,7 +61,11 @@ export interface PatientMaskStatus {
   file_size?: number | null
   uploaded_at?: string | null
   preview_url?: string | null
+  preview_planes?: PreviewPlanes | null
 }
+
+export type PreviewPlane = 'axial' | 'coronal' | 'sagittal'
+export type PreviewPlanes = Partial<Record<PreviewPlane, string>>
 
 export async function listPatients(params: {
   keyword?: string
