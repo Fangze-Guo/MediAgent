@@ -827,6 +827,10 @@
       "empty": "No Spine Mask yet",
       "import": "Import Spine Data"
     },
+    "report": {
+      "exportPdf": "Export PDF",
+      "exportFailed": "Failed to export report"
+    },
     "modules": {
       "bc": {
         "title": "Clinical BC Type",

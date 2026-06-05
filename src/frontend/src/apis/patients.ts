@@ -1,4 +1,4 @@
-import { del, get, post, put } from '@/utils/request'
+import { api, del, get, post, put } from '@/utils/request'
 
 export interface BaseResponse<T = any> {
   code: number
@@ -153,4 +153,11 @@ export async function deletePatientMask(patientId: string, maskType: MaskType, p
     `/patients/${encodeURIComponent(patientId)}/mask/${maskType}/${phase}`
   )
   return response.data.data
+}
+
+export async function downloadPatientReport(patientId: string): Promise<Blob> {
+  const response = await api.get(`/patients/${encodeURIComponent(patientId)}/report`, {
+    responseType: 'blob',
+  })
+  return response.data
 }

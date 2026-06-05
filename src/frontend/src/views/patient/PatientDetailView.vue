@@ -2,10 +2,16 @@
   <div class="detail-page">
     <div class="detail-shell">
       <div class="detail-header">
-        <a-button @click="goBack">
-          <template #icon><ArrowLeftOutlined /></template>
-          {{ t('common.back') }}
-        </a-button>
+        <div class="header-actions">
+          <a-button class="header-action header-action-back" @click="goBack">
+            <template #icon><ArrowLeftOutlined /></template>
+            {{ t('common.back') }}
+          </a-button>
+          <a-button class="header-action header-action-export" type="primary" :loading="exportingReport" @click="handleExportReport">
+            <template #icon><FileTextOutlined /></template>
+            {{ t('views_PatientDetailView.report.exportPdf') }}
+          </a-button>
+        </div>
         <div class="header-main">
           <span class="avatar">{{ initials(patient?.name || patientId) }}</span>
           <div>
@@ -280,6 +286,8 @@
         :metadata-url="viewerTarget.metadataUrl"
         :ct-slice-base-url="viewerTarget.ctSliceBaseUrl"
         :mask-slice-base-url="viewerTarget.maskSliceBaseUrl"
+        :ct-volume-url="viewerTarget.ctVolumeUrl"
+        :mask-volume-url="viewerTarget.maskVolumeUrl"
         :cache-key="viewerTarget.cacheKey"
       />
     </a-modal>
@@ -305,6 +313,7 @@ import MprViewer from '@/components/patient/MprViewer.vue'
 import {
   deletePatientCt,
   deletePatientMask,
+  downloadPatientReport,
   getPatient,
   getPatientCtStatus,
   getPatientMaskStatus,
@@ -349,9 +358,17 @@ const selectedMaskTarget = ref<{ maskType: MaskType; phase: CtPhase } | null>(nu
 const uploadingMaskKey = ref<string | null>(null)
 const deletingMaskKey = ref<string | null>(null)
 const maskInputRef = ref<HTMLInputElement | null>(null)
+const exportingReport = ref(false)
 const viewerOpen = ref(false)
 const viewerTitle = ref('')
-const viewerTarget = ref<{ metadataUrl: string; ctSliceBaseUrl: string; maskSliceBaseUrl?: string | null; cacheKey?: string | null } | null>(null)
+const viewerTarget = ref<{
+  metadataUrl: string
+  ctSliceBaseUrl: string
+  maskSliceBaseUrl?: string | null
+  ctVolumeUrl: string
+  maskVolumeUrl?: string | null
+  cacheKey?: string | null
+} | null>(null)
 
 const baselineItems = computed(() => [
   { label: t('views_PatientManageView.fields.sex'), value: formatOption('sex', patient.value?.sex) },
@@ -469,6 +486,26 @@ async function fetchPatientDetail() {
 
 function goBack() {
   router.push('/patients')
+}
+
+async function handleExportReport() {
+  exportingReport.value = true
+  try {
+    const blob = await downloadPatientReport(patientId.value)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${patientId.value}_ct_report.pdf`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (error: any) {
+    console.error('Export patient report failed:', error)
+    message.error(error?.message || t('views_PatientDetailView.report.exportFailed'))
+  } finally {
+    exportingReport.value = false
+  }
 }
 
 function triggerCtUpload(phase: CtPhase) {
@@ -626,9 +663,17 @@ function ctSliceBaseUrl(phase: CtPhase) {
   return withApiBase(`/patients/${encodeURIComponent(patientId.value)}/ct/${phase}/slice`)
 }
 
+function ctVolumeUrl(phase: CtPhase, status: PatientCtStatus) {
+  return previewSrc(`/patients/${encodeURIComponent(patientId.value)}/ct/${phase}/volume`, status)
+}
+
 function maskSliceBaseUrl(maskType: MaskType, phase: CtPhase, status: PatientMaskStatus) {
   void status
   return withApiBase(`/patients/${encodeURIComponent(patientId.value)}/mask/${maskType}/${phase}/slice`)
+}
+
+function maskVolumeUrl(maskType: MaskType, phase: CtPhase, status: PatientMaskStatus) {
+  return previewSrc(`/patients/${encodeURIComponent(patientId.value)}/mask/${maskType}/${phase}/volume`, status)
 }
 
 function statusCacheKey(status: Pick<PatientCtStatus | PatientMaskStatus, 'uploaded_at' | 'file_size'>) {
@@ -642,6 +687,8 @@ function openCtViewer(phase: CtPhase) {
     metadataUrl: ctViewerMetadataUrl(phase),
     ctSliceBaseUrl: ctSliceBaseUrl(phase),
     maskSliceBaseUrl: null,
+    ctVolumeUrl: ctVolumeUrl(phase, status),
+    maskVolumeUrl: null,
     cacheKey: statusCacheKey(status),
   }
   viewerOpen.value = true
@@ -661,6 +708,8 @@ function openMaskViewer(maskType: MaskType, phase: CtPhase) {
     metadataUrl: ctViewerMetadataUrl(phase),
     ctSliceBaseUrl: ctSliceBaseUrl(phase),
     maskSliceBaseUrl: maskSliceBaseUrl(maskType, phase, maskStatus),
+    ctVolumeUrl: ctVolumeUrl(phase, ctStatus),
+    maskVolumeUrl: maskVolumeUrl(maskType, phase, maskStatus),
     cacheKey: `${statusCacheKey(ctStatus)}:${statusCacheKey(maskStatus)}`,
   }
   viewerOpen.value = true
@@ -748,6 +797,53 @@ function formatOption(group: OptionGroup, value?: string | null) {
   border: 1px solid #e4e9f1;
   border-radius: 8px;
   box-shadow: 0 14px 34px rgba(15, 23, 42, 0.07);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+  background: #f7fafc;
+  border: 1px solid #e4e9f1;
+  border-radius: 8px;
+}
+
+.header-action {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  border-radius: 7px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.header-action-back {
+  color: #334155;
+  border-color: transparent;
+  background: transparent;
+}
+
+.header-action-back:hover,
+.header-action-back:focus {
+  color: #0f766e;
+  border-color: #cfe7e2;
+  background: #eef8f6;
+}
+
+.header-action-export {
+  border-color: #0f766e;
+  background: #0f766e;
+  box-shadow: 0 8px 18px rgba(15, 118, 110, 0.22);
+}
+
+.header-action-export:hover,
+.header-action-export:focus {
+  border-color: #0b5f59;
+  background: #0b5f59;
+  box-shadow: 0 10px 22px rgba(15, 118, 110, 0.28);
 }
 
 .header-main {
@@ -1204,6 +1300,15 @@ function formatOption(group: OptionGroup, value?: string | null) {
   .detail-header {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .header-actions {
+    justify-content: space-between;
+  }
+
+  .header-action {
+    flex: 1;
+    justify-content: center;
   }
 
   .baseline-grid {

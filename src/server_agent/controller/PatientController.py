@@ -46,6 +46,23 @@ class PatientController(BaseController):
             patient = await self.service.get_patient(patient_id)
             return ResultUtils.success(patient)
 
+        @self.router.get("/{patient_id}/report")
+        async def export_patient_report(
+            patient_id: str,
+            current_user: UserVO = Depends(get_current_user),
+        ):
+            report_path = await self.service.export_patient_report(patient_id)
+            return FileResponse(
+                path=report_path,
+                media_type="application/pdf",
+                filename=report_path.name,
+                headers={
+                    "Content-Disposition": f'attachment; filename="{report_path.name}"',
+                    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                    "Pragma": "no-cache",
+                },
+            )
+
         @self.router.get("/{patient_id}/ct/{phase}")
         async def get_ct_status(
             patient_id: str,
@@ -161,6 +178,22 @@ class PatientController(BaseController):
                 },
             )
 
+        @self.router.get("/{patient_id}/ct/{phase}/volume")
+        async def get_ct_volume(
+            patient_id: str,
+            phase: str,
+        ):
+            volume_path = await self.service.get_ct_volume_data_path(patient_id, phase)
+            return FileResponse(
+                path=volume_path,
+                media_type="application/octet-stream",
+                headers={
+                    "Content-Disposition": "inline",
+                    "Cache-Control": "public, max-age=31536000",
+                    "X-Volume-Dtype": "uint8",
+                },
+            )
+
         @self.router.get("/{patient_id}/mask/{mask_type}/{phase}/preview")
         async def get_mask_preview(
             patient_id: str,
@@ -211,6 +244,23 @@ class PatientController(BaseController):
                 headers={
                     "Content-Disposition": "inline",
                     "Cache-Control": "public, max-age=31536000",
+                },
+            )
+
+        @self.router.get("/{patient_id}/mask/{mask_type}/{phase}/volume")
+        async def get_mask_volume(
+            patient_id: str,
+            mask_type: str,
+            phase: str,
+        ):
+            volume_path = await self.service.get_mask_volume_data_path(patient_id, mask_type, phase)
+            return FileResponse(
+                path=volume_path,
+                media_type="application/octet-stream",
+                headers={
+                    "Content-Disposition": "inline",
+                    "Cache-Control": "public, max-age=31536000",
+                    "X-Volume-Dtype": "uint8",
                 },
             )
 

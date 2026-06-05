@@ -227,6 +227,10 @@ class PatientService:
     def _plane_preview_path(preview_path: Path, plane: str) -> Path:
         return preview_path.with_name(f"preview_{plane}.png")
 
+    @staticmethod
+    def _report_dir(patient_id: str) -> Path:
+        return PatientService._patient_dir(patient_id) / "reports"
+
     def _read_cached_volume(self, image_path: Path) -> Optional[Dict[str, Any]]:
         import numpy as np
         import SimpleITK as sitk
@@ -341,6 +345,49 @@ class PatientService:
     def _slice_cache_path(self, base_dir: Path, plane: str, index: int, overlay: bool = False) -> Path:
         prefix = "overlay" if overlay else "ct"
         return base_dir / "slice_cache" / f"{prefix}_{plane}_{index}.png"
+
+    @staticmethod
+    def _volume_cache_path(base_dir: Path, name: str) -> Path:
+        return base_dir / "volume_cache" / name
+
+    @staticmethod
+    def _write_array_atomic(array, output_path: Path) -> Path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = output_path.with_name(f".{output_path.name}.{threading.get_ident()}.tmp")
+        array.tofile(temp_path)
+        temp_path.replace(output_path)
+        return output_path
+
+    def _ct_uint8_volume_path(self, ct_path: Path, output_path: Path) -> Path:
+        import numpy as np
+
+        ct_data = self._read_cached_volume(ct_path)
+        if not ct_data:
+            raise NotFoundError(resource_type="ct_file", resource_id=ct_path.name)
+        volume = np.asarray(ct_data["volume"], dtype=np.float32)
+        expected_size = int(volume.size)
+        if output_path.is_file() and output_path.stat().st_size == expected_size:
+            return output_path
+        lo, hi = ct_data["window"]
+        if hi <= lo:
+            normalized = np.zeros(volume.shape, dtype=np.uint8)
+        else:
+            normalized = np.clip((volume - lo) / (hi - lo), 0, 1)
+            normalized = (normalized * 255).astype(np.uint8)
+        return self._write_array_atomic(np.ascontiguousarray(normalized), output_path)
+
+    def _mask_uint8_volume_path(self, mask_path: Path, output_path: Path) -> Path:
+        import numpy as np
+
+        mask_data = self._read_cached_volume(mask_path)
+        if not mask_data:
+            raise NotFoundError(resource_type="mask_file", resource_id=mask_path.name)
+        volume = np.asarray(mask_data["volume"])
+        expected_size = int(volume.size)
+        if output_path.is_file() and output_path.stat().st_size == expected_size:
+            return output_path
+        labels = np.clip(np.rint(volume), 0, 255).astype(np.uint8)
+        return self._write_array_atomic(np.ascontiguousarray(labels), output_path)
 
     @staticmethod
     def _center_first_indices(count: int):
@@ -477,6 +524,205 @@ class PatientService:
                 continue
             key = f"mask:{patient_id}:{mask_type}:{phase}:{ct_path.stat().st_mtime}:{mask_path.stat().st_mtime}"
             self._schedule_slice_cache_warmup(key, ct_path, mask_dir, overlay=True, mask_path=mask_path)
+
+    @staticmethod
+    def _font(size: int, bold: bool = False):
+        from PIL import ImageFont
+
+        candidates = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+        ]
+        for path in candidates:
+            if Path(path).is_file():
+                return ImageFont.truetype(path, size)
+        return ImageFont.load_default()
+
+    @staticmethod
+    def _draw_text(draw, xy, text: str, font, fill="#111827", anchor=None):
+        safe_text = str(text or "-")
+        try:
+            draw.text(xy, safe_text, font=font, fill=fill, anchor=anchor)
+        except UnicodeEncodeError:
+            draw.text(xy, safe_text.encode("ascii", "ignore").decode("ascii") or "-", font=font, fill=fill, anchor=anchor)
+
+    @staticmethod
+    def _text_width(draw, text: str, font) -> int:
+        bbox = draw.textbbox((0, 0), str(text), font=font)
+        return int(bbox[2] - bbox[0])
+
+    def _wrap_text(self, draw, text: str, font, max_width: int):
+        words = str(text or "-").split()
+        if not words:
+            return ["-"]
+        lines = []
+        current = words[0]
+        for word in words[1:]:
+            candidate = f"{current} {word}"
+            if self._text_width(draw, candidate, font) <= max_width:
+                current = candidate
+            else:
+                lines.append(current)
+                current = word
+        lines.append(current)
+        return lines
+
+    def _collect_preview_images(self, base_preview: Path, label: str):
+        images = []
+        for plane in ("axial", "coronal", "sagittal"):
+            plane_path = self._plane_preview_path(base_preview, plane)
+            if plane_path.is_file():
+                images.append((f"{label} {plane.title()}", plane_path))
+        if not images and base_preview.is_file():
+            images.append((label, base_preview))
+        return images
+
+    def _report_patient_fields(self, patient) -> list[tuple[str, str]]:
+        fields = [
+            ("Name", patient.name),
+            ("Examination ID", patient.patient_id),
+            ("Phone number", patient.phone),
+        ]
+        return [(label, str(value)) for label, value in fields if value not in (None, "")]
+
+    def _report_clinical_fields(self, patient) -> list[tuple[str, str]]:
+        fields = [
+            ("Sex", patient.sex),
+            ("Age", patient.age),
+            ("Height", f"{patient.height_cm:g} cm" if patient.height_cm is not None else None),
+            ("Smoking status", patient.smoking_status),
+            ("Pathology type", patient.pathology_type),
+            ("PD-L1 status", patient.pd_l1_status),
+        ]
+        return [(label, str(value)) for label, value in fields if value not in (None, "")]
+
+    def _draw_section_label(self, draw, x: int, y: int, text: str):
+        font = self._font(18, bold=True)
+        width = max(180, self._text_width(draw, text, font) + 52)
+        draw.rounded_rectangle((x, y, x + width, y + 34), radius=17, outline="#111827", width=2, fill="#ffffff")
+        self._draw_text(draw, (x + width / 2, y + 17), text, font, anchor="mm")
+        return y + 54
+
+    def _draw_info_grid(self, draw, x: int, y: int, width: int, fields: list[tuple[str, str]], columns: int):
+        if not fields:
+            return y
+        font_label = self._font(16, bold=True)
+        font_value = self._font(16)
+        gap = 2
+        cell_w = (width - gap * (columns - 1)) // columns
+        row_h = 68
+        for index, (label, value) in enumerate(fields):
+            row = index // columns
+            col = index % columns
+            left = x + col * (cell_w + gap)
+            top = y + row * (row_h + gap)
+            draw.rectangle((left, top, left + cell_w, top + row_h), fill="#eef0f2")
+            self._draw_text(draw, (left + cell_w / 2, top + 20), f"{label}:", font_label, anchor="mm")
+            lines = self._wrap_text(draw, value, font_value, cell_w - 16)[:2]
+            first_y = top + 43 if len(lines) == 1 else top + 37
+            for line_index, line in enumerate(lines):
+                self._draw_text(draw, (left + cell_w / 2, first_y + line_index * 18), line, font_value, anchor="mm")
+        rows = (len(fields) + columns - 1) // columns
+        return y + rows * row_h + (rows - 1) * gap + 38
+
+    def _draw_image_grid(self, page, draw, x: int, y: int, width: int, images: list[tuple[str, Path]], columns: int = 3):
+        from PIL import Image
+
+        if not images:
+            return y
+        font = self._font(13)
+        gap = 20
+        cell_w = (width - gap * (columns - 1)) // columns
+        img_h = 190
+        caption_h = 24
+        for index, (label, path) in enumerate(images):
+            row = index // columns
+            col = index % columns
+            left = x + col * (cell_w + gap)
+            top = y + row * (img_h + caption_h + 28)
+            try:
+                img = Image.open(path).convert("RGB")
+            except Exception:
+                continue
+            img.thumbnail((cell_w, img_h), Image.Resampling.LANCZOS)
+            box_left = left + (cell_w - img.width) // 2
+            box_top = top + (img_h - img.height) // 2
+            page.paste(img, (box_left, box_top))
+            self._draw_text(draw, (left + cell_w / 2, top + img_h + 14), label, font, fill="#374151", anchor="mm")
+        rows = (len(images) + columns - 1) // columns
+        return y + rows * (img_h + caption_h + 28) + 20
+
+    def _build_report_sections(self, patient_id: str):
+        sections = []
+        ct_images = []
+        for phase in ("pre", "post"):
+            ct_preview = self._ct_dir(patient_id, phase) / "preview.png"
+            ct_images.extend(self._collect_preview_images(ct_preview, f"{phase.upper()} CT"))
+        if ct_images:
+            sections.append(("CT examination", ct_images))
+
+        body_images = []
+        spine_images = []
+        for phase in ("pre", "post"):
+            body_preview = self._mask_dir(patient_id, "body-composition", phase) / "preview.png"
+            body_images.extend(self._collect_preview_images(body_preview, f"{phase.upper()} Body composition"))
+            spine_preview = self._mask_dir(patient_id, "spine", phase) / "preview.png"
+            spine_images.extend(self._collect_preview_images(spine_preview, f"{phase.upper()} Spine"))
+        if body_images:
+            sections.append(("Body composition", body_images))
+        if spine_images:
+            sections.append(("Spine", spine_images))
+        return sections
+
+    def _generate_patient_report_pdf(self, patient, output_path: Path) -> Path:
+        from PIL import Image, ImageDraw
+
+        page_w, page_h = 1240, 1754
+        margin_x = 76
+        content_w = page_w - margin_x * 2
+        pages = []
+        page = Image.new("RGB", (page_w, page_h), "#f5fbfc")
+        draw = ImageDraw.Draw(page)
+
+        title_font = self._font(34, bold=True)
+        subtitle_font = self._font(14)
+        draw.rectangle((0, 0, page_w, 150), fill="#ffffff")
+        self._draw_text(draw, (page_w / 2, 64), "Human metabolic health research", title_font, anchor="mm")
+        self._draw_text(draw, (page_w / 2, 106), "examination CT report", title_font, anchor="mm")
+        draw.line((0, 150, page_w, 150), fill="#111827", width=2)
+        self._draw_text(draw, (page_w - margin_x, 132), datetime.now().strftime("%Y-%m-%d %H:%M"), subtitle_font, fill="#6b7280", anchor="ra")
+
+        y = 210
+        basic_fields = self._report_patient_fields(patient)
+        if basic_fields:
+            y = self._draw_section_label(draw, 30, y, "Basic information")
+            y = self._draw_info_grid(draw, margin_x, y, content_w, basic_fields, min(3, max(1, len(basic_fields))))
+
+        clinical_fields = self._report_clinical_fields(patient)
+        if clinical_fields:
+            y = self._draw_section_label(draw, 30, y, "Clinical information")
+            y = self._draw_info_grid(draw, margin_x, y, content_w, clinical_fields, min(6, max(1, len(clinical_fields))))
+
+        for title, images in self._build_report_sections(patient.patient_id):
+            required_rows = (len(images) + 2) // 3
+            required_height = 58 + required_rows * 242 + 30
+            if y + required_height > page_h - 80:
+                pages.append(page)
+                page = Image.new("RGB", (page_w, page_h), "#f5fbfc")
+                draw = ImageDraw.Draw(page)
+                y = 80
+            y = self._draw_section_label(draw, 30, y, title)
+            y = self._draw_image_grid(page, draw, margin_x, y, content_w, images, columns=3)
+
+        if y < page_h - 120:
+            note_font = self._font(13)
+            self._draw_text(draw, (margin_x, page_h - 56), "Generated from uploaded patient data. Missing data sections are omitted.", note_font, fill="#6b7280")
+        pages.append(page)
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        first, rest = pages[0], pages[1:]
+        first.save(output_path, "PDF", resolution=150.0, save_all=True, append_images=rest)
+        return output_path
 
     def _make_ct_preview(self, ct_path: Path, preview_path: Path) -> bool:
         import numpy as np
@@ -796,6 +1042,15 @@ class PatientService:
         return patient
 
     @handle_service_exception
+    async def export_patient_report(self, patient_id: str) -> Path:
+        clean_id = self._validate_patient_id(patient_id)
+        patient = await self.mapper.get_patient(clean_id)
+        if not patient:
+            raise NotFoundError(resource_type="patient", resource_id=clean_id)
+        report_path = self._report_dir(clean_id) / f"{clean_id}_ct_report.pdf"
+        return self._generate_patient_report_pdf(patient, report_path)
+
+    @handle_service_exception
     async def get_ct_status(self, patient_id: str, phase: str) -> Dict[str, Any]:
         clean_id = self._validate_patient_id(patient_id)
         clean_phase = self._validate_phase(phase)
@@ -1095,6 +1350,16 @@ class PatientService:
         return slice_path
 
     @handle_service_exception
+    async def get_ct_volume_data_path(self, patient_id: str, phase: str) -> Path:
+        clean_id = self._validate_patient_id(patient_id)
+        clean_phase = self._validate_phase(phase)
+        ct_path = await self.get_ct_file_path(clean_id, clean_phase)
+        return self._ct_uint8_volume_path(
+            ct_path,
+            self._volume_cache_path(self._ct_dir(clean_id, clean_phase), "ct_uint8.raw"),
+        )
+
+    @handle_service_exception
     async def get_mask_preview_path(self, patient_id: str, mask_type: str, phase: str) -> Path:
         clean_id = self._validate_patient_id(patient_id)
         clean_type = self._validate_mask_type(mask_type)
@@ -1160,6 +1425,17 @@ class PatientService:
         if not slice_path.is_file():
             self._render_slice_png(ct_path, slice_path, clean_plane, clean_index, mask_path=mask_path)
         return slice_path
+
+    @handle_service_exception
+    async def get_mask_volume_data_path(self, patient_id: str, mask_type: str, phase: str) -> Path:
+        clean_id = self._validate_patient_id(patient_id)
+        clean_type = self._validate_mask_type(mask_type)
+        clean_phase = self._validate_phase(phase)
+        mask_path = await self.get_mask_file_path(clean_id, clean_type, clean_phase)
+        return self._mask_uint8_volume_path(
+            mask_path,
+            self._volume_cache_path(self._mask_dir(clean_id, clean_type, clean_phase), "mask_uint8.raw"),
+        )
 
     @handle_service_exception
     async def delete_ct_data(self, patient_id: str, phase: str) -> Dict[str, Any]:
