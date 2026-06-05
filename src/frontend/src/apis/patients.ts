@@ -41,7 +41,7 @@ export interface PatientListResult {
 }
 
 export type CtPhase = 'pre' | 'post'
-export type MaskType = 'body-composition' | 'spine'
+export type MaskType = 'body-composition' | 'spine' | 'lung' | 'tumor'
 
 export interface PatientCtStatus {
   phase: CtPhase

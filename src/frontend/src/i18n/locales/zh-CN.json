@@ -10,6 +10,8 @@
     "edit": "编辑",
     "add": "添加",
     "view": "查看",
+    "expand": "展开",
+    "collapse": "收起",
     "details": "详情",
     "back": "返回",
     "loading": "加载中...",
@@ -795,20 +797,24 @@
     },
     "workflowSteps": {
       "pre": {
-        "title": "导入治疗前数据",
-        "desc": "收集 pre CT、肿瘤分割和基础影像预览。"
+        "title": "上传 PRE CT",
+        "desc": "导入治疗前 CT，并自动生成三视图预览和切片查看数据。"
       },
       "post": {
-        "title": "导入治疗后数据",
-        "desc": "收集 post CT、分割结果和治疗后影像预览。"
+        "title": "上传 POST CT",
+        "desc": "导入治疗后 CT，并自动生成三视图预览和切片查看数据。"
       },
-      "body": {
-        "title": "计算 Body Composition",
-        "desc": "生成 SMVI、VFVI、SAVI 等体成分指标。"
+      "masks": {
+        "title": "上传分割 Mask",
+        "desc": "按需上传 Body Composition、Spine、Lung 和 Tumor 的 PRE/POST mask。"
+      },
+      "preview": {
+        "title": "查看影像预览",
+        "desc": "在预览框中查看 CT 与 mask，或放大进入切片浏览模态。"
       },
       "report": {
-        "title": "生成 NICE-BCX 报告",
-        "desc": "整合 pre/post、指标和模型结果生成报告。"
+        "title": "导出患者 PDF",
+        "desc": "根据该患者已有的基础信息和预览图生成 PDF 报告。"
       }
     },
     "bodyComposition": {
@@ -827,6 +833,16 @@
       "empty": "暂无 Spine Mask",
       "import": "导入 Spine 数据"
     },
+    "lung": {
+      "title": "Lung",
+      "empty": "暂无 Lung Mask",
+      "import": "导入 Lung 数据"
+    },
+    "tumor": {
+      "title": "Tumor",
+      "empty": "暂无 Tumor Mask",
+      "import": "导入 Tumor 数据"
+    },
     "report": {
       "exportPdf": "导出 PDF",
       "exportFailed": "导出报告失败"
@@ -839,10 +855,6 @@
       "mpr": {
         "title": "MPR Assessment",
         "desc": "展示肿瘤 MPR 概率、特征组和综合 MPR 概率。"
-      },
-      "report": {
-        "title": "NICE-BCX Report",
-        "desc": "查看或生成患者 NICE-BCX 评估报告。"
       }
     }
   },

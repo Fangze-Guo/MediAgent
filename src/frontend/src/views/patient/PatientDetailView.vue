@@ -172,13 +172,19 @@
           />
 
           <div class="section-grid two">
-            <section v-for="group in maskGroups" :key="group.key" class="panel feature-panel full-span">
-              <div class="panel-header">
+            <section v-for="group in maskGroups" :key="group.key" class="panel feature-panel full-span" :class="{ collapsed: !isMaskGroupExpanded(group) }">
+              <div class="panel-header mask-group-header">
                 <div>
                   <div class="panel-kicker">{{ group.title }}</div>
                 </div>
+                <div class="mask-group-actions">
+                  <span class="mask-group-summary">{{ maskGroupSummary(group) }}</span>
+                  <a-button class="mask-collapse-action" :title="isMaskGroupExpanded(group) ? t('common.collapse') : t('common.expand')" @click="toggleMaskGroup(group.key)">
+                    <span class="mask-collapse-chevron" :class="{ expanded: isMaskGroupExpanded(group) }">⌄</span>
+                  </a-button>
+                </div>
               </div>
-              <div class="mask-slot-grid">
+              <div v-if="isMaskGroupExpanded(group)" class="mask-slot-grid">
                 <div v-for="slot in group.slots" :key="slot.phase" class="mask-slot">
                   <div class="mask-slot-header">
                     <strong>{{ slot.label }}</strong>
@@ -257,7 +263,7 @@
             @change="handleMaskFileChange"
           />
 
-          <div class="section-grid three">
+          <div class="section-grid module-grid">
             <section v-for="module in analysisModules" :key="module.key" class="panel module-panel">
               <div class="module-icon">
                 <component :is="module.icon" />
@@ -350,6 +356,10 @@ const bodyPreMask = ref<PatientMaskStatus>(emptyMask('body-composition', 'pre'))
 const bodyPostMask = ref<PatientMaskStatus>(emptyMask('body-composition', 'post'))
 const spinePreMask = ref<PatientMaskStatus>(emptyMask('spine', 'pre'))
 const spinePostMask = ref<PatientMaskStatus>(emptyMask('spine', 'post'))
+const lungPreMask = ref<PatientMaskStatus>(emptyMask('lung', 'pre'))
+const lungPostMask = ref<PatientMaskStatus>(emptyMask('lung', 'post'))
+const tumorPreMask = ref<PatientMaskStatus>(emptyMask('tumor', 'pre'))
+const tumorPostMask = ref<PatientMaskStatus>(emptyMask('tumor', 'post'))
 const selectedUploadPhase = ref<CtPhase | null>(null)
 const uploadingPhase = ref<CtPhase | null>(null)
 const deletingPhase = ref<CtPhase | null>(null)
@@ -359,6 +369,7 @@ const uploadingMaskKey = ref<string | null>(null)
 const deletingMaskKey = ref<string | null>(null)
 const maskInputRef = ref<HTMLInputElement | null>(null)
 const exportingReport = ref(false)
+const maskGroupOverrides = ref<Record<string, boolean>>({})
 const viewerOpen = ref(false)
 const viewerTitle = ref('')
 const viewerTarget = ref<{
@@ -394,14 +405,20 @@ const workflowSteps = computed(() => [
     desc: t('views_PatientDetailView.workflowSteps.post.desc'),
   },
   {
-    key: 'body',
+    key: 'masks',
     index: '3',
-    title: t('views_PatientDetailView.workflowSteps.body.title'),
-    desc: t('views_PatientDetailView.workflowSteps.body.desc'),
+    title: t('views_PatientDetailView.workflowSteps.masks.title'),
+    desc: t('views_PatientDetailView.workflowSteps.masks.desc'),
+  },
+  {
+    key: 'preview',
+    index: '4',
+    title: t('views_PatientDetailView.workflowSteps.preview.title'),
+    desc: t('views_PatientDetailView.workflowSteps.preview.desc'),
   },
   {
     key: 'report',
-    index: '4',
+    index: '5',
     title: t('views_PatientDetailView.workflowSteps.report.title'),
     desc: t('views_PatientDetailView.workflowSteps.report.desc'),
   },
@@ -419,12 +436,6 @@ const analysisModules = computed(() => [
     icon: FundProjectionScreenOutlined,
     title: t('views_PatientDetailView.modules.mpr.title'),
     desc: t('views_PatientDetailView.modules.mpr.desc'),
-  },
-  {
-    key: 'report',
-    icon: FileTextOutlined,
-    title: t('views_PatientDetailView.modules.report.title'),
-    desc: t('views_PatientDetailView.modules.report.desc'),
   },
 ])
 
@@ -451,7 +462,53 @@ const maskGroups = computed(() => [
       { phase: 'post' as CtPhase, label: t('views_PatientDetailView.mask.post'), status: spinePostMask.value },
     ],
   },
+  {
+    key: 'lung',
+    maskType: 'lung' as MaskType,
+    title: 'LUNG',
+    icon: CameraOutlined,
+    emptyText: t('views_PatientDetailView.lung.empty'),
+    slots: [
+      { phase: 'pre' as CtPhase, label: t('views_PatientDetailView.mask.pre'), status: lungPreMask.value },
+      { phase: 'post' as CtPhase, label: t('views_PatientDetailView.mask.post'), status: lungPostMask.value },
+    ],
+  },
+  {
+    key: 'tumor',
+    maskType: 'tumor' as MaskType,
+    title: 'TUMOR',
+    icon: FileTextOutlined,
+    emptyText: t('views_PatientDetailView.tumor.empty'),
+    slots: [
+      { phase: 'pre' as CtPhase, label: t('views_PatientDetailView.mask.pre'), status: tumorPreMask.value },
+      { phase: 'post' as CtPhase, label: t('views_PatientDetailView.mask.post'), status: tumorPostMask.value },
+    ],
+  },
 ])
+
+type MaskGroup = (typeof maskGroups.value)[number]
+
+function maskGroupHasData(group: MaskGroup) {
+  return group.slots.some((slot) => slot.status.status === 'ready')
+}
+
+function isMaskGroupExpanded(group: MaskGroup) {
+  return maskGroupOverrides.value[group.key] ?? maskGroupHasData(group)
+}
+
+function toggleMaskGroup(groupKey: string) {
+  const group = maskGroups.value.find((item) => item.key === groupKey)
+  if (!group) return
+  maskGroupOverrides.value = {
+    ...maskGroupOverrides.value,
+    [groupKey]: !isMaskGroupExpanded(group),
+  }
+}
+
+function maskGroupSummary(group: MaskGroup) {
+  const readyCount = group.slots.filter((slot) => slot.status.status === 'ready').length
+  return `${readyCount}/${group.slots.length} ${t('views_PatientDetailView.mask.ready')}`
+}
 
 onMounted(() => {
   fetchPatientDetail()
@@ -460,7 +517,19 @@ onMounted(() => {
 async function fetchPatientDetail() {
   loading.value = true
   try {
-    const [patientInfo, preStatus, postStatus, bodyPreStatus, bodyPostStatus, spinePreStatus, spinePostStatus] = await Promise.all([
+    const [
+      patientInfo,
+      preStatus,
+      postStatus,
+      bodyPreStatus,
+      bodyPostStatus,
+      spinePreStatus,
+      spinePostStatus,
+      lungPreStatus,
+      lungPostStatus,
+      tumorPreStatus,
+      tumorPostStatus,
+    ] = await Promise.all([
       getPatient(patientId.value),
       getPatientCtStatus(patientId.value, 'pre'),
       getPatientCtStatus(patientId.value, 'post'),
@@ -468,6 +537,10 @@ async function fetchPatientDetail() {
       getPatientMaskStatus(patientId.value, 'body-composition', 'post'),
       getPatientMaskStatus(patientId.value, 'spine', 'pre'),
       getPatientMaskStatus(patientId.value, 'spine', 'post'),
+      getPatientMaskStatus(patientId.value, 'lung', 'pre'),
+      getPatientMaskStatus(patientId.value, 'lung', 'post'),
+      getPatientMaskStatus(patientId.value, 'tumor', 'pre'),
+      getPatientMaskStatus(patientId.value, 'tumor', 'post'),
     ])
     patient.value = patientInfo
     preCt.value = preStatus
@@ -476,6 +549,10 @@ async function fetchPatientDetail() {
     bodyPostMask.value = bodyPostStatus
     spinePreMask.value = spinePreStatus
     spinePostMask.value = spinePostStatus
+    lungPreMask.value = lungPreStatus
+    lungPostMask.value = lungPostStatus
+    tumorPreMask.value = tumorPreStatus
+    tumorPostMask.value = tumorPostStatus
   } catch (error) {
     console.error('Load patient detail failed:', error)
     message.error(t('views_PatientDetailView.loadFailed'))
@@ -557,11 +634,28 @@ function maskKey(maskType: MaskType, phase: CtPhase) {
   return `${maskType}:${phase}`
 }
 
+function getMaskStatusRef(maskType: MaskType, phase: CtPhase) {
+  if (maskType === 'body-composition') return phase === 'pre' ? bodyPreMask : bodyPostMask
+  if (maskType === 'spine') return phase === 'pre' ? spinePreMask : spinePostMask
+  if (maskType === 'lung') return phase === 'pre' ? lungPreMask : lungPostMask
+  return phase === 'pre' ? tumorPreMask : tumorPostMask
+}
+
+function maskDisplayName(maskType: MaskType) {
+  if (maskType === 'body-composition') return 'Body Composition'
+  if (maskType === 'spine') return 'Spine'
+  if (maskType === 'lung') return 'Lung'
+  return 'Tumor'
+}
+
 function setMaskStatus(status: PatientMaskStatus) {
-  if (status.mask_type === 'body-composition' && status.phase === 'pre') bodyPreMask.value = status
-  else if (status.mask_type === 'body-composition' && status.phase === 'post') bodyPostMask.value = status
-  else if (status.mask_type === 'spine' && status.phase === 'pre') spinePreMask.value = status
-  else spinePostMask.value = status
+  getMaskStatusRef(status.mask_type, status.phase).value = status
+  if (status.status === 'ready') {
+    maskGroupOverrides.value = {
+      ...maskGroupOverrides.value,
+      [status.mask_type]: true,
+    }
+  }
 }
 
 function triggerMaskUpload(maskType: MaskType, phase: CtPhase) {
@@ -695,15 +789,13 @@ function openCtViewer(phase: CtPhase) {
 }
 
 function openMaskViewer(maskType: MaskType, phase: CtPhase) {
-  const maskStatus = maskType === 'body-composition'
-    ? (phase === 'pre' ? bodyPreMask.value : bodyPostMask.value)
-    : (phase === 'pre' ? spinePreMask.value : spinePostMask.value)
+  const maskStatus = getMaskStatusRef(maskType, phase).value
   const ctStatus = phase === 'pre' ? preCt.value : postCt.value
   if (ctStatus.status !== 'ready') {
     message.warning(t('views_PatientDetailView.ct.empty'))
     return
   }
-  viewerTitle.value = `${maskType === 'body-composition' ? 'Body Composition' : 'Spine'} ${phase.toUpperCase()} - ${maskStatus.file_name || patientId.value}`
+  viewerTitle.value = `${maskDisplayName(maskType)} ${phase.toUpperCase()} - ${maskStatus.file_name || patientId.value}`
   viewerTarget.value = {
     metadataUrl: ctViewerMetadataUrl(phase),
     ctSliceBaseUrl: ctSliceBaseUrl(phase),
@@ -900,8 +992,8 @@ function formatOption(group: OptionGroup, value?: string | null) {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.section-grid.three {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.section-grid.module-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-top: 14px;
 }
 
@@ -930,6 +1022,53 @@ function formatOption(group: OptionGroup, value?: string | null) {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 14px;
+}
+
+.feature-panel.collapsed {
+  padding-bottom: 14px;
+}
+
+.feature-panel.collapsed .panel-header {
+  margin-bottom: 0;
+}
+
+.mask-group-header {
+  align-items: center;
+}
+
+.mask-group-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mask-group-summary {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mask-collapse-action {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 7px;
+}
+
+.mask-collapse-chevron {
+  display: inline-block;
+  color: #334155;
+  font-size: 16px;
+  line-height: 1;
+  transform: rotate(-90deg);
+  transition: transform 0.16s ease;
+}
+
+.mask-collapse-chevron.expanded {
+  transform: rotate(0deg);
 }
 
 .panel-header h2,
@@ -1281,7 +1420,7 @@ function formatOption(group: OptionGroup, value?: string | null) {
 @media (max-width: 980px) {
   .info-grid,
   .section-grid.two,
-  .section-grid.three,
+  .section-grid.module-grid,
   .mask-slot-grid {
     grid-template-columns: 1fr;
   }

@@ -24,6 +24,8 @@ PREVIEW_PLANES = {"axial", "coronal", "sagittal"}
 MASK_TYPES = {
     "body-composition": "body_composition",
     "spine": "spine",
+    "lung": "lung",
+    "tumor": "tumor",
 }
 MASK_EXTENSIONS = {".nii", ".nii.gz"}
 VOLUME_CACHE: Dict[str, Dict[str, Any]] = {}
@@ -119,7 +121,7 @@ class PatientService:
         clean_type = (mask_type or "").strip().lower()
         if clean_type not in MASK_TYPES:
             raise ValidationError(
-                detail="mask_type must be body-composition or spine",
+                detail="mask_type must be body-composition, spine, lung, or tumor",
                 field="mask_type",
                 context={"mask_type": mask_type},
             )
@@ -663,15 +665,25 @@ class PatientService:
 
         body_images = []
         spine_images = []
+        lung_images = []
+        tumor_images = []
         for phase in ("pre", "post"):
             body_preview = self._mask_dir(patient_id, "body-composition", phase) / "preview.png"
             body_images.extend(self._collect_preview_images(body_preview, f"{phase.upper()} Body composition"))
             spine_preview = self._mask_dir(patient_id, "spine", phase) / "preview.png"
             spine_images.extend(self._collect_preview_images(spine_preview, f"{phase.upper()} Spine"))
+            lung_preview = self._mask_dir(patient_id, "lung", phase) / "preview.png"
+            lung_images.extend(self._collect_preview_images(lung_preview, f"{phase.upper()} Lung"))
+            tumor_preview = self._mask_dir(patient_id, "tumor", phase) / "preview.png"
+            tumor_images.extend(self._collect_preview_images(tumor_preview, f"{phase.upper()} Tumor"))
         if body_images:
             sections.append(("Body composition", body_images))
         if spine_images:
             sections.append(("Spine", spine_images))
+        if lung_images:
+            sections.append(("Lung", lung_images))
+        if tumor_images:
+            sections.append(("Tumor", tumor_images))
         return sections
 
     def _generate_patient_report_pdf(self, patient, output_path: Path) -> Path:

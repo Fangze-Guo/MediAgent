@@ -10,6 +10,8 @@
     "edit": "Edit",
     "add": "Add",
     "view": "View",
+    "expand": "Expand",
+    "collapse": "Collapse",
     "details": "Details",
     "back": "Back",
     "loading": "Loading...",
@@ -795,20 +797,24 @@
     },
     "workflowSteps": {
       "pre": {
-        "title": "Import Pre-treatment Data",
-        "desc": "Collect pre CT, tumor segmentation, and baseline image previews."
+        "title": "Upload PRE CT",
+        "desc": "Import the pre-treatment CT and generate three-plane previews and slice-viewer data."
       },
       "post": {
-        "title": "Import Post-treatment Data",
-        "desc": "Collect post CT, segmentation results, and post-treatment previews."
+        "title": "Upload POST CT",
+        "desc": "Import the post-treatment CT and generate three-plane previews and slice-viewer data."
       },
-      "body": {
-        "title": "Compute Body Composition",
-        "desc": "Generate body composition metrics including SMVI, VFVI, and SAVI."
+      "masks": {
+        "title": "Upload Segmentation Masks",
+        "desc": "Upload PRE/POST masks for Body Composition, Spine, Lung, and Tumor when available."
+      },
+      "preview": {
+        "title": "Review Image Previews",
+        "desc": "Inspect CT and mask previews inline, or enlarge them into the slice browser modal."
       },
       "report": {
-        "title": "Generate NICE-BCX Report",
-        "desc": "Integrate pre/post data, metrics, and model outputs into the report."
+        "title": "Export Patient PDF",
+        "desc": "Generate a PDF report from the patient's available baseline data and preview images."
       }
     },
     "bodyComposition": {
@@ -827,6 +833,16 @@
       "empty": "No Spine Mask yet",
       "import": "Import Spine Data"
     },
+    "lung": {
+      "title": "Lung",
+      "empty": "No Lung Mask yet",
+      "import": "Import Lung Data"
+    },
+    "tumor": {
+      "title": "Tumor",
+      "empty": "No Tumor Mask yet",
+      "import": "Import Tumor Data"
+    },
     "report": {
       "exportPdf": "Export PDF",
       "exportFailed": "Failed to export report"
@@ -839,10 +855,6 @@
       "mpr": {
         "title": "MPR Assessment",
         "desc": "Show tumor MPR probability, feature groups, and integrated MPR probability."
-      },
-      "report": {
-        "title": "NICE-BCX Report",
-        "desc": "View or generate the patient's NICE-BCX assessment report."
       }
     }
   },
