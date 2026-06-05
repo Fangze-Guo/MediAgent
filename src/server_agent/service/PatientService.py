@@ -1,7 +1,9 @@
 import re
+import asyncio
 import json
 import logging
 import shutil
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -24,6 +26,9 @@ MASK_TYPES = {
     "spine": "spine",
 }
 MASK_EXTENSIONS = {".nii", ".nii.gz"}
+VOLUME_CACHE: Dict[str, Dict[str, Any]] = {}
+SLICE_CACHE_WARMUPS: set[str] = set()
+SLICE_CACHE_WARMUP_LOCK = threading.Lock()
 
 
 class PatientService:
@@ -141,6 +146,7 @@ class PatientService:
             "uploaded_at": None,
             "preview_url": None,
             "preview_planes": None,
+            "display_window": None,
         }
 
     def _empty_mask_status(self, mask_type: str, phase: str) -> Dict[str, Any]:
@@ -221,6 +227,257 @@ class PatientService:
     def _plane_preview_path(preview_path: Path, plane: str) -> Path:
         return preview_path.with_name(f"preview_{plane}.png")
 
+    def _read_cached_volume(self, image_path: Path) -> Optional[Dict[str, Any]]:
+        import numpy as np
+        import SimpleITK as sitk
+
+        if not image_path.is_file() or self._ct_ext(image_path.name) == ".zip":
+            return None
+        stat = image_path.stat()
+        cache_key = str(image_path)
+        cached = VOLUME_CACHE.get(cache_key)
+        if cached and cached.get("mtime") == stat.st_mtime and cached.get("size") == stat.st_size:
+            return cached
+        image = sitk.ReadImage(str(image_path))
+        volume = sitk.GetArrayFromImage(image)
+        if volume.ndim == 4:
+            volume = volume[0]
+        if volume.ndim == 2:
+            volume = volume[np.newaxis, :, :]
+        if volume.ndim != 3:
+            return None
+        cached = {
+            "mtime": stat.st_mtime,
+            "size": stat.st_size,
+            "volume": volume,
+            "spacing": image.GetSpacing(),
+            "window": self._ct_display_window(volume),
+        }
+        VOLUME_CACHE[cache_key] = cached
+        return cached
+
+    @staticmethod
+    def _slice_count(shape, plane: str) -> int:
+        if plane == "axial":
+            return int(shape[0])
+        if plane == "coronal":
+            return int(shape[1])
+        return int(shape[2])
+
+    @staticmethod
+    def _slice_plane(volume, plane: str, index: int):
+        if plane == "axial":
+            return volume[index, :, :]
+        if plane == "coronal":
+            return volume[:, index, :]
+        return volume[:, :, index]
+
+    def _mask_palette(self):
+        import numpy as np
+
+        return np.array([
+            [255, 0, 0],
+            [0, 255, 0],
+            [0, 0, 255],
+            [255, 255, 0],
+            [0, 255, 255],
+            [255, 0, 255],
+            [255, 239, 213],
+            [0, 0, 205],
+            [205, 133, 63],
+            [210, 180, 140],
+            [102, 205, 170],
+            [0, 0, 128],
+            [0, 139, 139],
+            [46, 139, 87],
+            [255, 228, 225],
+            [106, 90, 205],
+            [221, 160, 221],
+            [233, 150, 122],
+            [165, 42, 42],
+            [255, 250, 250],
+        ], dtype=np.uint8)
+
+    def _render_slice_png(self, ct_path: Path, output_path: Path, plane: str, index: int, mask_path: Optional[Path] = None) -> Path:
+        import numpy as np
+        from PIL import Image
+
+        ct_data = self._read_cached_volume(ct_path)
+        if not ct_data:
+            raise NotFoundError(resource_type="ct_file", resource_id=ct_path.name)
+        ct_volume = ct_data["volume"]
+        plane_count = self._slice_count(ct_volume.shape, plane)
+        clean_index = max(0, min(int(index), plane_count - 1))
+        ct_arr = self._orient_preview_plane(plane, self._slice_plane(ct_volume, plane, clean_index))
+        base_img = self._normalize_slice(ct_arr, ct_data["window"]).convert("RGB")
+
+        if mask_path is not None and mask_path.is_file():
+            mask_data = self._read_cached_volume(mask_path)
+            if mask_data:
+                mask_volume = mask_data["volume"]
+                mask_index = max(0, min(
+                    self._slice_count(mask_volume.shape, plane) - 1,
+                    int(round(clean_index * (self._slice_count(mask_volume.shape, plane) - 1) / max(1, plane_count - 1))),
+                ))
+                mask_arr = self._orient_preview_plane(plane, self._slice_plane(mask_volume, plane, mask_index))
+                colored = np.zeros((*mask_arr.shape, 3), dtype=np.uint8)
+                palette = self._mask_palette()
+                for value in [v for v in np.unique(mask_arr) if v != 0]:
+                    colored[mask_arr == value] = palette[(int(value) - 1) % len(palette)]
+                color_img = Image.fromarray(colored, mode="RGB")
+                mask_alpha = Image.fromarray(np.where(mask_arr != 0, 128, 0).astype(np.uint8), mode="L")
+                if color_img.size != base_img.size:
+                    color_img = color_img.resize(base_img.size, Image.Resampling.NEAREST)
+                    mask_alpha = mask_alpha.resize(base_img.size, Image.Resampling.NEAREST)
+                base_img = Image.composite(color_img, base_img, mask_alpha)
+
+        base_img = self._resize_to_physical_aspect(base_img, plane, ct_data["spacing"])
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = output_path.with_name(f".{output_path.name}.{threading.get_ident()}.tmp")
+        base_img.save(temp_path, format="PNG")
+        temp_path.replace(output_path)
+        return output_path
+
+    def _slice_cache_path(self, base_dir: Path, plane: str, index: int, overlay: bool = False) -> Path:
+        prefix = "overlay" if overlay else "ct"
+        return base_dir / "slice_cache" / f"{prefix}_{plane}_{index}.png"
+
+    @staticmethod
+    def _center_first_indices(count: int):
+        if count <= 0:
+            return
+        center = count // 2
+        yield center
+        for offset in range(1, max(center + 1, count - center)):
+            left = center - offset
+            right = center + offset
+            if left >= 0:
+                yield left
+            if right < count:
+                yield right
+
+    @staticmethod
+    def _source_matches(path: Optional[Path], mtime: Optional[float], size: Optional[int]) -> bool:
+        if path is None:
+            return True
+        if not path.is_file():
+            return False
+        stat = path.stat()
+        return stat.st_mtime == mtime and stat.st_size == size
+
+    def _warm_slice_cache(
+        self,
+        ct_path: Path,
+        base_dir: Path,
+        overlay: bool = False,
+        mask_path: Optional[Path] = None,
+        ct_mtime: Optional[float] = None,
+        ct_size: Optional[int] = None,
+        mask_mtime: Optional[float] = None,
+        mask_size: Optional[int] = None,
+    ) -> None:
+        if not self._source_matches(ct_path, ct_mtime, ct_size) or not self._source_matches(mask_path, mask_mtime, mask_size):
+            return
+        ct_data = self._read_cached_volume(ct_path)
+        if not ct_data:
+            return
+        shape = ct_data["volume"].shape
+        for plane in ("axial", "coronal", "sagittal"):
+            count = self._slice_count(shape, plane)
+            for index in self._center_first_indices(count):
+                if not self._source_matches(ct_path, ct_mtime, ct_size) or not self._source_matches(mask_path, mask_mtime, mask_size):
+                    return
+                slice_path = self._slice_cache_path(base_dir, plane, index, overlay=overlay)
+                if slice_path.is_file():
+                    continue
+                self._render_slice_png(ct_path, slice_path, plane, index, mask_path=mask_path)
+
+    def _run_slice_cache_warmup(
+        self,
+        key: str,
+        ct_path: Path,
+        base_dir: Path,
+        overlay: bool = False,
+        mask_path: Optional[Path] = None,
+        ct_mtime: Optional[float] = None,
+        ct_size: Optional[int] = None,
+        mask_mtime: Optional[float] = None,
+        mask_size: Optional[int] = None,
+    ) -> None:
+        try:
+            self._warm_slice_cache(
+                ct_path,
+                base_dir,
+                overlay=overlay,
+                mask_path=mask_path,
+                ct_mtime=ct_mtime,
+                ct_size=ct_size,
+                mask_mtime=mask_mtime,
+                mask_size=mask_size,
+            )
+        except Exception as exc:
+            logger.exception("Failed to warm slice cache: key=%s error=%s", key, exc)
+        finally:
+            with SLICE_CACHE_WARMUP_LOCK:
+                SLICE_CACHE_WARMUPS.discard(key)
+
+    def _schedule_slice_cache_warmup(self, key: str, ct_path: Path, base_dir: Path, overlay: bool = False, mask_path: Optional[Path] = None) -> None:
+        ct_stat = ct_path.stat()
+        mask_stat = mask_path.stat() if mask_path is not None and mask_path.is_file() else None
+        with SLICE_CACHE_WARMUP_LOCK:
+            if key in SLICE_CACHE_WARMUPS:
+                return
+            SLICE_CACHE_WARMUPS.add(key)
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(asyncio.to_thread(
+                self._run_slice_cache_warmup,
+                key,
+                ct_path,
+                base_dir,
+                overlay,
+                mask_path,
+                ct_stat.st_mtime,
+                ct_stat.st_size,
+                mask_stat.st_mtime if mask_stat else None,
+                mask_stat.st_size if mask_stat else None,
+            ))
+        except RuntimeError:
+            self._run_slice_cache_warmup(
+                key,
+                ct_path,
+                base_dir,
+                overlay=overlay,
+                mask_path=mask_path,
+                ct_mtime=ct_stat.st_mtime,
+                ct_size=ct_stat.st_size,
+                mask_mtime=mask_stat.st_mtime if mask_stat else None,
+                mask_size=mask_stat.st_size if mask_stat else None,
+            )
+
+    @staticmethod
+    def _uploaded_file_from_meta(meta_path: Path, base_dir: Path) -> Optional[Path]:
+        if not meta_path.is_file():
+            return None
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            file_name = meta.get("file_name")
+        except Exception:
+            return None
+        if not file_name:
+            return None
+        file_path = base_dir / Path(file_name).name
+        return file_path if file_path.is_file() else None
+
+    def _schedule_related_mask_warmups(self, patient_id: str, phase: str, ct_path: Path) -> None:
+        for mask_type in MASK_TYPES:
+            mask_dir = self._mask_dir(patient_id, mask_type, phase)
+            mask_path = self._uploaded_file_from_meta(self._mask_meta_path(patient_id, mask_type, phase), mask_dir)
+            if not mask_path:
+                continue
+            key = f"mask:{patient_id}:{mask_type}:{phase}:{ct_path.stat().st_mtime}:{mask_path.stat().st_mtime}"
+            self._schedule_slice_cache_warmup(key, ct_path, mask_dir, overlay=True, mask_path=mask_path)
+
     def _make_ct_preview(self, ct_path: Path, preview_path: Path) -> bool:
         import numpy as np
         from PIL import Image, ImageDraw
@@ -270,7 +527,13 @@ class PatientService:
         for index, panel in enumerate(panels):
             combined.paste(panel, (index * (panel_width + gap), 0))
         combined.save(preview_path)
-        return True
+        return {
+            "window": {"min": ct_window[0], "max": ct_window[1]},
+            "shape": {"x": x, "y": y, "z": z},
+            "spacing": {"x": spacing[0], "y": spacing[1], "z": spacing[2]},
+            "slice_counts": {"axial": z, "coronal": y, "sagittal": x},
+            "center": {"axial": z // 2, "coronal": y // 2, "sagittal": x // 2},
+        }
 
     def _make_mask_preview(self, mask_path: Path, preview_path: Path, patient_id: str, phase: str) -> bool:
         import numpy as np
@@ -549,7 +812,7 @@ class PatientService:
             return self._empty_ct_status(clean_phase)
         return {
             **self._empty_ct_status(clean_phase),
-            **{k: data.get(k) for k in ("phase", "status", "file_name", "file_size", "uploaded_at", "preview_url", "preview_planes")},
+            **{k: data.get(k) for k in ("phase", "status", "file_name", "file_size", "uploaded_at", "preview_url", "preview_planes", "display_window")},
         }
 
     @handle_service_exception
@@ -620,14 +883,23 @@ class PatientService:
             "uploaded_at": datetime.now().isoformat(timespec="seconds"),
             "preview_url": None,
             "preview_planes": None,
+            "display_window": None,
+            "viewer_metadata": None,
         }
         preview_path = ct_dir / "preview.png"
         try:
-            if self._make_ct_preview(file_path, preview_path):
+            preview = self._make_ct_preview(file_path, preview_path)
+            if preview:
                 meta["preview_url"] = f"/patients/{clean_id}/ct/{clean_phase}/preview"
                 meta["preview_planes"] = {
                     plane: f"/patients/{clean_id}/ct/{clean_phase}/preview/{plane}"
                     for plane in ("axial", "coronal", "sagittal")
+                }
+                meta["display_window"] = preview.get("window") if isinstance(preview, dict) else None
+                meta["viewer_metadata"] = {
+                    key: preview.get(key)
+                    for key in ("shape", "spacing", "slice_counts", "center", "window")
+                    if isinstance(preview, dict)
                 }
         except Exception as exc:
             logger.exception(
@@ -643,6 +915,9 @@ class PatientService:
             json.dumps(meta, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+        warmup_key = f"ct:{clean_id}:{clean_phase}:{file_path.stat().st_mtime}:{size}"
+        self._schedule_slice_cache_warmup(warmup_key, file_path, ct_dir)
+        self._schedule_related_mask_warmups(clean_id, clean_phase, file_path)
         return meta
 
     @handle_service_exception
@@ -721,6 +996,11 @@ class PatientService:
             json.dumps(meta, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+        ct_dir = self._ct_dir(clean_id, clean_phase)
+        ct_path = self._uploaded_file_from_meta(self._ct_meta_path(clean_id, clean_phase), ct_dir)
+        if ct_path:
+            warmup_key = f"mask:{clean_id}:{clean_type}:{clean_phase}:{ct_path.stat().st_mtime}:{file_path.stat().st_mtime}"
+            self._schedule_slice_cache_warmup(warmup_key, ct_path, mask_dir, overlay=True, mask_path=file_path)
         return meta
 
     @handle_service_exception
@@ -751,6 +1031,70 @@ class PatientService:
         return preview_path
 
     @handle_service_exception
+    async def get_ct_file_path(self, patient_id: str, phase: str) -> Path:
+        clean_id = self._validate_patient_id(patient_id)
+        clean_phase = self._validate_phase(phase)
+        patient = await self.mapper.get_patient(clean_id)
+        if not patient:
+            raise NotFoundError(resource_type="patient", resource_id=clean_id)
+
+        meta_path = self._ct_meta_path(clean_id, clean_phase)
+        if not meta_path.is_file():
+            raise NotFoundError(resource_type="ct_file", resource_id=f"{clean_id}:{clean_phase}")
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        file_name = meta.get("file_name")
+        if not file_name:
+            raise NotFoundError(resource_type="ct_file", resource_id=f"{clean_id}:{clean_phase}")
+        file_path = self._ct_dir(clean_id, clean_phase) / Path(file_name).name
+        if not file_path.is_file():
+            raise NotFoundError(resource_type="ct_file", resource_id=f"{clean_id}:{clean_phase}")
+        return file_path
+
+    @handle_service_exception
+    async def get_ct_viewer_metadata(self, patient_id: str, phase: str) -> Dict[str, Any]:
+        clean_id = self._validate_patient_id(patient_id)
+        clean_phase = self._validate_phase(phase)
+        meta_path = self._ct_meta_path(clean_id, clean_phase)
+        if meta_path.is_file():
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                metadata = meta.get("viewer_metadata")
+                if metadata and metadata.get("slice_counts") and metadata.get("center"):
+                    if "display_window" not in metadata and metadata.get("window"):
+                        metadata["display_window"] = metadata["window"]
+                    return metadata
+            except Exception:
+                pass
+        ct_path = await self.get_ct_file_path(clean_id, clean_phase)
+        ct_data = self._read_cached_volume(ct_path)
+        if not ct_data:
+            raise NotFoundError(resource_type="ct_file", resource_id=f"{clean_id}:{clean_phase}")
+        z, y, x = ct_data["volume"].shape
+        window_min, window_max = ct_data["window"]
+        return {
+            "shape": {"x": x, "y": y, "z": z},
+            "spacing": {"x": ct_data["spacing"][0], "y": ct_data["spacing"][1], "z": ct_data["spacing"][2]},
+            "slice_counts": {"axial": z, "coronal": y, "sagittal": x},
+            "center": {"axial": z // 2, "coronal": y // 2, "sagittal": x // 2},
+            "display_window": {"min": window_min, "max": window_max},
+        }
+
+    @handle_service_exception
+    async def get_ct_slice_path(self, patient_id: str, phase: str, plane: str, index: int) -> Path:
+        clean_id = self._validate_patient_id(patient_id)
+        clean_phase = self._validate_phase(phase)
+        clean_plane = self._validate_preview_plane(plane)
+        ct_path = await self.get_ct_file_path(clean_id, clean_phase)
+        ct_data = self._read_cached_volume(ct_path)
+        if not ct_data:
+            raise NotFoundError(resource_type="ct_file", resource_id=f"{clean_id}:{clean_phase}")
+        clean_index = max(0, min(int(index), self._slice_count(ct_data["volume"].shape, clean_plane) - 1))
+        slice_path = self._slice_cache_path(self._ct_dir(clean_id, clean_phase), clean_plane, clean_index)
+        if not slice_path.is_file():
+            self._render_slice_png(ct_path, slice_path, clean_plane, clean_index)
+        return slice_path
+
+    @handle_service_exception
     async def get_mask_preview_path(self, patient_id: str, mask_type: str, phase: str) -> Path:
         clean_id = self._validate_patient_id(patient_id)
         clean_type = self._validate_mask_type(mask_type)
@@ -778,6 +1122,44 @@ class PatientService:
         if not preview_path.is_file():
             raise NotFoundError(resource_type="mask_preview", resource_id=f"{clean_id}:{clean_type}:{clean_phase}:{clean_plane}")
         return preview_path
+
+    @handle_service_exception
+    async def get_mask_file_path(self, patient_id: str, mask_type: str, phase: str) -> Path:
+        clean_id = self._validate_patient_id(patient_id)
+        clean_type = self._validate_mask_type(mask_type)
+        clean_phase = self._validate_phase(phase)
+        patient = await self.mapper.get_patient(clean_id)
+        if not patient:
+            raise NotFoundError(resource_type="patient", resource_id=clean_id)
+
+        meta_path = self._mask_meta_path(clean_id, clean_type, clean_phase)
+        if not meta_path.is_file():
+            raise NotFoundError(resource_type="mask_file", resource_id=f"{clean_id}:{clean_type}:{clean_phase}")
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        file_name = meta.get("file_name")
+        if not file_name:
+            raise NotFoundError(resource_type="mask_file", resource_id=f"{clean_id}:{clean_type}:{clean_phase}")
+        file_path = self._mask_dir(clean_id, clean_type, clean_phase) / Path(file_name).name
+        if not file_path.is_file():
+            raise NotFoundError(resource_type="mask_file", resource_id=f"{clean_id}:{clean_type}:{clean_phase}")
+        return file_path
+
+    @handle_service_exception
+    async def get_mask_slice_path(self, patient_id: str, mask_type: str, phase: str, plane: str, index: int) -> Path:
+        clean_id = self._validate_patient_id(patient_id)
+        clean_type = self._validate_mask_type(mask_type)
+        clean_phase = self._validate_phase(phase)
+        clean_plane = self._validate_preview_plane(plane)
+        ct_path = await self.get_ct_file_path(clean_id, clean_phase)
+        mask_path = await self.get_mask_file_path(clean_id, clean_type, clean_phase)
+        ct_data = self._read_cached_volume(ct_path)
+        if not ct_data:
+            raise NotFoundError(resource_type="ct_file", resource_id=f"{clean_id}:{clean_phase}")
+        clean_index = max(0, min(int(index), self._slice_count(ct_data["volume"].shape, clean_plane) - 1))
+        slice_path = self._slice_cache_path(self._mask_dir(clean_id, clean_type, clean_phase), clean_plane, clean_index, overlay=True)
+        if not slice_path.is_file():
+            self._render_slice_png(ct_path, slice_path, clean_plane, clean_index, mask_path=mask_path)
+        return slice_path
 
     @handle_service_exception
     async def delete_ct_data(self, patient_id: str, phase: str) -> Dict[str, Any]:

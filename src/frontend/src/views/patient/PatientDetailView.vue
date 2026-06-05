@@ -72,6 +72,9 @@
                     <span>{{ formatFileSize(preCt.file_size) }} · {{ formatDateTime(preCt.uploaded_at) }}</span>
                   </div>
                 </div>
+                <a-button class="preview-zoom-action" :title="t('common.view')" @click="openCtViewer('pre')">
+                  <template #icon><ZoomInOutlined /></template>
+                </a-button>
               </div>
               <div v-else class="scan-placeholder">
                 <CameraOutlined />
@@ -125,6 +128,9 @@
                     <span>{{ formatFileSize(postCt.file_size) }} · {{ formatDateTime(postCt.uploaded_at) }}</span>
                   </div>
                 </div>
+                <a-button class="preview-zoom-action" :title="t('common.view')" @click="openCtViewer('post')">
+                  <template #icon><ZoomInOutlined /></template>
+                </a-button>
               </div>
               <div v-else class="scan-placeholder">
                 <CameraOutlined />
@@ -197,6 +203,9 @@
                         <span>{{ formatFileSize(slot.status.file_size) }} · {{ formatDateTime(slot.status.uploaded_at) }}</span>
                       </div>
                     </div>
+                    <a-button class="preview-zoom-action" :title="t('common.view')" @click="openMaskViewer(group.maskType, slot.phase)">
+                      <template #icon><ZoomInOutlined /></template>
+                    </a-button>
                   </div>
                   <div v-else class="feature-window">
                     <component :is="group.icon" />
@@ -257,6 +266,23 @@
         <a-empty v-else-if="!loading" :description="t('views_PatientDetailView.notFound')" />
       </a-spin>
     </div>
+
+    <a-modal
+      v-model:open="viewerOpen"
+      :title="viewerTitle"
+      width="92vw"
+      :footer="null"
+      class="mpr-modal"
+    >
+      <MprViewer
+        v-if="viewerTarget"
+        :visible="viewerOpen"
+        :metadata-url="viewerTarget.metadataUrl"
+        :ct-slice-base-url="viewerTarget.ctSliceBaseUrl"
+        :mask-slice-base-url="viewerTarget.maskSliceBaseUrl"
+        :cache-key="viewerTarget.cacheKey"
+      />
+    </a-modal>
   </div>
 </template>
 
@@ -273,7 +299,9 @@ import {
   FileTextOutlined,
   FundProjectionScreenOutlined,
   UploadOutlined,
+  ZoomInOutlined,
 } from '@ant-design/icons-vue'
+import MprViewer from '@/components/patient/MprViewer.vue'
 import {
   deletePatientCt,
   deletePatientMask,
@@ -295,8 +323,8 @@ const router = useRouter()
 const loading = ref(false)
 const patient = ref<PatientInfo | null>(null)
 const patientId = computed(() => String(route.params.patientId || ''))
-const emptyPreCt = (): PatientCtStatus => ({ phase: 'pre', status: 'empty', file_name: null, file_size: null, uploaded_at: null })
-const emptyPostCt = (): PatientCtStatus => ({ phase: 'post', status: 'empty', file_name: null, file_size: null, uploaded_at: null })
+const emptyPreCt = (): PatientCtStatus => ({ phase: 'pre', status: 'empty', file_name: null, file_size: null, uploaded_at: null, preview_url: null, preview_planes: null, display_window: null })
+const emptyPostCt = (): PatientCtStatus => ({ phase: 'post', status: 'empty', file_name: null, file_size: null, uploaded_at: null, preview_url: null, preview_planes: null, display_window: null })
 const emptyMask = (maskType: MaskType, phase: CtPhase): PatientMaskStatus => ({
   mask_type: maskType,
   phase,
@@ -321,6 +349,9 @@ const selectedMaskTarget = ref<{ maskType: MaskType; phase: CtPhase } | null>(nu
 const uploadingMaskKey = ref<string | null>(null)
 const deletingMaskKey = ref<string | null>(null)
 const maskInputRef = ref<HTMLInputElement | null>(null)
+const viewerOpen = ref(false)
+const viewerTitle = ref('')
+const viewerTarget = ref<{ metadataUrl: string; ctSliceBaseUrl: string; maskSliceBaseUrl?: string | null; cacheKey?: string | null } | null>(null)
 
 const baselineItems = computed(() => [
   { label: t('views_PatientManageView.fields.sex'), value: formatOption('sex', patient.value?.sex) },
@@ -584,6 +615,55 @@ function previewSrc(url: string, status: Pick<PatientCtStatus | PatientMaskStatu
   const cacheKey = `${status.uploaded_at || ''}:${status.file_size || ''}`
   const separator = fullUrl.includes('?') ? '&' : '?'
   return `${fullUrl}${separator}v=${encodeURIComponent(cacheKey)}`
+}
+
+function ctViewerMetadataUrl(phase: CtPhase) {
+  const status = phase === 'pre' ? preCt.value : postCt.value
+  return previewSrc(`/patients/${encodeURIComponent(patientId.value)}/ct/${phase}/viewer-metadata`, status)
+}
+
+function ctSliceBaseUrl(phase: CtPhase) {
+  return withApiBase(`/patients/${encodeURIComponent(patientId.value)}/ct/${phase}/slice`)
+}
+
+function maskSliceBaseUrl(maskType: MaskType, phase: CtPhase, status: PatientMaskStatus) {
+  void status
+  return withApiBase(`/patients/${encodeURIComponent(patientId.value)}/mask/${maskType}/${phase}/slice`)
+}
+
+function statusCacheKey(status: Pick<PatientCtStatus | PatientMaskStatus, 'uploaded_at' | 'file_size'>) {
+  return `${status.uploaded_at || ''}:${status.file_size || ''}`
+}
+
+function openCtViewer(phase: CtPhase) {
+  const status = phase === 'pre' ? preCt.value : postCt.value
+  viewerTitle.value = `${phase.toUpperCase()} CT - ${status.file_name || patientId.value}`
+  viewerTarget.value = {
+    metadataUrl: ctViewerMetadataUrl(phase),
+    ctSliceBaseUrl: ctSliceBaseUrl(phase),
+    maskSliceBaseUrl: null,
+    cacheKey: statusCacheKey(status),
+  }
+  viewerOpen.value = true
+}
+
+function openMaskViewer(maskType: MaskType, phase: CtPhase) {
+  const maskStatus = maskType === 'body-composition'
+    ? (phase === 'pre' ? bodyPreMask.value : bodyPostMask.value)
+    : (phase === 'pre' ? spinePreMask.value : spinePostMask.value)
+  const ctStatus = phase === 'pre' ? preCt.value : postCt.value
+  if (ctStatus.status !== 'ready') {
+    message.warning(t('views_PatientDetailView.ct.empty'))
+    return
+  }
+  viewerTitle.value = `${maskType === 'body-composition' ? 'Body Composition' : 'Spine'} ${phase.toUpperCase()} - ${maskStatus.file_name || patientId.value}`
+  viewerTarget.value = {
+    metadataUrl: ctViewerMetadataUrl(phase),
+    ctSliceBaseUrl: ctSliceBaseUrl(phase),
+    maskSliceBaseUrl: maskSliceBaseUrl(maskType, phase, maskStatus),
+    cacheKey: `${statusCacheKey(ctStatus)}:${statusCacheKey(maskStatus)}`,
+  }
+  viewerOpen.value = true
 }
 
 function hasPreviewPlanes(status: PatientCtStatus | PatientMaskStatus) {
@@ -902,6 +982,28 @@ function formatOption(group: OptionGroup, value?: string | null) {
   color: #0f766e;
 }
 
+.preview-zoom-action {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: rgba(15, 23, 42, 0.78);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #f9fafb;
+}
+
+.preview-zoom-action:hover,
+.preview-zoom-action:focus {
+  background: rgba(15, 23, 42, 0.94);
+  color: #fff;
+}
+
 .ct-preview-image {
   width: 100%;
   height: 100%;
@@ -949,6 +1051,28 @@ function formatOption(group: OptionGroup, value?: string | null) {
   color: #d1d5db;
   font-size: 10px;
   line-height: 1;
+}
+
+:global(.mpr-modal .ant-modal-content) {
+  padding: 0;
+  overflow: hidden;
+}
+
+:global(.mpr-modal .ant-modal-header) {
+  margin: 0;
+  padding: 14px 18px;
+  background: #0b0f19;
+  border-bottom: 1px solid #1f2937;
+}
+
+:global(.mpr-modal .ant-modal-title),
+:global(.mpr-modal .ant-modal-close) {
+  color: #f9fafb;
+}
+
+:global(.mpr-modal .ant-modal-body) {
+  padding: 0;
+  background: #05070c;
 }
 
 .ct-image-caption {

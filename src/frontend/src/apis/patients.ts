@@ -51,6 +51,7 @@ export interface PatientCtStatus {
   uploaded_at?: string | null
   preview_url?: string | null
   preview_planes?: PreviewPlanes | null
+  display_window?: DisplayWindow | null
 }
 
 export interface PatientMaskStatus {
@@ -66,6 +67,10 @@ export interface PatientMaskStatus {
 
 export type PreviewPlane = 'axial' | 'coronal' | 'sagittal'
 export type PreviewPlanes = Partial<Record<PreviewPlane, string>>
+export interface DisplayWindow {
+  min: number
+  max: number
+}
 
 export async function listPatients(params: {
   keyword?: string

@@ -119,6 +119,48 @@ class PatientController(BaseController):
                 },
             )
 
+        @self.router.get("/{patient_id}/ct/{phase}/file")
+        async def get_ct_file(
+            patient_id: str,
+            phase: str,
+        ):
+            file_path = await self.service.get_ct_file_path(patient_id, phase)
+            return FileResponse(
+                path=file_path,
+                media_type="application/nifti",
+                filename=file_path.name,
+                headers={
+                    "Content-Disposition": f'inline; filename="{file_path.name}"',
+                    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                    "Pragma": "no-cache",
+                },
+            )
+
+        @self.router.get("/{patient_id}/ct/{phase}/viewer-metadata")
+        async def get_ct_viewer_metadata(
+            patient_id: str,
+            phase: str,
+        ) -> BaseResponse[dict]:
+            metadata = await self.service.get_ct_viewer_metadata(patient_id, phase)
+            return ResultUtils.success(metadata)
+
+        @self.router.get("/{patient_id}/ct/{phase}/slice/{plane}/{index}")
+        async def get_ct_slice(
+            patient_id: str,
+            phase: str,
+            plane: str,
+            index: int,
+        ):
+            slice_path = await self.service.get_ct_slice_path(patient_id, phase, plane, index)
+            return FileResponse(
+                path=slice_path,
+                media_type="image/png",
+                headers={
+                    "Content-Disposition": "inline",
+                    "Cache-Control": "public, max-age=31536000",
+                },
+            )
+
         @self.router.get("/{patient_id}/mask/{mask_type}/{phase}/preview")
         async def get_mask_preview(
             patient_id: str,
@@ -133,6 +175,42 @@ class PatientController(BaseController):
                     "Content-Disposition": "inline",
                     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
                     "Pragma": "no-cache",
+                },
+            )
+
+        @self.router.get("/{patient_id}/mask/{mask_type}/{phase}/file")
+        async def get_mask_file(
+            patient_id: str,
+            mask_type: str,
+            phase: str,
+        ):
+            file_path = await self.service.get_mask_file_path(patient_id, mask_type, phase)
+            return FileResponse(
+                path=file_path,
+                media_type="application/nifti",
+                filename=file_path.name,
+                headers={
+                    "Content-Disposition": f'inline; filename="{file_path.name}"',
+                    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                    "Pragma": "no-cache",
+                },
+            )
+
+        @self.router.get("/{patient_id}/mask/{mask_type}/{phase}/slice/{plane}/{index}")
+        async def get_mask_slice(
+            patient_id: str,
+            mask_type: str,
+            phase: str,
+            plane: str,
+            index: int,
+        ):
+            slice_path = await self.service.get_mask_slice_path(patient_id, mask_type, phase, plane, index)
+            return FileResponse(
+                path=slice_path,
+                media_type="image/png",
+                headers={
+                    "Content-Disposition": "inline",
+                    "Cache-Control": "public, max-age=31536000",
                 },
             )
 
