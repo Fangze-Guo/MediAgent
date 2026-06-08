@@ -338,8 +338,8 @@ const router = useRouter()
 const loading = ref(false)
 const patient = ref<PatientInfo | null>(null)
 const patientId = computed(() => String(route.params.patientId || ''))
-const emptyPreCt = (): PatientCtStatus => ({ phase: 'pre', status: 'empty', file_name: null, file_size: null, uploaded_at: null, preview_url: null, preview_planes: null, display_window: null })
-const emptyPostCt = (): PatientCtStatus => ({ phase: 'post', status: 'empty', file_name: null, file_size: null, uploaded_at: null, preview_url: null, preview_planes: null, display_window: null })
+const emptyPreCt = (): PatientCtStatus => ({ phase: 'pre', status: 'empty', file_name: null, file_size: null, uploaded_at: null, preview_updated_at: null, preview_url: null, preview_planes: null, display_window: null })
+const emptyPostCt = (): PatientCtStatus => ({ phase: 'post', status: 'empty', file_name: null, file_size: null, uploaded_at: null, preview_updated_at: null, preview_url: null, preview_planes: null, display_window: null })
 const emptyMask = (maskType: MaskType, phase: CtPhase): PatientMaskStatus => ({
   mask_type: maskType,
   phase,
@@ -658,6 +658,12 @@ function setMaskStatus(status: PatientMaskStatus) {
   }
 }
 
+async function refreshCtStatus(phase: CtPhase) {
+  const status = await getPatientCtStatus(patientId.value, phase)
+  if (phase === 'pre') preCt.value = status
+  else postCt.value = status
+}
+
 function triggerMaskUpload(maskType: MaskType, phase: CtPhase) {
   selectedMaskTarget.value = { maskType, phase }
   if (maskInputRef.value) {
@@ -676,6 +682,9 @@ async function handleMaskFileChange(event: Event) {
   try {
     const status = await uploadPatientMask(patientId.value, target.maskType, target.phase, file)
     setMaskStatus(status)
+    if (target.maskType === 'tumor') {
+      await refreshCtStatus(target.phase)
+    }
     message.success(t('views_PatientDetailView.mask.uploaded'))
   } catch (error: any) {
     console.error('Upload mask failed:', error)
@@ -692,6 +701,9 @@ async function handleDeleteMask(maskType: MaskType, phase: CtPhase) {
   try {
     const status = await deletePatientMask(patientId.value, maskType, phase)
     setMaskStatus(status)
+    if (maskType === 'tumor') {
+      await refreshCtStatus(phase)
+    }
     message.success(t('views_PatientDetailView.mask.deleted'))
   } catch (error: any) {
     console.error('Delete mask failed:', error)
@@ -740,10 +752,10 @@ function withApiBase(url: string) {
   return `${baseURL}${url.startsWith('/') ? url : `/${url}`}`
 }
 
-function previewSrc(url: string, status: Pick<PatientCtStatus | PatientMaskStatus, 'uploaded_at' | 'file_size'>) {
+function previewSrc(url: string, status: Pick<PatientCtStatus | PatientMaskStatus, 'uploaded_at' | 'file_size'> & { preview_updated_at?: string | null }) {
   const fullUrl = withApiBase(url)
   if (!fullUrl) return fullUrl
-  const cacheKey = `${status.uploaded_at || ''}:${status.file_size || ''}`
+  const cacheKey = `${status.preview_updated_at || status.uploaded_at || ''}:${status.file_size || ''}`
   const separator = fullUrl.includes('?') ? '&' : '?'
   return `${fullUrl}${separator}v=${encodeURIComponent(cacheKey)}`
 }
@@ -770,8 +782,8 @@ function maskVolumeUrl(maskType: MaskType, phase: CtPhase, status: PatientMaskSt
   return previewSrc(`/patients/${encodeURIComponent(patientId.value)}/mask/${maskType}/${phase}/volume`, status)
 }
 
-function statusCacheKey(status: Pick<PatientCtStatus | PatientMaskStatus, 'uploaded_at' | 'file_size'>) {
-  return `${status.uploaded_at || ''}:${status.file_size || ''}`
+function statusCacheKey(status: Pick<PatientCtStatus | PatientMaskStatus, 'uploaded_at' | 'file_size'> & { preview_updated_at?: string | null }) {
+  return `${status.preview_updated_at || status.uploaded_at || ''}:${status.file_size || ''}`
 }
 
 function openCtViewer(phase: CtPhase) {

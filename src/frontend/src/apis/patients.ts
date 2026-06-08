@@ -49,6 +49,7 @@ export interface PatientCtStatus {
   file_name?: string | null
   file_size?: number | null
   uploaded_at?: string | null
+  preview_updated_at?: string | null
   preview_url?: string | null
   preview_planes?: PreviewPlanes | null
   display_window?: DisplayWindow | null

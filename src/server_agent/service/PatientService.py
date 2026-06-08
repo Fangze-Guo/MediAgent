@@ -154,6 +154,7 @@ class PatientService:
             "file_name": None,
             "file_size": None,
             "uploaded_at": None,
+            "preview_updated_at": None,
             "preview_url": None,
             "preview_planes": None,
             "display_window": None,
@@ -744,7 +745,7 @@ class PatientService:
         first.save(output_path, "PDF", resolution=150.0, save_all=True, append_images=rest)
         return output_path
 
-    def _make_ct_preview(self, ct_path: Path, preview_path: Path) -> bool:
+    def _make_ct_preview(self, ct_path: Path, preview_path: Path, tumor_mask_path: Optional[Path] = None) -> bool:
         import numpy as np
         from PIL import Image, ImageDraw
         import SimpleITK as sitk
@@ -765,10 +766,40 @@ class PatientService:
 
         z, y, x = volume.shape
         ct_window = self._ct_display_window(volume)
+        center = {"axial": z // 2, "coronal": y // 2, "sagittal": x // 2}
+        focus_source = "center"
+
+        if tumor_mask_path is not None and tumor_mask_path.is_file():
+            try:
+                mask_image = sitk.ReadImage(str(tumor_mask_path))
+                mask_volume = sitk.GetArrayFromImage(mask_image)
+                if mask_volume.ndim == 4:
+                    mask_volume = mask_volume[0]
+                if mask_volume.ndim == 2:
+                    mask_volume = mask_volume[np.newaxis, :, :]
+                mask = np.asarray(mask_volume)
+                nonzero = np.argwhere(mask != 0)
+                if mask.ndim == 3 and len(nonzero) > 0:
+                    mask_center = np.rint(nonzero.mean(axis=0)).astype(int)
+
+                    def map_index(index: int, source_size: int, target_size: int) -> int:
+                        if source_size <= 1 or target_size <= 1:
+                            return 0
+                        return int(round(index * (target_size - 1) / (source_size - 1)))
+
+                    center = {
+                        "axial": max(0, min(z - 1, map_index(int(mask_center[0]), mask.shape[0], z))),
+                        "coronal": max(0, min(y - 1, map_index(int(mask_center[1]), mask.shape[1], y))),
+                        "sagittal": max(0, min(x - 1, map_index(int(mask_center[2]), mask.shape[2], x))),
+                    }
+                    focus_source = "tumor"
+            except Exception as exc:
+                logger.warning("Failed to use tumor mask for CT preview focus: path=%s error=%s", tumor_mask_path, exc)
+
         slices = [
-            ("Axial", "axial", volume[z // 2, :, :]),
-            ("Coronal", "coronal", volume[:, y // 2, :]),
-            ("Sagittal", "sagittal", volume[:, :, x // 2]),
+            ("Axial", "axial", volume[center["axial"], :, :]),
+            ("Coronal", "coronal", volume[:, center["coronal"], :]),
+            ("Sagittal", "sagittal", volume[:, :, center["sagittal"]]),
         ]
         panel_width = 420
         image_height = 380
@@ -777,7 +808,8 @@ class PatientService:
 
         panels = []
         for label, axis, arr in slices:
-            img = self._normalize_slice(self._orient_preview_plane(axis, arr), ct_window)
+            oriented_arr = self._orient_preview_plane(axis, arr)
+            img = self._normalize_slice(oriented_arr, ct_window).convert("RGB")
             img = self._resize_to_physical_aspect(img, axis, spacing)
             img.convert("RGB").save(self._plane_preview_path(preview_path, axis))
             img.thumbnail((panel_width - 24, image_height))
@@ -798,8 +830,32 @@ class PatientService:
             "shape": {"x": x, "y": y, "z": z},
             "spacing": {"x": spacing[0], "y": spacing[1], "z": spacing[2]},
             "slice_counts": {"axial": z, "coronal": y, "sagittal": x},
-            "center": {"axial": z // 2, "coronal": y // 2, "sagittal": x // 2},
+            "center": center,
+            "focus_source": focus_source,
         }
+
+    def _tumor_mask_file_path(self, patient_id: str, phase: str) -> Optional[Path]:
+        tumor_dir = self._mask_dir(patient_id, "tumor", phase)
+        return self._uploaded_file_from_meta(self._mask_meta_path(patient_id, "tumor", phase), tumor_dir)
+
+    def _write_ct_preview_metadata(self, patient_id: str, phase: str, ct_path: Path, meta: Dict[str, Any]) -> Dict[str, Any]:
+        preview_path = self._ct_dir(patient_id, phase) / "preview.png"
+        tumor_mask_path = self._tumor_mask_file_path(patient_id, phase)
+        preview = self._make_ct_preview(ct_path, preview_path, tumor_mask_path=tumor_mask_path)
+        if preview:
+            meta["preview_url"] = f"/patients/{patient_id}/ct/{phase}/preview"
+            meta["preview_planes"] = {
+                plane: f"/patients/{patient_id}/ct/{phase}/preview/{plane}"
+                for plane in ("axial", "coronal", "sagittal")
+            }
+            meta["display_window"] = preview.get("window") if isinstance(preview, dict) else None
+            meta["preview_updated_at"] = datetime.now().isoformat(timespec="seconds")
+            meta["viewer_metadata"] = {
+                key: preview.get(key)
+                for key in ("shape", "spacing", "slice_counts", "center", "window", "focus_source")
+                if isinstance(preview, dict)
+            }
+        return meta
 
     def _make_mask_preview(self, mask_path: Path, preview_path: Path, patient_id: str, phase: str) -> bool:
         import numpy as np
@@ -842,27 +898,23 @@ class PatientService:
         ct_spacing = ct_data[1] if ct_data is not None else None
         display_spacing = ct_spacing or mask_spacing
 
-        def center_index(size: int) -> int:
-            return max(0, size // 2)
-
         def map_index(index: int, source_size: int, target_size: int) -> int:
             if source_size <= 1 or target_size <= 1:
                 return 0
             return int(round(index * (target_size - 1) / (source_size - 1)))
 
+        mask_center = np.rint(np.argwhere(nonzero).mean(axis=0)).astype(int)
+        z_idx = max(0, min(mask.shape[0] - 1, int(mask_center[0])))
+        y_idx = max(0, min(mask.shape[1] - 1, int(mask_center[1])))
+        x_idx = max(0, min(mask.shape[2] - 1, int(mask_center[2])))
+
         if ct_volume is not None:
             ct_z, ct_y, ct_x = ct_volume.shape
-            ct_z_idx = center_index(ct_z)
-            ct_y_idx = center_index(ct_y)
-            ct_x_idx = center_index(ct_x)
-            z_idx = map_index(ct_z_idx, ct_z, mask.shape[0])
-            y_idx = map_index(ct_y_idx, ct_y, mask.shape[1])
-            x_idx = map_index(ct_x_idx, ct_x, mask.shape[2])
+            ct_z_idx = max(0, min(ct_z - 1, map_index(z_idx, mask.shape[0], ct_z)))
+            ct_y_idx = max(0, min(ct_y - 1, map_index(y_idx, mask.shape[1], ct_y)))
+            ct_x_idx = max(0, min(ct_x - 1, map_index(x_idx, mask.shape[2], ct_x)))
             ct_window = self._ct_display_window(ct_volume)
         else:
-            z_idx = center_index(mask.shape[0])
-            y_idx = center_index(mask.shape[1])
-            x_idx = center_index(mask.shape[2])
             ct_z_idx = ct_y_idx = ct_x_idx = 0
             ct_window = None
 
@@ -1245,7 +1297,7 @@ class PatientService:
             return self._empty_ct_status(clean_phase)
         return {
             **self._empty_ct_status(clean_phase),
-            **{k: data.get(k) for k in ("phase", "status", "file_name", "file_size", "uploaded_at", "preview_url", "preview_planes", "display_window")},
+            **{k: data.get(k) for k in ("phase", "status", "file_name", "file_size", "uploaded_at", "preview_updated_at", "preview_url", "preview_planes", "display_window")},
         }
 
     @handle_service_exception
@@ -1314,26 +1366,14 @@ class PatientService:
             "file_name": file_name,
             "file_size": size,
             "uploaded_at": datetime.now().isoformat(timespec="seconds"),
+            "preview_updated_at": None,
             "preview_url": None,
             "preview_planes": None,
             "display_window": None,
             "viewer_metadata": None,
         }
-        preview_path = ct_dir / "preview.png"
         try:
-            preview = self._make_ct_preview(file_path, preview_path)
-            if preview:
-                meta["preview_url"] = f"/patients/{clean_id}/ct/{clean_phase}/preview"
-                meta["preview_planes"] = {
-                    plane: f"/patients/{clean_id}/ct/{clean_phase}/preview/{plane}"
-                    for plane in ("axial", "coronal", "sagittal")
-                }
-                meta["display_window"] = preview.get("window") if isinstance(preview, dict) else None
-                meta["viewer_metadata"] = {
-                    key: preview.get(key)
-                    for key in ("shape", "spacing", "slice_counts", "center", "window")
-                    if isinstance(preview, dict)
-                }
+            self._write_ct_preview_metadata(clean_id, clean_phase, file_path, meta)
         except Exception as exc:
             logger.exception(
                 "Failed to generate CT preview: patient=%s phase=%s file=%s error=%s",
@@ -1434,6 +1474,22 @@ class PatientService:
         if ct_path:
             warmup_key = f"mask:{clean_id}:{clean_type}:{clean_phase}:{ct_path.stat().st_mtime}:{file_path.stat().st_mtime}"
             self._schedule_slice_cache_warmup(warmup_key, ct_path, mask_dir, overlay=True, mask_path=file_path)
+            if clean_type == "tumor":
+                ct_meta_path = self._ct_meta_path(clean_id, clean_phase)
+                try:
+                    ct_meta = json.loads(ct_meta_path.read_text(encoding="utf-8")) if ct_meta_path.is_file() else {}
+                    self._write_ct_preview_metadata(clean_id, clean_phase, ct_path, ct_meta)
+                    ct_meta_path.write_text(
+                        json.dumps(ct_meta, ensure_ascii=False, indent=2),
+                        encoding="utf-8",
+                    )
+                except Exception as exc:
+                    logger.exception(
+                        "Failed to refresh CT preview with tumor mask: patient=%s phase=%s error=%s",
+                        clean_id,
+                        clean_phase,
+                        exc,
+                    )
         return meta
 
     @handle_service_exception
@@ -1640,6 +1696,25 @@ class PatientService:
         mask_dir = self._mask_dir(clean_id, clean_type, clean_phase)
         if mask_dir.exists():
             shutil.rmtree(mask_dir)
+        if clean_type == "tumor":
+            ct_dir = self._ct_dir(clean_id, clean_phase)
+            ct_path = self._uploaded_file_from_meta(self._ct_meta_path(clean_id, clean_phase), ct_dir)
+            if ct_path:
+                ct_meta_path = self._ct_meta_path(clean_id, clean_phase)
+                try:
+                    ct_meta = json.loads(ct_meta_path.read_text(encoding="utf-8")) if ct_meta_path.is_file() else {}
+                    self._write_ct_preview_metadata(clean_id, clean_phase, ct_path, ct_meta)
+                    ct_meta_path.write_text(
+                        json.dumps(ct_meta, ensure_ascii=False, indent=2),
+                        encoding="utf-8",
+                    )
+                except Exception as exc:
+                    logger.exception(
+                        "Failed to refresh CT preview after deleting tumor mask: patient=%s phase=%s error=%s",
+                        clean_id,
+                        clean_phase,
+                        exc,
+                    )
         return self._empty_mask_status(clean_type, clean_phase)
 
     @handle_service_exception
