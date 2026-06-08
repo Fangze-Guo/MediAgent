@@ -103,6 +103,39 @@ class PatientMapper:
             )
         return self._to_patient(record)
 
+    async def upsert_patient(self, data: Dict[str, Any]) -> PatientInfo:
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            record = await conn.fetchrow("""
+                INSERT INTO patients (
+                    patient_id, name, sex, age, phone, height_cm,
+                    smoking_status, pathology_type, pd_l1_status
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                ON CONFLICT (patient_id) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    sex = EXCLUDED.sex,
+                    age = EXCLUDED.age,
+                    phone = EXCLUDED.phone,
+                    height_cm = EXCLUDED.height_cm,
+                    smoking_status = EXCLUDED.smoking_status,
+                    pathology_type = EXCLUDED.pathology_type,
+                    pd_l1_status = EXCLUDED.pd_l1_status,
+                    updated_at = CURRENT_TIMESTAMP
+                RETURNING *
+            """,
+                data["patient_id"],
+                data["name"],
+                data.get("sex"),
+                data.get("age"),
+                data.get("phone"),
+                data.get("height_cm"),
+                data.get("smoking_status"),
+                data.get("pathology_type"),
+                data.get("pd_l1_status"),
+            )
+        return self._to_patient(record)
+
     async def get_patient(self, patient_id: str) -> Optional[PatientInfo]:
         pool = await self._get_pool()
         async with pool.acquire() as conn:
@@ -141,6 +174,15 @@ class PatientMapper:
                     WHERE patient_id ILIKE $1 OR name ILIKE $1 OR phone ILIKE $1
                 """, pattern))
             return int(await conn.fetchval("SELECT COUNT(*) FROM patients"))
+
+    async def list_all_patients(self) -> List[PatientInfo]:
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            records = await conn.fetch("""
+                SELECT * FROM patients
+                ORDER BY updated_at DESC, id DESC
+            """)
+        return [self._to_patient(record) for record in records]
 
     async def update_patient(self, patient_id: str, data: Dict[str, Any]) -> Optional[PatientInfo]:
         allowed_fields = [

@@ -38,6 +38,13 @@ class PatientController(BaseController):
             result = await self.service.list_patients(keyword, page, size)
             return ResultUtils.success(result)
 
+        @self.router.post("/sync")
+        async def sync_patients(
+            current_user: UserVO = Depends(get_current_user),
+        ) -> BaseResponse[dict]:
+            result = await self.service.sync_patient_info_files()
+            return ResultUtils.success(result)
+
         @self.router.get("/{patient_id}")
         async def get_patient(
             patient_id: str,

@@ -13,11 +13,14 @@ from fastapi import UploadFile
 
 from src.server_agent.exceptions import ConflictError, DatabaseError, NotFoundError, ValidationError, handle_service_exception
 from src.server_agent.mapper.PatientMapper import PatientMapper
+from src.server_agent.mapper.paths import in_data
 
 
 logger = logging.getLogger(__name__)
 PATIENT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
-PATIENT_DATA_ROOT = Path("/home/fetters/project/MediAgent/src/server_new/data/patient")
+PATIENT_DATA_ROOT = in_data("patient")
+PATIENT_INFO_FILENAME = "patient_info.json"
+LEGACY_PATIENT_INFO_FILENAMES = ("info.json", "patient.json")
 CT_PHASES = {"pre", "post"}
 CT_EXTENSIONS = {".nii", ".nii.gz", ".dcm", ".zip"}
 PREVIEW_PLANES = {"axial", "coronal", "sagittal"}
@@ -42,6 +45,7 @@ class PatientService:
     async def init(self) -> None:
         await self.mapper.init()
         PATIENT_DATA_ROOT.mkdir(parents=True, exist_ok=True)
+        await self.sync_patient_info_files()
 
     async def close(self) -> None:
         await self.mapper.close()
@@ -68,6 +72,10 @@ class PatientService:
         if patient_dir == root:
             raise ValidationError(detail="invalid patient data path", field="patient_id")
         return patient_dir
+
+    @staticmethod
+    def _patient_info_path(patient_id: str) -> Path:
+        return PatientService._patient_dir(patient_id) / PATIENT_INFO_FILENAME
 
     @staticmethod
     def _ct_ext(filename: str) -> str:
@@ -995,6 +1003,163 @@ class PatientService:
             cleaned["name"] = str(cleaned["name"]).strip()
         return cleaned
 
+    @staticmethod
+    def _patient_file_payload(patient) -> Dict[str, Any]:
+        return {
+            "name": patient.name,
+            "sex": patient.sex,
+            "age": patient.age,
+            "phone": patient.phone,
+            "height_cm": patient.height_cm,
+            "smoking_status": patient.smoking_status,
+            "pathology_type": patient.pathology_type,
+            "pd_l1_status": patient.pd_l1_status,
+        }
+
+    @staticmethod
+    def _write_json_atomic(path: Path, data: Dict[str, Any]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = path.with_name(f".{path.name}.{threading.get_ident()}.tmp")
+        temp_path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        temp_path.replace(path)
+
+    def _write_patient_info_file(self, patient) -> Path:
+        info_path = self._patient_info_path(patient.patient_id)
+        self._write_json_atomic(info_path, self._patient_file_payload(patient))
+        return info_path
+
+    @staticmethod
+    def _parse_file_datetime(value: Any) -> Optional[datetime]:
+        if not isinstance(value, str) or not value:
+            return None
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
+        except ValueError:
+            return None
+
+    def _read_patient_info_payload(self, patient_dir: Path) -> Optional[Dict[str, Any]]:
+        candidates = [patient_dir / PATIENT_INFO_FILENAME]
+        candidates.extend(patient_dir / name for name in LEGACY_PATIENT_INFO_FILENAMES)
+        for info_path in candidates:
+            if not info_path.is_file():
+                continue
+            try:
+                raw = json.loads(info_path.read_text(encoding="utf-8"))
+            except Exception as exc:
+                logger.warning("Failed to read patient info file: path=%s error=%s", info_path, exc)
+                return None
+            patient_data = raw.get("patient") if isinstance(raw, dict) else None
+            if not isinstance(patient_data, dict) and isinstance(raw, dict):
+                patient_data = raw
+            if isinstance(patient_data, dict):
+                patient_data = dict(patient_data)
+                patient_data["_info_file_mtime"] = datetime.fromtimestamp(info_path.stat().st_mtime).isoformat()
+                return patient_data
+        return None
+
+    def _patient_payload_from_dir(self, patient_dir: Path) -> Optional[Dict[str, Any]]:
+        try:
+            clean_id = self._validate_patient_id(patient_dir.name)
+        except ValidationError:
+            logger.warning("Skipping invalid patient directory name: %s", patient_dir)
+            return None
+
+        file_payload = self._read_patient_info_payload(patient_dir) or {}
+        data = self._clean_payload(file_payload)
+        data["patient_id"] = clean_id
+        if not data.get("name"):
+            data["name"] = clean_id
+        try:
+            if data.get("age") is not None:
+                data["age"] = int(data["age"])
+            if data.get("height_cm") is not None:
+                data["height_cm"] = float(data["height_cm"])
+        except (TypeError, ValueError):
+            logger.warning("Skipping patient info file with invalid numeric fields: %s", patient_dir)
+            return None
+
+        allowed_fields = {
+            "patient_id",
+            "name",
+            "sex",
+            "age",
+            "phone",
+            "height_cm",
+            "smoking_status",
+            "pathology_type",
+            "pd_l1_status",
+            "_info_file_mtime",
+        }
+        return {key: value for key, value in data.items() if key in allowed_fields}
+
+    @staticmethod
+    def _patient_data_differs(patient, data: Dict[str, Any]) -> bool:
+        fields = (
+            "name",
+            "sex",
+            "age",
+            "phone",
+            "height_cm",
+            "smoking_status",
+            "pathology_type",
+            "pd_l1_status",
+        )
+        for field in fields:
+            if field not in data:
+                continue
+            current = getattr(patient, field)
+            incoming = data[field]
+            if field == "height_cm" and current is not None and incoming is not None:
+                if float(current) != float(incoming):
+                    return True
+            elif current != incoming:
+                return True
+        return False
+
+    @handle_service_exception
+    async def sync_patient_info_files(self) -> Dict[str, int]:
+        db_patients = await self.mapper.list_all_patients()
+        db_by_patient_id = {patient.patient_id: patient for patient in db_patients}
+        stats = {
+            "files_written": 0,
+            "db_created_or_updated": 0,
+            "directories_seen": 0,
+        }
+
+        for patient in db_patients:
+            self._patient_dir(patient.patient_id).mkdir(parents=True, exist_ok=True)
+
+        for patient_dir in PATIENT_DATA_ROOT.iterdir():
+            if not patient_dir.is_dir():
+                continue
+            stats["directories_seen"] += 1
+            data = self._patient_payload_from_dir(patient_dir)
+            if data is None:
+                continue
+
+            db_patient = db_by_patient_id.get(data["patient_id"])
+            info_file_mtime = self._parse_file_datetime(data.get("_info_file_mtime"))
+            has_file_change = (
+                info_file_mtime is not None
+                and db_patient is not None
+                and info_file_mtime > db_patient.updated_at
+                and self._patient_data_differs(db_patient, data)
+            )
+            if db_patient is None or has_file_change:
+                data.pop("_info_file_mtime", None)
+                patient = await self.mapper.upsert_patient(data)
+                db_by_patient_id[patient.patient_id] = patient
+                stats["db_created_or_updated"] += 1
+
+        for patient in await self.mapper.list_all_patients():
+            self._write_patient_info_file(patient)
+            stats["files_written"] += 1
+
+        return stats
+
     @handle_service_exception
     async def create_patient(self, payload: Dict[str, Any]):
         data = self._clean_payload(payload)
@@ -1018,7 +1183,8 @@ class PatientService:
 
         patient_dir = self._patient_dir(patient.patient_id)
         try:
-            patient_dir.mkdir(parents=True, exist_ok=False)
+            patient_dir.mkdir(parents=True, exist_ok=True)
+            self._write_patient_info_file(patient)
         except Exception as exc:
             await self.mapper.delete_patient(patient.patient_id)
             raise DatabaseError(
@@ -1485,6 +1651,7 @@ class PatientService:
         patient = await self.mapper.update_patient(clean_id, data)
         if not patient:
             raise NotFoundError(resource_type="patient", resource_id=clean_id)
+        self._write_patient_info_file(patient)
         return patient
 
     @handle_service_exception
