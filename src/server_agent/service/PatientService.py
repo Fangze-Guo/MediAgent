@@ -4,6 +4,7 @@ import json
 import logging
 import shutil
 import threading
+import mimetypes
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -1270,6 +1271,68 @@ class PatientService:
         if not patient:
             raise NotFoundError(resource_type="patient", resource_id=clean_id)
         return patient
+
+    def _agent_outputs_dir(self, patient_id: str) -> Path:
+        output_dir = (self._patient_dir(patient_id) / "agent_outputs").resolve()
+        try:
+            output_dir.relative_to(self._patient_dir(patient_id))
+        except ValueError:
+            raise ValidationError(detail="invalid agent output path", field="patient_id")
+        return output_dir
+
+    def _agent_output_file_path(self, patient_id: str, file_path: str) -> Path:
+        output_root = self._agent_outputs_dir(patient_id)
+        if not file_path or Path(file_path).is_absolute():
+            raise ValidationError(detail="invalid output file path", field="file_path")
+        target = (output_root / file_path).resolve()
+        try:
+            target.relative_to(output_root)
+        except ValueError:
+            raise ValidationError(detail="invalid output file path", field="file_path")
+        if not target.is_file():
+            raise NotFoundError(resource_type="patient_output_file", resource_id=file_path)
+        return target
+
+    @handle_service_exception
+    async def list_agent_output_files(self, patient_id: str) -> Dict[str, Any]:
+        clean_id = self._validate_patient_id(patient_id)
+        patient = await self.mapper.get_patient(clean_id)
+        if not patient:
+            raise NotFoundError(resource_type="patient", resource_id=clean_id)
+
+        output_root = self._agent_outputs_dir(clean_id)
+        output_root.mkdir(parents=True, exist_ok=True)
+        files = []
+        for path in sorted(output_root.rglob("*")):
+            if not path.is_file():
+                continue
+            try:
+                relative_path = path.relative_to(output_root).as_posix()
+            except ValueError:
+                continue
+            stat = path.stat()
+            media_type, _ = mimetypes.guess_type(path.name)
+            files.append({
+                "path": relative_path,
+                "name": path.name,
+                "size": stat.st_size,
+                "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+                "media_type": media_type or "application/octet-stream",
+                "download_url": f"/patients/{clean_id}/outputs/serve/{relative_path}",
+            })
+        return {
+            "patient_id": clean_id,
+            "output_root": str(output_root),
+            "files": files,
+        }
+
+    @handle_service_exception
+    async def get_agent_output_file_path(self, patient_id: str, file_path: str) -> Path:
+        clean_id = self._validate_patient_id(patient_id)
+        patient = await self.mapper.get_patient(clean_id)
+        if not patient:
+            raise NotFoundError(resource_type="patient", resource_id=clean_id)
+        return self._agent_output_file_path(clean_id, file_path)
 
     @handle_service_exception
     async def export_patient_report(self, patient_id: str) -> Path:

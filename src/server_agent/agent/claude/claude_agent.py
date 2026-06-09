@@ -64,136 +64,30 @@ SYSTEM_PROMPT_TEMPLATE = """
    - “正在处理治疗前后影像”
    而不是技术术语或系统描述
 
-【数据目录】
-5. 当用户询问或查找数据时，直接去以下目录查找：
-   {data_files_root}/private/{user_id}/dataset
+【患者数据边界】
+5. 处理患者级任务时，必须以明确 patient_id 对应的患者数据集为准。
 
-【任务执行前的强制规划规则】
-6. 在执行任何任务前，必须先完成完整的输出规划，包括：
-   - 输入文件识别
-   - pre/post 时间点识别
-   - 输出目录结构规划
-   - 输出文件命名规划
-   - 多文件任务拆分规划
-   - 是否需要建立独立子目录
+   患者数据根目录：
+   {patient_data_root}
 
-7. 禁止：
-   - 未规划目录结构就直接执行任务
-   - 多个任务共用同一个输出目录
-   - 所有结果混合输出到同一个文件
-   - 只处理 pre 而遗漏 post
-   - 只生成部分输出
-   - 覆盖已有结果文件
+   如果用户没有提供 patient_id，必须先询问用户，不得盲目扫描所有患者目录。
 
-8. 如果检测到输入同时包含 pre/post：
-   - 必须同时处理 pre 与 post
-   - 禁止只运行其中一个
-   - 必须自动创建：
-     pre/
-     post/
-     子目录分别存放结果
-   - 必须保证 pre 与 post 输出数量一致
-   - 必须保证文件命名一一对应
+   如果当前项目提供了患者上下文文件或患者上下文生成规则，必须优先使用该上下文中的临床信息、影像路径、mask 路径和输出根目录。
 
-【任务目录规范】
-9. 每一个独立任务都必须创建独立文件夹，禁止多个任务复用目录。
+   禁止自行猜测患者数据路径，禁止通过全盘搜索找患者 CT 或 mask，禁止将输出写回原始 CT/mask 目录。
 
-10. 输出目录规则：
-
-   输出根目录：
-   {data_files_root}/private/{user_id}/
-
-   每次任务必须创建独立任务目录：
-
-   {{任务类型}}-{{YYYYMMDD}}[-v2|-v3...]
-
-   示例：
-   lung-crop-20260510/
-   spine-seg-20260510/
-   body-composition-20260510/
-
-11. 如果同一天重复执行同类型任务：
-   - 必须自动检查目录是否已存在
-   - 若已存在：
-     lung-crop-20260510-v2/
-     lung-crop-20260510-v3/
-   - 严禁覆盖已有任务目录
-
-12. 对于涉及 pre/post 的任务，目录结构必须为：
-
-   {{任务目录}}/
-   ├── pre/
-   └── post/
-
-   示例：
-   lung-crop-20260510/
-   ├── pre/
-   │   └── patient001-lung-crop-20260510.nii.gz
-   └── post/
-       └── patient001-lung-crop-20260510.nii.gz
-
-13. 如果任务包含多个阶段或多个输出类型：
-   必须继续分层组织目录，例如：
-
-   spine-analysis-20260510/
-   ├── segmentation/
-   ├── mesh/
-   ├── visualization/
-   └── report/
-
-   禁止所有结果堆积在同一级目录
-
-【输出文件命名规范】
-14. 所有输出文件必须严格遵守以下命名规范：
-
-   {{原始文件名}}-{{任务类型}}-{{YYYYMMDD}}.{{扩展名}}
-
-15. 文件名规则：
-   - 全部使用小写字母
-   - 使用连字符 "-"
-   - 禁止空格
-   - 禁止中文
-   - 禁止下划线
-   - 禁止随机字符串
-   - 禁止无意义编号
-
-16. 写入文件前必须检查：
-   - 文件是否已存在
-   - 若存在：
-     自动追加 -v2、-v3 等版本号
-   - 严禁覆盖已有文件
-
-【安全规则】
-17. 严禁将任何输出写入：
-   - dataset/
-   - dataset 的任意子目录
-   - 输入文件原目录
-
-18. 所有结果必须写入用户专属目录下的新任务目录中。
-
-【执行完整性规则】
-19. 对于批量任务：
-   - 必须确保所有输入文件均被处理
-   - 必须确保输出数量与输入数量匹配
-   - 必须自动检查遗漏文件
-   - 不允许中途 silently skip 文件
-
-20. 对于 pre/post 配对任务：
-   - 必须验证 pre/post 是否成对存在
-   - 必须分别输出对应结果
-   - 必须保持目录结构一致
-   - 禁止 pre/post 混放
+   如果上下文中某个路径为空，表示该数据尚未上传，不得凭空假设文件存在。
 """.strip()
 
 
 def get_system_prompt(user_id: Optional[int] = None) -> str:
     """根据 user_id 生成 system prompt"""
     uid = str(user_id) if user_id is not None else "unknown"
-    data_files_root = str(in_data("files"))
+    patient_data_root = str(in_data("patient"))
     return (
         SYSTEM_PROMPT_TEMPLATE
         .replace("{user_id}", uid)
-        .replace("{data_files_root}", data_files_root)
+        .replace("{patient_data_root}", patient_data_root)
     )
 
 class MessageKind:

@@ -70,6 +70,31 @@ class PatientController(BaseController):
                 },
             )
 
+        @self.router.get("/{patient_id}/outputs")
+        async def list_patient_outputs(
+            patient_id: str,
+            current_user: UserVO = Depends(get_current_user),
+        ) -> BaseResponse[dict]:
+            outputs = await self.service.list_agent_output_files(patient_id)
+            return ResultUtils.success(outputs)
+
+        @self.router.get("/{patient_id}/outputs/serve/{file_path:path}")
+        async def serve_patient_output(
+            patient_id: str,
+            file_path: str,
+            current_user: UserVO = Depends(get_current_user),
+        ):
+            output_path = await self.service.get_agent_output_file_path(patient_id, file_path)
+            return FileResponse(
+                path=output_path,
+                filename=output_path.name,
+                headers={
+                    "Content-Disposition": f'attachment; filename="{output_path.name}"',
+                    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                    "Pragma": "no-cache",
+                },
+            )
+
         @self.router.get("/{patient_id}/ct/{phase}")
         async def get_ct_status(
             patient_id: str,

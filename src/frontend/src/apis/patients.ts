@@ -73,6 +73,21 @@ export interface DisplayWindow {
   max: number
 }
 
+export interface PatientOutputFile {
+  path: string
+  name: string
+  size: number
+  modified_at: string
+  media_type: string
+  download_url: string
+}
+
+export interface PatientOutputsResult {
+  patient_id: string
+  output_root: string
+  files: PatientOutputFile[]
+}
+
 export async function listPatients(params: {
   keyword?: string
   page?: number
@@ -160,5 +175,21 @@ export async function downloadPatientReport(patientId: string): Promise<Blob> {
   const response = await api.get(`/patients/${encodeURIComponent(patientId)}/report`, {
     responseType: 'blob',
   })
+  return response.data
+}
+
+export async function getPatientOutputs(patientId: string): Promise<PatientOutputsResult> {
+  const response = await get<BaseResponse<PatientOutputsResult>>(
+    `/patients/${encodeURIComponent(patientId)}/outputs`
+  )
+  return response.data.data
+}
+
+export async function downloadPatientOutput(patientId: string, filePath: string): Promise<Blob> {
+  const encodedPath = filePath.split('/').map(encodeURIComponent).join('/')
+  const response = await api.get(
+    `/patients/${encodeURIComponent(patientId)}/outputs/serve/${encodedPath}`,
+    { responseType: 'blob' }
+  )
   return response.data
 }

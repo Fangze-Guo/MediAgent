@@ -11,6 +11,10 @@
             <template #icon><FileTextOutlined /></template>
             {{ t('views_PatientDetailView.report.exportPdf') }}
           </a-button>
+          <a-button class="header-action header-action-outputs" :loading="loadingOutputs" @click="openOutputsModal">
+            <template #icon><FolderOpenOutlined /></template>
+            Outputs
+          </a-button>
         </div>
         <div class="header-main">
           <span class="avatar">{{ initials(patient?.name || patientId) }}</span>
@@ -278,6 +282,73 @@
         :cache-key="viewerTarget.cacheKey"
       />
     </a-modal>
+
+    <a-modal
+      v-model:open="outputsOpen"
+      title="Agent outputs"
+      width="860px"
+      :footer="null"
+      class="outputs-modal"
+    >
+      <div v-if="outputRoot" class="output-root">{{ outputRoot }}</div>
+      <div class="outputs-modal-toolbar">
+        <span>{{ outputFiles.length }} files</span>
+        <a-button class="ct-icon-action" :loading="loadingOutputs" title="Refresh outputs" @click="fetchPatientOutputs">
+          <template #icon><ReloadOutlined /></template>
+        </a-button>
+      </div>
+      <a-spin :spinning="loadingOutputs">
+        <div v-if="visibleOutputTreeNodes.length" class="output-tree">
+          <div
+            v-for="node in visibleOutputTreeNodes"
+            :key="node.id"
+            class="output-tree-row"
+            :class="node.kind"
+            :style="{ '--tree-depth': node.depth }"
+          >
+            <button
+              v-if="node.kind === 'folder'"
+              class="output-tree-main output-tree-folder-button"
+              type="button"
+              @click="toggleOutputFolder(node.path)"
+            >
+              <span class="output-tree-chevron">
+                <DownOutlined v-if="isOutputFolderExpanded(node.path)" />
+                <RightOutlined v-else />
+              </span>
+              <span class="output-tree-icon"><FolderFilled /></span>
+              <strong>{{ node.name }}</strong>
+              <span>{{ node.fileCount }} files</span>
+            </button>
+            <template v-else-if="node.file">
+              <div class="output-file-main">
+                <span class="output-tree-spacer"></span>
+                <span class="output-tree-icon"><FileOutlined /></span>
+                <div>
+                  <strong>{{ node.file.name }}</strong>
+                </div>
+              </div>
+              <div class="output-file-meta">
+                <span>{{ formatFileSize(node.file.size) }}</span>
+                <span>{{ formatDateTime(node.file.modified_at) }}</span>
+                <a-button
+                  class="ct-icon-action"
+                  :loading="downloadingOutputPath === node.file.path"
+                  :title="`Download ${node.file.name}`"
+                  @click="handleDownloadOutput(node.file)"
+                >
+                  <template #icon><DownloadOutlined /></template>
+                </a-button>
+              </div>
+            </template>
+          </div>
+        </div>
+        <div v-else class="outputs-empty">
+          <FolderOpenOutlined />
+          <span>No output files yet</span>
+        </div>
+      </a-spin>
+    </a-modal>
   </div>
 </template>
 
@@ -290,7 +361,14 @@ import {
   ArrowLeftOutlined,
   CameraOutlined,
   DeleteOutlined,
+  DownloadOutlined,
+  DownOutlined,
+  FileOutlined,
   FileTextOutlined,
+  FolderFilled,
+  FolderOpenOutlined,
+  ReloadOutlined,
+  RightOutlined,
   UploadOutlined,
   ZoomInOutlined,
 } from '@ant-design/icons-vue'
@@ -299,13 +377,16 @@ import {
   deletePatientCt,
   deletePatientMask,
   downloadPatientReport,
+  downloadPatientOutput,
   getPatient,
   getPatientCtStatus,
   getPatientMaskStatus,
+  getPatientOutputs,
   uploadPatientCt,
   uploadPatientMask,
   type CtPhase,
   type MaskType,
+  type PatientOutputFile,
   type PatientCtStatus,
   type PatientInfo,
   type PatientMaskStatus,
@@ -344,6 +425,12 @@ const deletingPhase = ref<Record<CtPhase, boolean>>({ pre: false, post: false })
 const uploadingMaskKeys = ref<Record<string, boolean>>({})
 const deletingMaskKeys = ref<Record<string, boolean>>({})
 const exportingReport = ref(false)
+const loadingOutputs = ref(false)
+const downloadingOutputPath = ref<string | null>(null)
+const outputsOpen = ref(false)
+const outputRoot = ref('')
+const outputFiles = ref<PatientOutputFile[]>([])
+const expandedOutputFolders = ref<Record<string, boolean>>({})
 const maskGroupOverrides = ref<Record<string, boolean>>({})
 const viewerOpen = ref(false)
 const viewerTitle = ref('')
@@ -411,6 +498,99 @@ const analysisModules = computed(() => [
     desc: t('views_PatientDetailView.modules.mpr.desc'),
   },
 ])
+
+interface OutputTreeNode {
+  id: string
+  kind: 'folder' | 'file'
+  name: string
+  path: string
+  depth: number
+  fileCount?: number
+  file?: PatientOutputFile
+}
+
+interface OutputTreeFolder {
+  name: string
+  path: string
+  folders: Map<string, OutputTreeFolder>
+  files: PatientOutputFile[]
+}
+
+function createOutputFolder(name: string, path: string): OutputTreeFolder {
+  return { name, path, folders: new Map(), files: [] }
+}
+
+const outputTreeRoot = computed(() => {
+  const root = createOutputFolder('agent_outputs', 'agent_outputs')
+  for (const file of outputFiles.value) {
+    const parts = file.path.split('/').filter(Boolean)
+    let folder = root
+    for (const part of parts.slice(0, -1)) {
+      const childPath = `${folder.path}/${part}`
+      let child = folder.folders.get(part)
+      if (!child) {
+        child = createOutputFolder(part, childPath)
+        folder.folders.set(part, child)
+      }
+      folder = child
+    }
+    folder.files.push(file)
+  }
+  return root
+})
+
+function outputFolderFileCount(folder: OutputTreeFolder): number {
+  let total = folder.files.length
+  for (const child of folder.folders.values()) {
+    total += outputFolderFileCount(child)
+  }
+  return total
+}
+
+function isOutputFolderExpanded(path: string) {
+  return Boolean(expandedOutputFolders.value[path])
+}
+
+function toggleOutputFolder(path: string) {
+  expandedOutputFolders.value = {
+    ...expandedOutputFolders.value,
+    [path]: !isOutputFolderExpanded(path),
+  }
+}
+
+const visibleOutputTreeNodes = computed<OutputTreeNode[]>(() => {
+  const nodes: OutputTreeNode[] = []
+  const visit = (folder: OutputTreeFolder, depth: number) => {
+    nodes.push({
+      id: `folder:${folder.path}`,
+      kind: 'folder',
+      name: folder.name,
+      path: folder.path,
+      depth,
+      fileCount: outputFolderFileCount(folder),
+    })
+    if (!isOutputFolderExpanded(folder.path)) return
+    const folders = Array.from(folder.folders.values()).sort((left, right) => left.name.localeCompare(right.name))
+    for (const child of folders) {
+      visit(child, depth + 1)
+    }
+    const files = folder.files.slice().sort((left, right) => left.name.localeCompare(right.name))
+    for (const file of files) {
+      nodes.push({
+        id: `file:${file.path}`,
+        kind: 'file',
+        name: file.name,
+        path: file.path,
+        depth: depth + 1,
+        file,
+      })
+    }
+  }
+  if (outputFiles.value.length) {
+    visit(outputTreeRoot.value, 0)
+  }
+  return nodes
+})
 
 const maskGroups = computed(() => [
   {
@@ -498,6 +678,7 @@ async function fetchPatientDetail() {
       lungPostStatus,
       tumorPreStatus,
       tumorPostStatus,
+      outputs,
     ] = await Promise.all([
       getPatient(patientId.value),
       getPatientCtStatus(patientId.value, 'pre'),
@@ -510,6 +691,10 @@ async function fetchPatientDetail() {
       getPatientMaskStatus(patientId.value, 'lung', 'post'),
       getPatientMaskStatus(patientId.value, 'tumor', 'pre'),
       getPatientMaskStatus(patientId.value, 'tumor', 'post'),
+      getPatientOutputs(patientId.value).catch((error) => {
+        console.error('Load patient outputs failed:', error)
+        return { patient_id: patientId.value, output_root: '', files: [] }
+      }),
     ])
     patient.value = patientInfo
     preCt.value = preStatus
@@ -522,6 +707,8 @@ async function fetchPatientDetail() {
     lungPostMask.value = lungPostStatus
     tumorPreMask.value = tumorPreStatus
     tumorPostMask.value = tumorPostStatus
+    outputRoot.value = outputs.output_root
+    outputFiles.value = outputs.files
   } catch (error) {
     console.error('Load patient detail failed:', error)
     message.error(t('views_PatientDetailView.loadFailed'))
@@ -530,8 +717,27 @@ async function fetchPatientDetail() {
   }
 }
 
+async function fetchPatientOutputs() {
+  loadingOutputs.value = true
+  try {
+    const outputs = await getPatientOutputs(patientId.value)
+    outputRoot.value = outputs.output_root
+    outputFiles.value = outputs.files
+  } catch (error: any) {
+    console.error('Load patient outputs failed:', error)
+    message.error(error?.message || 'Failed to load output files')
+  } finally {
+    loadingOutputs.value = false
+  }
+}
+
 function goBack() {
   router.push('/patients')
+}
+
+async function openOutputsModal() {
+  outputsOpen.value = true
+  await fetchPatientOutputs()
 }
 
 async function handleExportReport() {
@@ -551,6 +757,26 @@ async function handleExportReport() {
     message.error(error?.message || t('views_PatientDetailView.report.exportFailed'))
   } finally {
     exportingReport.value = false
+  }
+}
+
+async function handleDownloadOutput(file: PatientOutputFile) {
+  downloadingOutputPath.value = file.path
+  try {
+    const blob = await downloadPatientOutput(patientId.value, file.path)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = file.name
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (error: any) {
+    console.error('Download patient output failed:', error)
+    message.error(error?.message || 'Failed to download output file')
+  } finally {
+    downloadingOutputPath.value = null
   }
 }
 
@@ -915,6 +1141,19 @@ function formatOption(group: OptionGroup, value?: string | null) {
   border-color: #0b5f59;
   background: #0b5f59;
   box-shadow: 0 10px 22px rgba(15, 118, 110, 0.28);
+}
+
+.header-action-outputs {
+  color: #334155;
+  border-color: #d8e1ea;
+  background: #fff;
+}
+
+.header-action-outputs:hover,
+.header-action-outputs:focus {
+  color: #0f766e;
+  border-color: #cfe7e2;
+  background: #eef8f6;
 }
 
 .header-main {
@@ -1372,6 +1611,203 @@ function formatOption(group: OptionGroup, value?: string | null) {
   color: #0f766e;
 }
 
+.output-root {
+  margin: 0 0 10px;
+  padding: 7px 9px;
+  overflow: hidden;
+  background: #f8fafc;
+  border: 1px solid #edf0f5;
+  border-radius: 6px;
+  color: #667085;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outputs-modal-toolbar {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: #667085;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.output-tree {
+  max-height: min(62vh, 620px);
+  overflow: auto;
+  border: 1px solid var(--border-color, #d8dee4);
+  border-radius: 8px;
+  background: var(--bg-primary, #fff);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.output-tree-row {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border-color, #d8dee4);
+  background: var(--bg-primary, #fff);
+  cursor: default;
+  transition: all 0.15s ease;
+}
+
+.output-tree-row:last-child {
+  border-bottom: 0;
+}
+
+.output-tree-row.folder:hover,
+.output-tree-row.file:hover {
+  background: var(--hover-bg, #f6f8fa);
+  border-left: 3px solid var(--link-color, #1a73e8);
+}
+
+.output-tree-row:hover .output-tree-main,
+.output-tree-row:hover .output-file-main {
+  padding-left: calc(var(--tree-depth) * 20px + 9px);
+}
+
+.output-tree-main,
+.output-file-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px 9px calc(var(--tree-depth) * 20px + 12px);
+}
+
+.output-tree-folder-button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.output-tree-chevron {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: var(--text-secondary, #57606a);
+  font-size: 10px;
+}
+
+.output-tree-spacer {
+  width: 16px;
+  flex: 0 0 auto;
+}
+
+.output-tree-row:hover .output-tree-chevron {
+  color: var(--link-color, #1a73e8);
+}
+
+.output-tree-icon {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  font-size: 16px;
+  transition: transform 0.2s ease;
+}
+
+.output-tree-row:hover .output-tree-icon {
+  transform: scale(1.1);
+}
+
+.output-tree-row.folder .output-tree-icon {
+  color: #54aeff;
+  font-size: 15px;
+}
+
+.output-tree-row.file .output-tree-icon {
+  color: #57606a;
+  font-size: 16px;
+}
+
+.output-tree-main strong,
+.output-file-main strong,
+.output-file-main span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.output-tree-main strong,
+.output-file-main strong {
+  color: var(--link-color, #1a73e8);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.output-tree-row:hover .output-tree-main strong,
+.output-tree-row:hover .output-file-main strong {
+  color: var(--link-hover, #0969da);
+  text-decoration: underline;
+}
+
+.output-tree-row.folder .output-tree-main strong {
+  color: var(--text-primary, #24292f);
+  text-decoration: none;
+}
+
+.output-tree-main span,
+.output-file-main span {
+  color: var(--text-secondary, #57606a);
+  font-size: 12px;
+}
+
+.output-file-meta {
+  width: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 6px 12px 6px 0;
+  color: var(--text-secondary, #57606a);
+  font-family: 'SFMono-Regular', 'Consolas', monospace;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.output-file-meta .ct-icon-action {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.outputs-empty {
+  min-height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  color: #667085;
+}
+
+.outputs-empty :deep(svg) {
+  color: #0f766e;
+  font-size: 24px;
+}
+
 .module-panel {
   min-height: 210px;
 }
@@ -1395,6 +1831,14 @@ function formatOption(group: OptionGroup, value?: string | null) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .output-tree-row {
+    grid-template-columns: 1fr;
+  }
+
+  .output-file-meta {
+    justify-content: space-between;
+  }
+
 }
 
 @media (max-width: 640px) {
@@ -1408,11 +1852,12 @@ function formatOption(group: OptionGroup, value?: string | null) {
   }
 
   .header-actions {
+    flex-wrap: wrap;
     justify-content: space-between;
   }
 
   .header-action {
-    flex: 1;
+    flex: 1 1 120px;
     justify-content: center;
   }
 
