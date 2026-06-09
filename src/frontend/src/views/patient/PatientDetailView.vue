@@ -87,7 +87,7 @@
                   <span>{{ t('views_PatientDetailView.pre.empty') }}</span>
                 </div>
               <div class="ct-action-bar">
-                <a-button class="ct-primary-action" :loading="uploadingPhase === 'pre'" @click="triggerCtUpload('pre')">
+                <a-button class="ct-primary-action" :loading="uploadingPhase.pre" @click="triggerCtUpload('pre')">
                   <template #icon><UploadOutlined /></template>
                   {{ preCt.status === 'ready' ? t('views_PatientDetailView.ct.replace') : t('views_PatientDetailView.ct.uploadPre') }}
                 </a-button>
@@ -99,7 +99,7 @@
                   ok-type="danger"
                   @confirm="handleDeleteCt('pre')"
                 >
-                  <a-button class="ct-icon-action" danger :loading="deletingPhase === 'pre'" :title="t('views_PatientDetailView.ct.delete')">
+                  <a-button class="ct-icon-action" danger :loading="deletingPhase.pre" :title="t('views_PatientDetailView.ct.delete')">
                     <template #icon><DeleteOutlined /></template>
                   </a-button>
                 </a-popconfirm>
@@ -143,7 +143,7 @@
                 <span>{{ t('views_PatientDetailView.post.empty') }}</span>
               </div>
               <div class="ct-action-bar">
-                <a-button class="ct-primary-action" :loading="uploadingPhase === 'post'" @click="triggerCtUpload('post')">
+                <a-button class="ct-primary-action" :loading="uploadingPhase.post" @click="triggerCtUpload('post')">
                   <template #icon><UploadOutlined /></template>
                   {{ postCt.status === 'ready' ? t('views_PatientDetailView.ct.replace') : t('views_PatientDetailView.ct.uploadPost') }}
                 </a-button>
@@ -155,21 +155,13 @@
                   ok-type="danger"
                   @confirm="handleDeleteCt('post')"
                 >
-                  <a-button class="ct-icon-action" danger :loading="deletingPhase === 'post'" :title="t('views_PatientDetailView.ct.delete')">
+                  <a-button class="ct-icon-action" danger :loading="deletingPhase.post" :title="t('views_PatientDetailView.ct.delete')">
                     <template #icon><DeleteOutlined /></template>
                   </a-button>
                 </a-popconfirm>
               </div>
             </section>
           </div>
-
-          <input
-            ref="ctInputRef"
-            type="file"
-            class="hidden-file-input"
-            accept=".nii,.gz,.dcm,.zip"
-            @change="handleCtFileChange"
-          />
 
           <div class="section-grid two">
             <section v-for="group in maskGroups" :key="group.key" class="panel feature-panel full-span" :class="{ collapsed: !isMaskGroupExpanded(group) }">
@@ -209,7 +201,7 @@
                       </div>
                     </template>
                     <div v-else class="ct-file-summary">
-                      <component :is="group.icon" />
+                      <CameraOutlined />
                       <div>
                         <strong>{{ slot.status.file_name }}</strong>
                         <span>{{ formatFileSize(slot.status.file_size) }} · {{ formatDateTime(slot.status.uploaded_at) }}</span>
@@ -220,13 +212,13 @@
                     </a-button>
                   </div>
                   <div v-else class="feature-window">
-                    <component :is="group.icon" />
+                    <CameraOutlined />
                     <span>{{ group.emptyText }}</span>
                   </div>
                   <div class="ct-action-bar">
                     <a-button
                       class="ct-primary-action"
-                      :loading="uploadingMaskKey === maskKey(group.maskType, slot.phase)"
+                      :loading="uploadingMaskKeys[maskKey(group.maskType, slot.phase)]"
                       @click="triggerMaskUpload(group.maskType, slot.phase)"
                     >
                       <template #icon><UploadOutlined /></template>
@@ -243,7 +235,7 @@
                       <a-button
                         class="ct-icon-action"
                         danger
-                        :loading="deletingMaskKey === maskKey(group.maskType, slot.phase)"
+                        :loading="deletingMaskKeys[maskKey(group.maskType, slot.phase)]"
                         :title="t('views_PatientDetailView.mask.delete')"
                       >
                         <template #icon><DeleteOutlined /></template>
@@ -255,19 +247,8 @@
             </section>
           </div>
 
-          <input
-            ref="maskInputRef"
-            type="file"
-            class="hidden-file-input"
-            accept=".nii,.gz"
-            @change="handleMaskFileChange"
-          />
-
           <div class="section-grid module-grid">
             <section v-for="module in analysisModules" :key="module.key" class="panel module-panel">
-              <div class="module-icon">
-                <component :is="module.icon" />
-              </div>
               <h2>{{ module.title }}</h2>
               <p>{{ module.desc }}</p>
               <a-button disabled>{{ t('views_PatientDetailView.notConfigured') }}</a-button>
@@ -307,11 +288,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import {
   ArrowLeftOutlined,
-  BarChartOutlined,
   CameraOutlined,
   DeleteOutlined,
   FileTextOutlined,
-  FundProjectionScreenOutlined,
   UploadOutlined,
   ZoomInOutlined,
 } from '@ant-design/icons-vue'
@@ -360,14 +339,10 @@ const lungPreMask = ref<PatientMaskStatus>(emptyMask('lung', 'pre'))
 const lungPostMask = ref<PatientMaskStatus>(emptyMask('lung', 'post'))
 const tumorPreMask = ref<PatientMaskStatus>(emptyMask('tumor', 'pre'))
 const tumorPostMask = ref<PatientMaskStatus>(emptyMask('tumor', 'post'))
-const selectedUploadPhase = ref<CtPhase | null>(null)
-const uploadingPhase = ref<CtPhase | null>(null)
-const deletingPhase = ref<CtPhase | null>(null)
-const ctInputRef = ref<HTMLInputElement | null>(null)
-const selectedMaskTarget = ref<{ maskType: MaskType; phase: CtPhase } | null>(null)
-const uploadingMaskKey = ref<string | null>(null)
-const deletingMaskKey = ref<string | null>(null)
-const maskInputRef = ref<HTMLInputElement | null>(null)
+const uploadingPhase = ref<Record<CtPhase, boolean>>({ pre: false, post: false })
+const deletingPhase = ref<Record<CtPhase, boolean>>({ pre: false, post: false })
+const uploadingMaskKeys = ref<Record<string, boolean>>({})
+const deletingMaskKeys = ref<Record<string, boolean>>({})
 const exportingReport = ref(false)
 const maskGroupOverrides = ref<Record<string, boolean>>({})
 const viewerOpen = ref(false)
@@ -427,13 +402,11 @@ const workflowSteps = computed(() => [
 const analysisModules = computed(() => [
   {
     key: 'bc',
-    icon: BarChartOutlined,
     title: t('views_PatientDetailView.modules.bc.title'),
     desc: t('views_PatientDetailView.modules.bc.desc'),
   },
   {
     key: 'mpr',
-    icon: FundProjectionScreenOutlined,
     title: t('views_PatientDetailView.modules.mpr.title'),
     desc: t('views_PatientDetailView.modules.mpr.desc'),
   },
@@ -444,7 +417,6 @@ const maskGroups = computed(() => [
     key: 'body-composition',
     maskType: 'body-composition' as MaskType,
     title: 'BODY COMPOSITION',
-    icon: BarChartOutlined,
     emptyText: t('views_PatientDetailView.bodyComposition.empty'),
     slots: [
       { phase: 'pre' as CtPhase, label: t('views_PatientDetailView.mask.pre'), status: bodyPreMask.value },
@@ -455,7 +427,6 @@ const maskGroups = computed(() => [
     key: 'spine',
     maskType: 'spine' as MaskType,
     title: 'SPINE',
-    icon: FundProjectionScreenOutlined,
     emptyText: t('views_PatientDetailView.spine.empty'),
     slots: [
       { phase: 'pre' as CtPhase, label: t('views_PatientDetailView.mask.pre'), status: spinePreMask.value },
@@ -466,7 +437,6 @@ const maskGroups = computed(() => [
     key: 'lung',
     maskType: 'lung' as MaskType,
     title: 'LUNG',
-    icon: CameraOutlined,
     emptyText: t('views_PatientDetailView.lung.empty'),
     slots: [
       { phase: 'pre' as CtPhase, label: t('views_PatientDetailView.mask.pre'), status: lungPreMask.value },
@@ -477,7 +447,6 @@ const maskGroups = computed(() => [
     key: 'tumor',
     maskType: 'tumor' as MaskType,
     title: 'TUMOR',
-    icon: FileTextOutlined,
     emptyText: t('views_PatientDetailView.tumor.empty'),
     slots: [
       { phase: 'pre' as CtPhase, label: t('views_PatientDetailView.mask.pre'), status: tumorPreMask.value },
@@ -586,20 +555,20 @@ async function handleExportReport() {
 }
 
 function triggerCtUpload(phase: CtPhase) {
-  selectedUploadPhase.value = phase
-  if (ctInputRef.value) {
-    ctInputRef.value.value = ''
-    ctInputRef.value.click()
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.nii,.gz,.dcm,.zip'
+  input.onchange = () => {
+    const file = input.files?.[0]
+    if (file) {
+      void uploadCtFile(phase, file)
+    }
   }
+  input.click()
 }
 
-async function handleCtFileChange(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  const phase = selectedUploadPhase.value
-  if (!file || !phase) return
-
-  uploadingPhase.value = phase
+async function uploadCtFile(phase: CtPhase, file: File) {
+  uploadingPhase.value[phase] = true
   try {
     const status = await uploadPatientCt(patientId.value, phase, file)
     if (phase === 'pre') preCt.value = status
@@ -609,14 +578,12 @@ async function handleCtFileChange(event: Event) {
     console.error('Upload CT failed:', error)
     message.error(error?.message || t('views_PatientDetailView.ct.uploadFailed'))
   } finally {
-    uploadingPhase.value = null
-    selectedUploadPhase.value = null
-    input.value = ''
+    uploadingPhase.value[phase] = false
   }
 }
 
 async function handleDeleteCt(phase: CtPhase) {
-  deletingPhase.value = phase
+  deletingPhase.value[phase] = true
   try {
     const status = await deletePatientCt(patientId.value, phase)
     if (phase === 'pre') preCt.value = status
@@ -626,7 +593,7 @@ async function handleDeleteCt(phase: CtPhase) {
     console.error('Delete CT failed:', error)
     message.error(error?.message || t('views_PatientDetailView.ct.deleteFailed'))
   } finally {
-    deletingPhase.value = null
+    deletingPhase.value[phase] = false
   }
 }
 
@@ -665,39 +632,39 @@ async function refreshCtStatus(phase: CtPhase) {
 }
 
 function triggerMaskUpload(maskType: MaskType, phase: CtPhase) {
-  selectedMaskTarget.value = { maskType, phase }
-  if (maskInputRef.value) {
-    maskInputRef.value.value = ''
-    maskInputRef.value.click()
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.nii,.gz'
+  input.onchange = () => {
+    const file = input.files?.[0]
+    if (file) {
+      void uploadMaskFile(maskType, phase, file)
+    }
   }
+  input.click()
 }
 
-async function handleMaskFileChange(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  const target = selectedMaskTarget.value
-  if (!file || !target) return
-
-  uploadingMaskKey.value = maskKey(target.maskType, target.phase)
+async function uploadMaskFile(maskType: MaskType, phase: CtPhase, file: File) {
+  const key = maskKey(maskType, phase)
+  uploadingMaskKeys.value[key] = true
   try {
-    const status = await uploadPatientMask(patientId.value, target.maskType, target.phase, file)
+    const status = await uploadPatientMask(patientId.value, maskType, phase, file)
     setMaskStatus(status)
-    if (target.maskType === 'tumor') {
-      await refreshCtStatus(target.phase)
+    if (maskType === 'tumor') {
+      await refreshCtStatus(phase)
     }
     message.success(t('views_PatientDetailView.mask.uploaded'))
   } catch (error: any) {
     console.error('Upload mask failed:', error)
     message.error(error?.message || t('views_PatientDetailView.mask.uploadFailed'))
   } finally {
-    uploadingMaskKey.value = null
-    selectedMaskTarget.value = null
-    input.value = ''
+    uploadingMaskKeys.value[key] = false
   }
 }
 
 async function handleDeleteMask(maskType: MaskType, phase: CtPhase) {
-  deletingMaskKey.value = maskKey(maskType, phase)
+  const key = maskKey(maskType, phase)
+  deletingMaskKeys.value[key] = true
   try {
     const status = await deletePatientMask(patientId.value, maskType, phase)
     setMaskStatus(status)
@@ -709,7 +676,7 @@ async function handleDeleteMask(maskType: MaskType, phase: CtPhase) {
     console.error('Delete mask failed:', error)
     message.error(error?.message || t('views_PatientDetailView.mask.deleteFailed'))
   } finally {
-    deletingMaskKey.value = null
+    deletingMaskKeys.value[key] = false
   }
 }
 
@@ -1407,19 +1374,6 @@ function formatOption(group: OptionGroup, value?: string | null) {
 
 .module-panel {
   min-height: 210px;
-}
-
-.module-icon {
-  width: 40px;
-  height: 40px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 14px;
-  border-radius: 8px;
-  background: #e8f3f1;
-  color: #0f766e;
-  font-size: 20px;
 }
 
 .module-panel p {
