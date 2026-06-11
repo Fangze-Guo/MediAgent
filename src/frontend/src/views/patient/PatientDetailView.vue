@@ -61,7 +61,15 @@
                 </div>
                 <a-tag :color="ctStatusColor(preCt.status)">{{ ctStatusLabel(preCt.status) }}</a-tag>
               </div>
-              <div v-if="preCt.status === 'ready'" class="ct-ready">
+              <div
+                v-if="preCt.status === 'ready'"
+                class="ct-ready preview-drop-zone"
+                :class="{ 'drop-active': isPreviewDropActive(ctDropTarget('pre')) }"
+                @dragenter.prevent="setPreviewDrag(ctDropTarget('pre'), $event)"
+                @dragover.prevent="setPreviewDrag(ctDropTarget('pre'), $event)"
+                @dragleave.self.prevent="clearPreviewDrag(ctDropTarget('pre'))"
+                @drop.prevent="handleCtDrop('pre', $event)"
+              >
                 <div v-if="hasPreviewPlanes(preCt)" class="mpr-preview-grid">
                   <div v-for="plane in previewPlaneEntries(preCt)" :key="plane.key" class="mpr-preview-pane">
                     <img :src="previewSrc(plane.url, preCt)" :alt="`${plane.label} ${preCt.file_name || 'Pre CT'}`" />
@@ -85,10 +93,27 @@
                 <a-button class="preview-zoom-action" :title="t('common.view')" @click="openCtViewer('pre')">
                   <template #icon><ZoomInOutlined /></template>
                 </a-button>
+                <div class="drop-overlay">
+                  <UploadOutlined />
+                  <span>{{ t('views_PatientDetailView.dragDrop.ct') }}</span>
+                </div>
               </div>
-              <div v-else class="scan-placeholder">
+              <div
+                v-else
+                class="scan-placeholder preview-drop-zone"
+                :class="{ 'drop-active': isPreviewDropActive(ctDropTarget('pre')) }"
+                @dragenter.prevent="setPreviewDrag(ctDropTarget('pre'), $event)"
+                @dragover.prevent="setPreviewDrag(ctDropTarget('pre'), $event)"
+                @dragleave.self.prevent="clearPreviewDrag(ctDropTarget('pre'))"
+                @drop.prevent="handleCtDrop('pre', $event)"
+              >
                 <CameraOutlined />
                   <span>{{ t('views_PatientDetailView.pre.empty') }}</span>
+                  <small>{{ t('views_PatientDetailView.dragDrop.ctHint') }}</small>
+                  <div class="drop-overlay">
+                    <UploadOutlined />
+                    <span>{{ t('views_PatientDetailView.dragDrop.ct') }}</span>
+                  </div>
                 </div>
               <div class="ct-action-bar">
                 <a-button class="ct-primary-action" :loading="uploadingPhase.pre" @click="triggerCtUpload('pre')">
@@ -117,7 +142,15 @@
                 </div>
                 <a-tag :color="ctStatusColor(postCt.status)">{{ ctStatusLabel(postCt.status) }}</a-tag>
               </div>
-              <div v-if="postCt.status === 'ready'" class="ct-ready">
+              <div
+                v-if="postCt.status === 'ready'"
+                class="ct-ready preview-drop-zone"
+                :class="{ 'drop-active': isPreviewDropActive(ctDropTarget('post')) }"
+                @dragenter.prevent="setPreviewDrag(ctDropTarget('post'), $event)"
+                @dragover.prevent="setPreviewDrag(ctDropTarget('post'), $event)"
+                @dragleave.self.prevent="clearPreviewDrag(ctDropTarget('post'))"
+                @drop.prevent="handleCtDrop('post', $event)"
+              >
                 <div v-if="hasPreviewPlanes(postCt)" class="mpr-preview-grid">
                   <div v-for="plane in previewPlaneEntries(postCt)" :key="plane.key" class="mpr-preview-pane">
                     <img :src="previewSrc(plane.url, postCt)" :alt="`${plane.label} ${postCt.file_name || 'Post CT'}`" />
@@ -141,10 +174,27 @@
                 <a-button class="preview-zoom-action" :title="t('common.view')" @click="openCtViewer('post')">
                   <template #icon><ZoomInOutlined /></template>
                 </a-button>
+                <div class="drop-overlay">
+                  <UploadOutlined />
+                  <span>{{ t('views_PatientDetailView.dragDrop.ct') }}</span>
+                </div>
               </div>
-              <div v-else class="scan-placeholder">
+              <div
+                v-else
+                class="scan-placeholder preview-drop-zone"
+                :class="{ 'drop-active': isPreviewDropActive(ctDropTarget('post')) }"
+                @dragenter.prevent="setPreviewDrag(ctDropTarget('post'), $event)"
+                @dragover.prevent="setPreviewDrag(ctDropTarget('post'), $event)"
+                @dragleave.self.prevent="clearPreviewDrag(ctDropTarget('post'))"
+                @drop.prevent="handleCtDrop('post', $event)"
+              >
                 <CameraOutlined />
                 <span>{{ t('views_PatientDetailView.post.empty') }}</span>
+                <small>{{ t('views_PatientDetailView.dragDrop.ctHint') }}</small>
+                <div class="drop-overlay">
+                  <UploadOutlined />
+                  <span>{{ t('views_PatientDetailView.dragDrop.ct') }}</span>
+                </div>
               </div>
               <div class="ct-action-bar">
                 <a-button class="ct-primary-action" :loading="uploadingPhase.post" @click="triggerCtUpload('post')">
@@ -186,7 +236,15 @@
                     <strong>{{ slot.label }}</strong>
                     <a-tag :color="maskStatusColor(slot.status.status)">{{ maskStatusLabel(slot.status.status) }}</a-tag>
                   </div>
-                  <div v-if="slot.status.status === 'ready'" class="ct-ready">
+                  <div
+                    v-if="slot.status.status === 'ready'"
+                    class="ct-ready preview-drop-zone"
+                    :class="{ 'drop-active': isPreviewDropActive(maskDropTarget(group.maskType, slot.phase)) }"
+                    @dragenter.prevent="setPreviewDrag(maskDropTarget(group.maskType, slot.phase), $event)"
+                    @dragover.prevent="setPreviewDrag(maskDropTarget(group.maskType, slot.phase), $event)"
+                    @dragleave.self.prevent="clearPreviewDrag(maskDropTarget(group.maskType, slot.phase))"
+                    @drop.prevent="handleMaskDrop(group.maskType, slot.phase, $event)"
+                  >
                     <div v-if="hasPreviewPlanes(slot.status)" class="mpr-preview-grid">
                       <div v-for="plane in previewPlaneEntries(slot.status)" :key="plane.key" class="mpr-preview-pane">
                         <img :src="previewSrc(plane.url, slot.status)" :alt="`${plane.label} ${slot.status.file_name || group.title}`" />
@@ -214,10 +272,27 @@
                     <a-button class="preview-zoom-action" :title="t('common.view')" @click="openMaskViewer(group.maskType, slot.phase)">
                       <template #icon><ZoomInOutlined /></template>
                     </a-button>
+                    <div class="drop-overlay">
+                      <UploadOutlined />
+                      <span>{{ t('views_PatientDetailView.dragDrop.mask') }}</span>
+                    </div>
                   </div>
-                  <div v-else class="feature-window">
+                  <div
+                    v-else
+                    class="feature-window preview-drop-zone"
+                    :class="{ 'drop-active': isPreviewDropActive(maskDropTarget(group.maskType, slot.phase)) }"
+                    @dragenter.prevent="setPreviewDrag(maskDropTarget(group.maskType, slot.phase), $event)"
+                    @dragover.prevent="setPreviewDrag(maskDropTarget(group.maskType, slot.phase), $event)"
+                    @dragleave.self.prevent="clearPreviewDrag(maskDropTarget(group.maskType, slot.phase))"
+                    @drop.prevent="handleMaskDrop(group.maskType, slot.phase, $event)"
+                  >
                     <CameraOutlined />
                     <span>{{ group.emptyText }}</span>
+                    <small>{{ t('views_PatientDetailView.dragDrop.maskHint') }}</small>
+                    <div class="drop-overlay">
+                      <UploadOutlined />
+                      <span>{{ t('views_PatientDetailView.dragDrop.mask') }}</span>
+                    </div>
                   </div>
                   <div class="ct-action-bar">
                     <a-button
@@ -442,6 +517,7 @@ const viewerTarget = ref<{
   maskVolumeUrl?: string | null
   cacheKey?: string | null
 } | null>(null)
+const activeDropTarget = ref<string | null>(null)
 
 const baselineItems = computed(() => [
   { label: t('views_PatientManageView.fields.sex'), value: formatOption('sex', patient.value?.sex) },
@@ -793,6 +869,48 @@ function triggerCtUpload(phase: CtPhase) {
   input.click()
 }
 
+function ctDropTarget(phase: CtPhase) {
+  return `ct:${phase}`
+}
+
+function maskDropTarget(maskType: MaskType, phase: CtPhase) {
+  return `mask:${maskType}:${phase}`
+}
+
+function setPreviewDrag(target: string, event?: DragEvent) {
+  if (event?.dataTransfer) {
+    event.dataTransfer.dropEffect = 'copy'
+  }
+  activeDropTarget.value = target
+}
+
+function clearPreviewDrag(target?: string) {
+  if (!target || activeDropTarget.value === target) {
+    activeDropTarget.value = null
+  }
+}
+
+function isPreviewDropActive(target: string) {
+  return activeDropTarget.value === target
+}
+
+function firstDroppedFile(event: DragEvent) {
+  const file = event.dataTransfer?.files?.[0]
+  if (!file) {
+    message.warning(t('views_PatientDetailView.dragDrop.noFile'))
+  }
+  return file
+}
+
+function handleCtDrop(phase: CtPhase, event: DragEvent) {
+  clearPreviewDrag(ctDropTarget(phase))
+  if (uploadingPhase.value[phase]) return
+  const file = firstDroppedFile(event)
+  if (file) {
+    void uploadCtFile(phase, file)
+  }
+}
+
 async function uploadCtFile(phase: CtPhase, file: File) {
   uploadingPhase.value[phase] = true
   try {
@@ -868,6 +986,16 @@ function triggerMaskUpload(maskType: MaskType, phase: CtPhase) {
     }
   }
   input.click()
+}
+
+function handleMaskDrop(maskType: MaskType, phase: CtPhase, event: DragEvent) {
+  const key = maskKey(maskType, phase)
+  clearPreviewDrag(maskDropTarget(maskType, phase))
+  if (uploadingMaskKeys.value[key]) return
+  const file = firstDroppedFile(event)
+  if (file) {
+    void uploadMaskFile(maskType, phase, file)
+  }
 }
 
 async function uploadMaskFile(maskType: MaskType, phase: CtPhase, file: File) {
@@ -1359,6 +1487,7 @@ function formatOption(group: OptionGroup, value?: string | null) {
 }
 
 .scan-placeholder {
+  position: relative;
   height: var(--patient-preview-height);
   box-sizing: border-box;
   display: flex;
@@ -1373,6 +1502,7 @@ function formatOption(group: OptionGroup, value?: string | null) {
 }
 
 .feature-window {
+  position: relative;
   height: var(--patient-preview-height);
   box-sizing: border-box;
   display: flex;
@@ -1384,6 +1514,12 @@ function formatOption(group: OptionGroup, value?: string | null) {
   border: 1px dashed #cbd5e1;
   border-radius: 8px;
   color: #667085;
+}
+
+.scan-placeholder small,
+.feature-window small {
+  color: #94a3b8;
+  font-size: 12px;
 }
 
 .feature-window :deep(svg) {
@@ -1433,6 +1569,41 @@ function formatOption(group: OptionGroup, value?: string | null) {
   border: 1px solid #dbe5ef;
   border-radius: 8px;
   color: #0f766e;
+}
+
+.preview-drop-zone {
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+
+.preview-drop-zone.drop-active {
+  border-color: #0f766e;
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.16);
+}
+
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+}
+
+.drop-overlay :deep(svg) {
+  font-size: 28px;
+}
+
+.preview-drop-zone.drop-active .drop-overlay {
+  opacity: 1;
 }
 
 .preview-zoom-action {

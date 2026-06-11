@@ -795,6 +795,13 @@
       "deleted": "Mask deleted",
       "deleteFailed": "Failed to delete mask"
     },
+    "dragDrop": {
+      "ct": "Drop to upload CT",
+      "ctHint": "Drop .nii / .nii.gz / .dcm / .zip here",
+      "mask": "Drop to upload Mask",
+      "maskHint": "Drop .nii / .nii.gz here",
+      "noFile": "No uploadable file detected"
+    },
     "workflowSteps": {
       "pre": {
         "title": "Upload PRE CT",

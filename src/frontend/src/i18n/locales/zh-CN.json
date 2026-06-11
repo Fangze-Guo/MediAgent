@@ -795,6 +795,13 @@
       "deleted": "Mask 已删除",
       "deleteFailed": "Mask 删除失败"
     },
+    "dragDrop": {
+      "ct": "松开以上传 CT",
+      "ctHint": "可拖拽 .nii / .nii.gz / .dcm / .zip 到此处",
+      "mask": "松开以上传 Mask",
+      "maskHint": "可拖拽 .nii / .nii.gz 到此处",
+      "noFile": "未检测到可上传文件"
+    },
     "workflowSteps": {
       "pre": {
         "title": "上传 PRE CT",
