@@ -9,6 +9,7 @@ import json
 import logging
 import uuid
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, AsyncGenerator, Optional
 
@@ -233,6 +234,7 @@ class ClaudeAgent:
         self._permission_queue: asyncio.Queue = asyncio.Queue()  # 权限请求队列
         self._permission_events: dict[str, asyncio.Event] = {}  # request_id -> event
         self._permission_results: dict[str, bool] = {}  # request_id -> allow/deny
+        self._skill_event_queues: dict[str, set[asyncio.Queue]] = {}
 
         # ClaudeSDKClient 实例（每个会话一个）
         self._clients: dict[str, ClaudeSDKClient] = {}  # session_id -> client
@@ -282,9 +284,22 @@ class ClaudeAgent:
     def _detect_skill_from_bash_command(self, command: str) -> Optional[str]:
         """Return the skill whose executable script is actually invoked by a Bash command."""
         import re
+        import shlex
 
         if not command or re.search(r"(?:^|\s)(?:--help|-h)(?:\s|$)", command):
             return None
+
+        try:
+            parts = shlex.split(command)
+        except ValueError:
+            parts = command.split()
+        if any(Path(part).name == "run_skill_task.py" for part in parts):
+            for index, part in enumerate(parts):
+                if part == "--skill-id" and index + 1 < len(parts):
+                    return parts[index + 1]
+                if part.startswith("--skill-id="):
+                    return part.split("=", 1)[1]
+            return "run_skill_task"
 
         # Match interpreter-backed entrypoints such as:
         #   python /.../.claude/skills/lung-crop/scripts/run_lung_crop.py
@@ -305,6 +320,123 @@ class ClaudeAgent:
             return explicit_skill.group(1)
 
         return self._skill_script_map.get(Path(script_path).name)
+
+    def _ensure_runner_run_id(self, command: str) -> str:
+        """Inject a run_id for simple run_skill_task.py commands so manifest_path is known at submit time."""
+        import shlex
+
+        if not command or any(token in command for token in (";", "&&", "||", "|", "<", ">")):
+            return command
+        try:
+            parts = shlex.split(command)
+        except ValueError:
+            return command
+        if not any(Path(part).name == "run_skill_task.py" for part in parts):
+            return command
+
+        def option_value(name: str) -> Optional[str]:
+            for index, part in enumerate(parts):
+                if part == name and index + 1 < len(parts):
+                    return parts[index + 1]
+                prefix = f"{name}="
+                if part.startswith(prefix):
+                    return part[len(prefix):]
+            return None
+
+        if option_value("--run-id"):
+            return command
+        skill_id = option_value("--skill-id") or "skill_task"
+        phase = option_value("--phase") or "both"
+        slug = skill_id if phase == "both" else f"{skill_id}_{phase}"
+        run_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{slug.strip().lower().replace('-', '_')}"
+        return shlex.join([*parts, "--run-id", run_id])
+
+    def _register_skill_event_queue(self, conversation_id: Optional[str], queue: asyncio.Queue) -> None:
+        if conversation_id:
+            self._skill_event_queues.setdefault(conversation_id, set()).add(queue)
+
+    def _unregister_skill_event_queue(self, conversation_id: Optional[str], queue: asyncio.Queue) -> None:
+        if not conversation_id:
+            return
+        queues = self._skill_event_queues.get(conversation_id)
+        if not queues:
+            return
+        queues.discard(queue)
+        if not queues:
+            self._skill_event_queues.pop(conversation_id, None)
+
+    async def _publish_skill_event(self, conversation_id: str, event: dict) -> None:
+        for queue in list(self._skill_event_queues.get(conversation_id) or []):
+            await queue.put(event)
+
+    async def _submit_skill_task_from_bash(
+        self,
+        *,
+        command: str,
+        tool_use_id: Optional[Any] = None,
+        session_id: Optional[str] = None,
+        run_in_background: bool = False,
+        source: str = "tool_use",
+    ) -> Optional[str]:
+        """Register a Skill task when ClaudeCode invokes the Bash runner."""
+        detected_skill = self._detect_skill_from_bash_command(command)
+        if not detected_skill:
+            return None
+
+        map_keys: list[str] = []
+        if tool_use_id:
+            map_keys.append(str(tool_use_id))
+        if session_id and command:
+            map_keys.append(f"{session_id}|{command[:200]}")
+
+        for key in map_keys:
+            existing_task_id = self._tool_task_map.get(key)
+            if existing_task_id:
+                if tool_use_id:
+                    self._tool_task_map[str(tool_use_id)] = existing_task_id
+                logger.info(
+                    f"[SKILL_TASK] Reused task {existing_task_id} for '{detected_skill}' from {source}"
+                )
+                return existing_task_id
+
+        conversation_id = self._session_conversation_map.get(session_id or "", "")
+
+        from src.server_agent.service.SkillTaskManager import get_skill_task_manager
+        task_manager = get_skill_task_manager()
+        task_id = task_manager.submit(
+            skill_name=detected_skill,
+            params={
+                "command": command,
+                "run_in_background": run_in_background,
+                "registration_source": source,
+            },
+            conversation_id=conversation_id,
+        )
+
+        if not map_keys and command:
+            map_keys.append(f"{session_id or self._last_session_id or ''}|{command[:200]}")
+        for key in map_keys:
+            self._tool_task_map[key] = task_id
+
+        logger.info(
+            f"[SKILL_TASK] Registered task {task_id} for '{detected_skill}' "
+            f"from {source}, tool_use_id={tool_use_id}, session={session_id}"
+        )
+        event = {
+            "kind": "skill_submitted",
+            "taskId": task_id,
+            "skillName": detected_skill,
+            "conversationId": conversation_id,
+            "status": "running",
+            "provider": "claude",
+            "done": False,
+            "_is_skill_submitted": True,
+        }
+        if conversation_id:
+            await self._publish_skill_event(conversation_id, event)
+        else:
+            logger.warning(f"[SKILL_TASK] Task {task_id} has no conversation_id; skip SSE push")
+        return task_id
 
     def _rekey_session(self, old_session_id: str, new_session_id: str) -> None:
         """Replace the SDK startup handle with Claude CLI's persisted session ID."""
@@ -414,6 +546,56 @@ class ClaudeAgent:
         from src.server_agent.service.SkillTaskManager import get_skill_task_manager
         task_manager = get_skill_task_manager()
 
+        def _extract_runner_payload(text: str) -> dict:
+            import json as _json
+            payload: dict = {}
+            for line in (text or "").splitlines():
+                line = line.strip()
+                if not line.startswith("{") or not line.endswith("}"):
+                    continue
+                try:
+                    item = _json.loads(line)
+                except Exception:
+                    continue
+                if not isinstance(item, dict):
+                    continue
+                if item.get("event") in {"skill_task_start", "skill_task_finished"}:
+                    for key in ("patient_id", "skill_id", "run_id", "run_dir", "manifest_path"):
+                        if item.get(key):
+                            payload[key] = item[key]
+            return payload
+
+        runner_payload = _extract_runner_payload(response_text)
+        if runner_payload:
+            task_manager.update_params(task_id, runner_payload)
+            logger.info(f"[POST_TOOL_USE] Updated task {task_id} params from runner payload: {runner_payload}")
+
+        task = task_manager.get_task(task_id)
+        if task and (task.params.get("manifest_path") or task.params.get("run_dir")):
+            logger.info(f"[POST_TOOL_USE] Task {task_id} is manifest-tracked; skip Bash terminal state")
+            return {"continue_": True}  # type: ignore
+
+        def _read_manifest_status(manifest_path: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+            if not manifest_path:
+                return None, None
+            try:
+                manifest_file = Path(manifest_path)
+                if not manifest_file.is_file():
+                    return None, None
+                manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+                if not isinstance(manifest, dict):
+                    return None, None
+                status = manifest.get("status")
+                errors = manifest.get("errors") or []
+                error_text = "; ".join(str(item) for item in errors) if isinstance(errors, list) else str(errors)
+                return (status if isinstance(status, str) else None), (error_text or None)
+            except Exception as exc:
+                logger.warning(f"[POST_TOOL_USE] Failed to read manifest status: {exc}")
+                return None, None
+
+        response_indicates_background = "Command running in background" in response_text
+        manifest_path = runner_payload.get("manifest_path") if runner_payload else None
+
         if run_in_background and not is_error:
             # 4a. 后台任务：从 stdout 提取 PID，启动监控协程而非立即标记终态
             import re as _re
@@ -435,11 +617,34 @@ class ClaudeAgent:
                 task_manager.mark_finished(task_id, success=True)
                 logger.warning(f"[POST_TOOL_USE] BG task {task_id}: no PID found in stdout, marked success conservatively")
         else:
-            # 4b. 前台任务：命令已实际完成，直接用 is_error 判断终态
-            success = not is_error
-            error_msg = str(response_text)[:200] if not success else None
-            task_manager.mark_finished(task_id, success=success, error=error_msg)
-            logger.info(f"[POST_TOOL_USE] FG task {task_id} marked {'success' if success else 'failed'}")
+            if response_indicates_background:
+                # ClaudeCode auto-backgrounded the Bash command. This only means the shell
+                # accepted the job; the Skill itself is still tracked by manifest.json.
+                logger.info(f"[POST_TOOL_USE] Task {task_id} was auto-backgrounded by ClaudeCode; keep running")
+                return {"continue_": True}  # type: ignore
+
+            manifest_status, manifest_error = _read_manifest_status(manifest_path)
+            if manifest_status in {"success", "failed"}:
+                task_manager.mark_finished(
+                    task_id,
+                    success=manifest_status == "success",
+                    error=manifest_error if manifest_status == "failed" else None,
+                )
+                logger.info(f"[POST_TOOL_USE] Task {task_id} marked from manifest status={manifest_status}")
+            elif manifest_path:
+                # A runner command finished but its manifest is missing or not terminal.
+                # Avoid false success; leave the task visible as running so manifest polling
+                # or manual inspection can reveal the real state.
+                logger.warning(
+                    f"[POST_TOOL_USE] Runner finished but manifest is not terminal for task {task_id}: "
+                    f"manifest_path={manifest_path}, manifest_status={manifest_status}"
+                )
+            else:
+                # Non-runner Skill commands without a manifest still fall back to tool status.
+                success = not is_error
+                error_msg = str(response_text)[:200] if not success else None
+                task_manager.mark_finished(task_id, success=success, error=error_msg)
+                logger.info(f"[POST_TOOL_USE] FG task {task_id} marked {'success' if success else 'failed'}")
 
         return {"continue_": True}  # type: ignore
 
@@ -502,59 +707,32 @@ class ClaudeAgent:
         if tool_name == "Bash":
             command = input_data.get("command", "") if isinstance(input_data, dict) else ""
             run_in_background = input_data.get("run_in_background", False) if isinstance(input_data, dict) else False
+            command = self._ensure_runner_run_id(command)
+            if isinstance(input_data, dict):
+                input_data["command"] = command
 
             detected_skill = self._detect_skill_from_bash_command(command)
             if detected_skill:
                 logger.info(f"[PERMISSION] Skill detected: '{detected_skill}' (background={run_in_background})")
 
             if detected_skill:
-                skill_name = detected_skill
-
-                # 从映射表取 conversation_id
                 hook_session_id = getattr(context, "session_id", None) or (
                     context.get("session_id") if isinstance(context, dict) else None
                 ) or self._last_session_id or ""
-                conversation_id = self._session_conversation_map.get(hook_session_id, "")
-
-                from src.server_agent.service.SkillTaskManager import get_skill_task_manager
-                task_manager = get_skill_task_manager()
-
-                task_id = task_manager.submit(
-                    skill_name=skill_name,
-                    params={"command": command},
-                    conversation_id=conversation_id,
-                )
-                logger.info(f"[PERMISSION] Bash created skill task {task_id} for '{skill_name}' (running)")
-
-                # 在 _tool_task_map 中记录 tool_use_id -> task_id 映射。
-                # 后台任务由 _post_tool_use_hook 提取 PID 后启动监控协程，
-                # 前台任务则直接用 is_error 判断终态。
                 hook_tool_use_id = (
                     getattr(context, "tool_use_id", None) or
                     (context.get("tool_use_id") if isinstance(context, dict) else None)
                 )
-                if hook_tool_use_id:
-                    self._tool_task_map[str(hook_tool_use_id)] = task_id
-                    logger.info(f"[PERMISSION] _tool_task_map: {hook_tool_use_id} -> {task_id}")
-                else:
-                    # fallback：SDK 未暴露 tool_use_id，用 session+command 组合 key
-                    fallback_key = f"{hook_session_id}|{command[:200]}"
-                    self._tool_task_map[fallback_key] = task_id
-                    logger.info(f"[PERMISSION] _tool_task_map fallback key -> {task_id}")
+                await self._submit_skill_task_from_bash(
+                    command=command,
+                    tool_use_id=hook_tool_use_id,
+                    session_id=hook_session_id,
+                    run_in_background=run_in_background,
+                    source="permission_hook",
+                )
 
-                # 通知前端 Work Flow 面板
-                await self._permission_queue.put({
-                    "kind": "skill_submitted",
-                    "taskId": task_id,
-                    "skillName": skill_name,
-                    "status": "running",
-                    "provider": "claude",
-                    "done": False,
-                    "_is_skill_submitted": True,
-                })
-
-                # 放行，让 CC 自己执行
-                return PermissionResultAllow()
+                # 放行，让 CC 自己执行；updated_input 包含后端补齐的 --run-id。
+                return PermissionResultAllow(updated_input=input_data)
 
         # ===== 低风险 Bash 命令自动放行（已注释：全部放行后此段冗余） =====
         # if tool_name == "Bash":
@@ -767,6 +945,7 @@ class ClaudeAgent:
         session_id: Optional[str] = None,
         ws_callback: Optional[callable] = None,
         user_id: Optional[int] = None,
+        conversation_id: Optional[str] = None,
     ) -> AsyncGenerator[NormalizedMessage, None]:
         """
         执行查询并流式输出结果（使用 ClaudeSDKClient）
@@ -786,6 +965,8 @@ class ClaudeAgent:
         # JSONL 的 session_id，因此不能发送给前端或持久化到数据库。
         if not captured_session_id:
             captured_session_id = str(uuid.uuid4())
+        if conversation_id:
+            self._session_conversation_map[captured_session_id] = conversation_id
 
         # 创建中断事件
         interrupt_event = asyncio.Event()
@@ -862,6 +1043,20 @@ class ClaudeAgent:
                             ):
                                 self._rekey_session(captured_session_id, normalized.session_id)
                                 captured_session_id = normalized.session_id
+                            if (
+                                normalized.kind == MessageKind.TOOL_USE
+                                and normalized.tool_name == "Bash"
+                            ):
+                                tool_input = normalized.tool_input if isinstance(normalized.tool_input, dict) else {}
+                                command = tool_input.get("command", "")
+                                if command:
+                                    await self._submit_skill_task_from_bash(
+                                        command=command,
+                                        tool_use_id=normalized.tool_id,
+                                        session_id=normalized.session_id or captured_session_id,
+                                        run_in_background=bool(tool_input.get("run_in_background", False)),
+                                        source="tool_use_message",
+                                    )
                             if ws_callback:
                                 ws_callback(normalized)
                             yield normalized
@@ -1124,7 +1319,9 @@ class ClaudeAgent:
 
         # 创建一个内部队列来合并消息流和权限请求
         output_queue: asyncio.Queue = asyncio.Queue()
+        skill_event_queue: asyncio.Queue = asyncio.Queue()
         stream_done = asyncio.Event()
+        self._register_skill_event_queue(conversation_id, skill_event_queue)
 
         # 后台任务：监听权限队列并转发到输出队列
         async def permission_listener():
@@ -1135,31 +1332,43 @@ class ClaudeAgent:
                             self._permission_queue.get(),
                             timeout=0.1
                         )
-                        # skill_submitted 事件直接转发，不包装成权限请求
-                        if permission_data.get("_is_skill_submitted"):
-                            logger.info(f"[PERMISSION_LISTENER] Forwarding skill_submitted: {permission_data.get('skillName')}")
-                            await output_queue.put(("skill_submitted", permission_data))
-                        else:
-                            permission_msg = {
-                                "kind": MessageKind.PERMISSION_REQUEST,
-                                "sessionId": permission_data["session_id"],
-                                "toolName": permission_data["tool_name"],
-                                "input": permission_data["tool_input"],
-                                "requestId": permission_data["request_id"],
-                                "provider": "claude",
-                                "done": False,
-                            }
-                            logger.info(f"[PERMISSION_LISTENER] Forwarding permission request: {permission_data['tool_name']}")
-                            await output_queue.put(("permission", permission_msg))
+                        permission_msg = {
+                            "kind": MessageKind.PERMISSION_REQUEST,
+                            "sessionId": permission_data["session_id"],
+                            "toolName": permission_data["tool_name"],
+                            "input": permission_data["tool_input"],
+                            "requestId": permission_data["request_id"],
+                            "provider": "claude",
+                            "done": False,
+                        }
+                        logger.info(f"[PERMISSION_LISTENER] Forwarding permission request: {permission_data['tool_name']}")
+                        await output_queue.put(("permission", permission_msg))
                     except asyncio.TimeoutError:
                         continue
             except Exception as e:
                 logger.error(f"[PERMISSION_LISTENER] Error: {e}")
 
+        async def skill_event_listener():
+            try:
+                while not stream_done.is_set():
+                    try:
+                        event = await asyncio.wait_for(skill_event_queue.get(), timeout=0.1)
+                        logger.info(f"[SKILL_EVENT_LISTENER] Forwarding skill_submitted: {event.get('skillName')}")
+                        await output_queue.put(("skill_submitted", event))
+                    except asyncio.TimeoutError:
+                        continue
+            except Exception as e:
+                logger.error(f"[SKILL_EVENT_LISTENER] Error: {e}")
+
         # 后台任务：处理消息流
         async def message_stream_handler():
             try:
-                async for msg in self.query(current_message, session_id, user_id=user_id):
+                async for msg in self.query(
+                    current_message,
+                    session_id,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                ):
                     await output_queue.put(("message", msg))
             except Exception as e:
                 logger.error(f"[MESSAGE_STREAM] Error: {e}")
@@ -1170,6 +1379,7 @@ class ClaudeAgent:
 
         # 启动后台任务
         permission_task = asyncio.create_task(permission_listener())
+        skill_event_task = asyncio.create_task(skill_event_listener())
         stream_task = asyncio.create_task(message_stream_handler())
 
         try:
@@ -1275,10 +1485,16 @@ class ClaudeAgent:
         finally:
             # 清理任务
             stream_done.set()
+            self._unregister_skill_event_queue(conversation_id, skill_event_queue)
             permission_task.cancel()
+            skill_event_task.cancel()
             stream_task.cancel()
             try:
                 await permission_task
+            except asyncio.CancelledError:
+                pass
+            try:
+                await skill_event_task
             except asyncio.CancelledError:
                 pass
             try:

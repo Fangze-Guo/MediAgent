@@ -1307,9 +1307,12 @@ class PatientService:
             if not path.is_file():
                 continue
             try:
-                relative_path = path.relative_to(output_root).as_posix()
+                relative = path.relative_to(output_root)
             except ValueError:
                 continue
+            if "_internal" in relative.parts:
+                continue
+            relative_path = relative.as_posix()
             stat = path.stat()
             media_type, _ = mimetypes.guess_type(path.name)
             files.append({
