@@ -88,6 +88,8 @@ class CodeAgentService:
         existing = await self.mapper.get_conversation_by_id(conversation_id)
         if not existing:
             raise NotFoundError(resource_type="conversation", resource_id=conversation_id)
+        if user_id is not None and int(existing.user_id) != int(user_id):
+            raise NotFoundError(resource_type="conversation", resource_id=conversation_id)
 
         if is_conversation_active(conversation_id):
             raise ValidationError(detail="当前会话仍在处理中，请等待任务完成后再发送消息")

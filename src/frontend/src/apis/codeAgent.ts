@@ -555,8 +555,10 @@ export async function interruptSession(session_id: string): Promise<BaseResponse
  * @param task_id 任务 ID
  * @returns 任务详情
  */
-export async function getSkillTask(task_id: string): Promise<BaseResponse<SkillTaskInfo>> {
-  const response = await get<BaseResponse<SkillTaskInfo>>(`/code-agent/skill-tasks/${task_id}`)
+export async function getSkillTask(task_id: string, conversation_id: string): Promise<BaseResponse<SkillTaskInfo>> {
+  const response = await get<BaseResponse<SkillTaskInfo>>(
+    `/code-agent/skill-tasks/${task_id}?conversation_id=${encodeURIComponent(conversation_id)}`
+  )
   return response.data
 }
 
@@ -576,16 +578,21 @@ export async function listSkillTasks(conversation_id?: string): Promise<BaseResp
 /**
  * 中断指定的 Skill 后台任务
  */
-export async function cancelSkillTask(task_id: string): Promise<BaseResponse<boolean>> {
-  const response = await post<BaseResponse<boolean>>(`/code-agent/skill-tasks/${task_id}/cancel`, {})
+export async function cancelSkillTask(task_id: string, conversation_id: string): Promise<BaseResponse<boolean>> {
+  const response = await post<BaseResponse<boolean>>(
+    `/code-agent/skill-tasks/${task_id}/cancel?conversation_id=${encodeURIComponent(conversation_id)}`,
+    {}
+  )
   return response.data
 }
 
 /**
  * 删除单个 Skill 后台任务（运行中会先取消）
  */
-export async function deleteSkillTask(task_id: string): Promise<BaseResponse<boolean>> {
-  const response = await del<BaseResponse<boolean>>(`/code-agent/skill-tasks/${task_id}`)
+export async function deleteSkillTask(task_id: string, conversation_id: string): Promise<BaseResponse<boolean>> {
+  const response = await del<BaseResponse<boolean>>(
+    `/code-agent/skill-tasks/${task_id}?conversation_id=${encodeURIComponent(conversation_id)}`
+  )
   return response.data
 }
 

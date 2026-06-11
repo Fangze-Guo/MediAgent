@@ -992,7 +992,9 @@ const jumpToConversation = (conversationId: string) => {
 // 删除单个任务
 const handleDeleteTask = async (taskId: string) => {
   try {
-    const res = await deleteSkillTask(taskId)
+    const task = allSkillTasks.value.find(t => t.task_id === taskId)
+    if (!task?.conversation_id) return
+    const res = await deleteSkillTask(taskId, task.conversation_id)
     if (res.code === 200) {
       // 停止轮询
       if (skillTaskPollers[taskId]) {
@@ -1017,20 +1019,21 @@ const handleClearFinishedTasks = async () => {
     // 先收集需要清理的任务 id（仅当前项目下、已完成/失败）
     const toRemove = filteredSkillTasks.value
       .filter(t => t.status === 'success' || t.status === 'failed')
-      .map(t => t.task_id)
+      .map(t => ({ task_id: t.task_id, conversation_id: t.conversation_id }))
     if (toRemove.length === 0) return
 
     // 后端只支持按 conversation_id 或全局清理，这里逐个删除以保证仅清理当前项目
-    await Promise.all(toRemove.map(id => deleteSkillTask(id).catch(() => null)))
+    await Promise.all(toRemove.map(task => deleteSkillTask(task.task_id, task.conversation_id).catch(() => null)))
 
     // 同步清理本地状态
-    for (const id of toRemove) {
+    const toRemoveIds = toRemove.map(t => t.task_id)
+    for (const id of toRemoveIds) {
       if (skillTaskPollers[id]) {
         clearInterval(skillTaskPollers[id])
         delete skillTaskPollers[id]
       }
     }
-    allSkillTasks.value = allSkillTasks.value.filter(t => !toRemove.includes(t.task_id))
+    allSkillTasks.value = allSkillTasks.value.filter(t => !toRemoveIds.includes(t.task_id))
     message.success(t('views_CodeAgentView.messages.clearTasksSuccess', { count: toRemove.length }))
   } catch (e) {
     console.error('[handleClearFinishedTasks] 失败:', e)
@@ -1079,7 +1082,9 @@ const startSkillTaskPoller = (taskId: string) => {
   if (skillTaskPollers[taskId]) return  // 防止重复启动
   skillTaskPollers[taskId] = setInterval(async () => {
     try {
-      const res = await getSkillTask(taskId)
+      const localTask = allSkillTasks.value.find(t => t.task_id === taskId)
+      if (!localTask?.conversation_id) return
+      const res = await getSkillTask(taskId, localTask.conversation_id)
       if (res.code !== 200 || !res.data) return
       const task = res.data
       // 更新消息气泡

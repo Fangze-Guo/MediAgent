@@ -78,6 +78,15 @@ class CodeAgentController(BaseController):
         return parse_jsonl_messages(jsonl_messages, conversation_id)
 
     def _register_routes(self):
+        async def _owned_conversation_ids(user_id: int) -> set[str]:
+            return set(await self.service.mapper.get_conversation_ids_by_user(user_id))
+
+        async def _is_owned_conversation(conversation_id: Optional[str], user_id: int) -> bool:
+            if not conversation_id:
+                return False
+            conversation = await self.service.mapper.get_conversation_by_id(conversation_id)
+            return bool(conversation and int(conversation.user_id) == int(user_id))
+
         @self.router.post("/taking")
         async def taking(request: ChatRequest, user_vo: UserVO = Depends(self._get_current_user)) -> StreamingResponse:
             async def generate_stream():
@@ -159,30 +168,49 @@ class CodeAgentController(BaseController):
             """查询 Skill 后台任务列表"""
             from src.server_agent.service.SkillTaskManager import get_skill_task_manager
             manager = get_skill_task_manager()
-            tasks = manager.list_tasks(conversation_id=conversation_id)
+            if conversation_id:
+                if not await _is_owned_conversation(conversation_id, user_vo.uid):
+                    return ResultUtils.success([])
+                tasks = manager.list_tasks(conversation_id=conversation_id)
+            else:
+                owned_ids = await _owned_conversation_ids(user_vo.uid)
+                tasks = manager.list_tasks(conversation_ids=owned_ids)
             return ResultUtils.success([t.to_dict() for t in tasks])
 
         @self.router.get("/skill-tasks/{task_id}")
         async def get_skill_task(
             task_id: str,
+            conversation_id: str = Query(..., description="任务所属会话 ID"),
             user_vo: UserVO = Depends(self._get_current_user)
         ) -> BaseResponse[dict]:
             """查询单个 Skill 后台任务状态"""
             from src.server_agent.service.SkillTaskManager import get_skill_task_manager
             manager = get_skill_task_manager()
             task = manager.get_task(task_id)
-            if not task:
+            if (
+                not task
+                or task.conversation_id != conversation_id
+                or not await _is_owned_conversation(task.conversation_id, user_vo.uid)
+            ):
                 return ResultUtils.error(404, f"任务不存在: {task_id}")
             return ResultUtils.success(task.to_dict())
 
         @self.router.delete("/skill-tasks/{task_id}")
         async def delete_skill_task(
             task_id: str,
+            conversation_id: str = Query(..., description="任务所属会话 ID"),
             user_vo: UserVO = Depends(self._get_current_user)
         ) -> BaseResponse[bool]:
             """删除单个 Skill 后台任务（运行中会先取消）"""
             from src.server_agent.service.SkillTaskManager import get_skill_task_manager
             manager = get_skill_task_manager()
+            task = manager.get_task(task_id)
+            if (
+                not task
+                or task.conversation_id != conversation_id
+                or not await _is_owned_conversation(task.conversation_id, user_vo.uid)
+            ):
+                return ResultUtils.error(404, f"任务不存在: {task_id}")
             ok = manager.delete(task_id)
             if not ok:
                 return ResultUtils.error(404, f"任务不存在: {task_id}")
@@ -197,7 +225,17 @@ class CodeAgentController(BaseController):
             """批量清理 Skill 后台任务，返回清理的数量"""
             from src.server_agent.service.SkillTaskManager import get_skill_task_manager
             manager = get_skill_task_manager()
-            removed = manager.clear(conversation_id=conversation_id, only_finished=only_finished)
+            if conversation_id:
+                if not await _is_owned_conversation(conversation_id, user_vo.uid):
+                    return ResultUtils.success(0)
+                removed = manager.clear(conversation_id=conversation_id, only_finished=only_finished)
+            else:
+                removed = 0
+                for owned_conversation_id in await _owned_conversation_ids(user_vo.uid):
+                    removed += manager.clear(
+                        conversation_id=owned_conversation_id,
+                        only_finished=only_finished,
+                    )
             return ResultUtils.success(removed)
 
         @self.router.post("/conversations")

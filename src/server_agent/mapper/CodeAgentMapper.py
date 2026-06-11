@@ -289,6 +289,17 @@ class CodeAgentMapper:
             )
         return None
 
+    async def get_conversation_ids_by_user(self, user_id: int) -> List[str]:
+        """返回指定用户拥有的全部 code-agent 会话 ID。"""
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT conversation_id
+                FROM medical_conversations
+                WHERE user_id = $1
+            """, user_id)
+        return [str(row["conversation_id"]) for row in rows if row["conversation_id"]]
+
     async def get_conversation_detail(
         self,
         conversation_id: str
