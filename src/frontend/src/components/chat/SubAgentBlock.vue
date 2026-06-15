@@ -106,7 +106,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import type { MessageResponse } from '@/apis/codeAgent'
 import { getSubAgentMessages } from '@/apis/codeAgent'
 import MarkdownRenderer from '@/components/markdown/MarkdownRenderer.vue'
@@ -123,30 +123,30 @@ const loadingTranscript = ref(false)
 const transcriptLoaded = ref(false)
 const subAgentMessages = ref<MessageResponse[]>([])
 const notFoundReason = ref('暂无子智能体会话记录（可能正在执行或尚未记录）')
-const thinkingExpanded = ref<Record<number, boolean>>({})
+const pollTimer = ref<number | null>(null)
 
 const promptPreview = computed(() => {
   const text = props.message.content || ''
   return text.length > 80 ? text.slice(0, 80) + '…' : text
 })
 
-const toggleThinking = (idx: number) => {
-  thinkingExpanded.value[idx] = !thinkingExpanded.value[idx]
-}
-
-const loadTranscript = async () => {
+const loadTranscript = async (silent = false) => {
   if (!props.message.tool_use_id) {
     notFoundReason.value = '缺少 tool_use_id，无法关联子智能体会话'
     transcriptLoaded.value = true
     return
   }
-  loadingTranscript.value = true
+  if (!silent) {
+    loadingTranscript.value = true
+  }
   try {
     const res = await getSubAgentMessages(props.conversationId, props.message.tool_use_id)
     if (res.code === 200 && res.data) {
       subAgentMessages.value = res.data.messages || []
       if (!res.data.found) {
-        notFoundReason.value = '未找到匹配的子智能体会话文件（agent-*.jsonl）'
+        notFoundReason.value = props.isStreaming
+          ? '子智能体会话正在生成，等待 ClaudeCode 写入 agent-*.jsonl...'
+          : '未找到匹配的子智能体会话文件（agent-*.jsonl）'
       }
     } else {
       notFoundReason.value = '加载子智能体会话失败'
@@ -155,9 +155,25 @@ const loadTranscript = async () => {
     console.error('[SubAgentBlock] 加载失败:', e)
     notFoundReason.value = '加载子智能体会话出错'
   } finally {
-    loadingTranscript.value = false
+    if (!silent) {
+      loadingTranscript.value = false
+    }
     transcriptLoaded.value = true
   }
+}
+
+const stopPolling = () => {
+  if (pollTimer.value !== null) {
+    window.clearInterval(pollTimer.value)
+    pollTimer.value = null
+  }
+}
+
+const startPolling = () => {
+  if (!isExpanded.value || !props.isStreaming || pollTimer.value !== null) return
+  pollTimer.value = window.setInterval(() => {
+    loadTranscript(true)
+  }, 1500)
 }
 
 const handleToggle = () => {
@@ -165,15 +181,36 @@ const handleToggle = () => {
   if (isExpanded.value && !transcriptLoaded.value) {
     loadTranscript()
   }
+  if (isExpanded.value) {
+    startPolling()
+  } else {
+    stopPolling()
+  }
 }
 
 // 流式状态结束后自动刷新（若已展开）
 watch(() => props.isStreaming, (nowStreaming, wasStreaming) => {
+  if (nowStreaming && isExpanded.value) {
+    startPolling()
+  }
   if (wasStreaming && !nowStreaming && isExpanded.value) {
+    stopPolling()
     transcriptLoaded.value = false
     subAgentMessages.value = []
     loadTranscript()
   }
+})
+
+watch(isExpanded, expanded => {
+  if (expanded) {
+    startPolling()
+  } else {
+    stopPolling()
+  }
+})
+
+onBeforeUnmount(() => {
+  stopPolling()
 })
 </script>
 

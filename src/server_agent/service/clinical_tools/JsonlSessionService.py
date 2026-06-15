@@ -224,6 +224,51 @@ class JsonlSessionService:
 
         return sessions[offset:offset + limit], total, has_more
 
+    def _read_jsonl_entries(self, jsonl_file: Path) -> List[dict]:
+        """读取 JSONL 文件，忽略空行和坏行。"""
+        entries: List[dict] = []
+        try:
+            with open(jsonl_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entries.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+        except Exception as e:
+            logger.error(f"[JSONL] Error reading {jsonl_file}: {e}")
+            return []
+        return entries
+
+    def _resolve_sub_agent_ids_from_parent(self, parent_jsonl: Path, tool_use_id: str) -> List[str]:
+        """
+        从父会话 JSONL 中解析 Task tool_use id 对应的 agentId。
+
+        流式阶段前端可能只拿到 Task tool_use block id；Claude 在后续 tool_result
+        中才写入 toolUseResult.agentId。这里按需补一次映射，避免必须等整轮结束刷新。
+        """
+        resolved: List[str] = []
+        for entry in self._read_jsonl_entries(parent_jsonl):
+            tool_use_result = entry.get("toolUseResult")
+            if not isinstance(tool_use_result, dict):
+                continue
+            agent_id = tool_use_result.get("agentId")
+            if not agent_id:
+                continue
+
+            message = entry.get("message")
+            content = message.get("content") if isinstance(message, dict) else None
+            if not isinstance(content, list):
+                continue
+            for part in content:
+                if not isinstance(part, dict) or part.get("type") != "tool_result":
+                    continue
+                if part.get("tool_use_id") == tool_use_id and agent_id not in resolved:
+                    resolved.append(agent_id)
+        return resolved
+
     async def get_sub_agent_messages_for_tool_use(
         self,
         parent_session_id: str,
@@ -245,42 +290,58 @@ class JsonlSessionService:
         Returns:
             子智能体 JSONL 全量记录列表（供 parse_jsonl_messages 处理）
         """
-        # 找到父会话所在的项目目录
-        project_dir: Optional[Path] = None
+        # 找到父会话所在的项目目录。历史上同一个 Claude session 可能出现在不同
+        # project dir，不能只取第一个，否则会漏掉 subagents 目录。
+        project_dirs: List[Path] = []
         for pdir in PROJECTS_DIR.iterdir():
             if not pdir.is_dir():
                 continue
             if (pdir / f"{parent_session_id}.jsonl").exists():
-                project_dir = pdir
-                break
+                project_dirs.append(pdir)
 
-        if not project_dir:
+        if not project_dirs:
             logger.debug(f"[SubAgent] Parent session {parent_session_id} not found in any project dir")
             return []
 
-        # 直接构造路径：{project_dir}/{session_id}/subagents/agent-{agentId}.jsonl
-        agent_file = project_dir / parent_session_id / "subagents" / f"agent-{tool_use_id}.jsonl"
-        if not agent_file.exists():
-            logger.debug(f"[SubAgent] Agent file not found: {agent_file}")
-            return []
+        candidate_agent_ids = [tool_use_id]
+        for pdir in project_dirs:
+            parent_jsonl = pdir / f"{parent_session_id}.jsonl"
+            for resolved_id in self._resolve_sub_agent_ids_from_parent(parent_jsonl, tool_use_id):
+                if resolved_id not in candidate_agent_ids:
+                    candidate_agent_ids.append(resolved_id)
 
-        entries: List[dict] = []
-        try:
-            with open(agent_file, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        entries.append(json.loads(line))
-                    except json.JSONDecodeError:
-                        continue
-        except Exception as e:
-            logger.error(f"[SubAgent] Error reading {agent_file}: {e}")
-            return []
+        for pdir in project_dirs:
+            subagents_dir = pdir / parent_session_id / "subagents"
+            for agent_id in candidate_agent_ids:
+                agent_file = subagents_dir / f"agent-{agent_id}.jsonl"
+                if not agent_file.exists():
+                    continue
+                entries = self._read_jsonl_entries(agent_file)
+                logger.info(f"[SubAgent] Loaded {len(entries)} entries from {agent_file}")
+                return entries
 
-        logger.info(f"[SubAgent] Loaded {len(entries)} entries from {agent_file.name}")
-        return entries
+        # 流式早期 toolUseResult.agentId 可能尚未写入父会话。若当前父 session
+        # 下只有一个子智能体文件，采用它作为安全 fallback；多个文件时不猜。
+        fallback_files: List[Path] = []
+        for pdir in project_dirs:
+            subagents_dir = pdir / parent_session_id / "subagents"
+            if subagents_dir.exists():
+                fallback_files.extend(sorted(subagents_dir.glob("agent-*.jsonl")))
+
+        if len(fallback_files) == 1:
+            agent_file = fallback_files[0]
+            entries = self._read_jsonl_entries(agent_file)
+            logger.info(f"[SubAgent] Loaded {len(entries)} entries from fallback {agent_file}")
+            return entries
+
+        logger.debug(
+            "[SubAgent] Agent file not found for parent_session=%s tool_use_id=%s candidates=%s fallback_count=%s",
+            parent_session_id,
+            tool_use_id,
+            candidate_agent_ids,
+            len(fallback_files),
+        )
+        return []
 
     async def get_conversation_by_id(self, session_id: str) -> Optional[dict]:
         """根据 ID 获取会话信息"""
