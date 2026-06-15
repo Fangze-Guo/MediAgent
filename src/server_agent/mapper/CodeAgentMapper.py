@@ -133,8 +133,13 @@ class CodeAgentMapper:
                     finished_at TIMESTAMP,
                     error       TEXT,
                     output      TEXT,
-                    cancelled   BOOLEAN NOT NULL DEFAULT FALSE
+                    cancelled   BOOLEAN NOT NULL DEFAULT FALSE,
+                    updated_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
+            """)
+            await conn.execute("""
+                ALTER TABLE skill_tasks
+                ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             """)
             await conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_skill_tasks_conversation_id
@@ -439,16 +444,18 @@ class CodeAgentMapper:
                 INSERT INTO skill_tasks
                     (task_id, skill_name, params, conversation_id, status,
                      progress, created_at, started_at, finished_at,
-                     error, output, cancelled)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+                     error, output, cancelled, updated_at)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,CURRENT_TIMESTAMP)
                 ON CONFLICT (task_id) DO UPDATE SET
                     status      = EXCLUDED.status,
                     progress    = EXCLUDED.progress,
+                    params      = EXCLUDED.params,
                     started_at  = EXCLUDED.started_at,
                     finished_at = EXCLUDED.finished_at,
                     error       = EXCLUDED.error,
                     output      = EXCLUDED.output,
-                    cancelled   = EXCLUDED.cancelled
+                    cancelled   = EXCLUDED.cancelled,
+                    updated_at  = CURRENT_TIMESTAMP
             """,
                 task["task_id"],
                 task["skill_name"],

@@ -12,6 +12,8 @@ Skill 任务管理器
 import asyncio
 import json
 import logging
+import os
+import signal
 import shlex
 import uuid
 from dataclasses import dataclass, field
@@ -21,7 +23,8 @@ from typing import Dict, List, Literal, Optional
 
 logger = logging.getLogger(__name__)
 
-SkillStatus = Literal["running", "success", "failed"]
+SkillStatus = Literal["running", "success", "failed", "cancelled"]
+TERMINAL_STATUSES = {"success", "failed", "cancelled"}
 
 
 @dataclass
@@ -41,12 +44,23 @@ class SkillTask:
             return (self.finished_at - self.started_at).total_seconds()
         return None
 
+    @staticmethod
+    def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value)
+        except Exception:
+            return None
+
     def _read_manifest(self) -> Optional[dict]:
         manifest_path = self.params.get("manifest_path") if isinstance(self.params, dict) else None
         if not manifest_path:
             run_dir = self.params.get("run_dir") if isinstance(self.params, dict) else None
             manifest_path = str(Path(run_dir) / "manifest.json") if run_dir else None
         if not manifest_path:
+            return None
+        if "$" in str(manifest_path) or "{" in str(manifest_path) or "}" in str(manifest_path):
             return None
         path = Path(str(manifest_path))
         if not path.is_file():
@@ -58,10 +72,69 @@ class SkillTask:
             return None
         return payload if isinstance(payload, dict) else None
 
+    def _has_invalid_manifest_reference(self) -> bool:
+        if not isinstance(self.params, dict):
+            return False
+        for key in ("manifest_path", "run_dir"):
+            value = self.params.get(key)
+            if value and any(token in str(value) for token in ("$", "{", "}")):
+                return True
+        return False
+
+    def refresh_from_manifest(self) -> bool:
+        """Sync the in-memory task status from manifest.json.
+
+        The manifest is the source of truth for medical Skill tasks. This keeps
+        DB persistence aligned with the file that wrappers continuously update.
+        """
+        manifest = self._read_manifest()
+        if not manifest:
+            if self.status == "running" and self._has_invalid_manifest_reference():
+                self.status = "failed"
+                self.finished_at = self.finished_at or datetime.now()
+                self.error = "任务记录中的 manifest/run_dir 路径未展开，无法监控该历史任务"
+                return True
+            return False
+
+        before = (self.status, self.started_at, self.finished_at, self.error)
+        marker_changed = False
+
+        manifest_status = manifest.get("status")
+        self.status = manifest_status if manifest_status in ("running", "success", "failed", "cancelled") else "running"
+
+        started_at = self._parse_datetime(manifest.get("started_at"))
+        if started_at:
+            self.started_at = started_at
+
+        finished_at = self._parse_datetime(manifest.get("finished_at"))
+        if self.status in TERMINAL_STATUSES:
+            self.finished_at = finished_at or self.finished_at or datetime.now()
+        else:
+            self.finished_at = None
+
+        errors = manifest.get("errors") or []
+        if isinstance(errors, list) and errors:
+            self.error = "; ".join(str(item) for item in errors)
+        elif self.status == "failed":
+            self.error = manifest.get("summary") or self.error
+        elif self.status == "cancelled":
+            self.error = manifest.get("summary") or self.error
+        else:
+            self.error = None
+
+        manifest_updated_at = manifest.get("updated_at")
+        if isinstance(self.params, dict) and manifest_updated_at:
+            if self.params.get("_manifest_updated_at") != manifest_updated_at:
+                self.params["_manifest_updated_at"] = manifest_updated_at
+                marker_changed = True
+
+        return before != (self.status, self.started_at, self.finished_at, self.error) or marker_changed
+
     def to_dict(self) -> dict:
+        self.refresh_from_manifest()
         manifest = self._read_manifest()
         manifest_status = manifest.get("status") if manifest else None
-        status = manifest_status if manifest_status in ("running", "success", "failed") else "running"
+        status = manifest_status if manifest_status in ("running", "success", "failed", "cancelled") else self.status
         progress_payload = manifest.get("progress") if manifest else None
         if isinstance(progress_payload, dict) and progress_payload.get("total"):
             total = progress_payload.get("total") or 0
@@ -76,8 +149,8 @@ class SkillTask:
                 if isinstance(step, dict):
                     logs.extend(step.get("log_files") or [])
 
-        started_at = manifest.get("started_at") if manifest else None
-        finished_at = manifest.get("finished_at") if manifest else None
+        started_at = manifest.get("started_at") if manifest else (self.started_at.isoformat() if self.started_at else None)
+        finished_at = manifest.get("finished_at") if manifest else (self.finished_at.isoformat() if self.finished_at else None)
         elapsed_seconds = None
         if started_at and finished_at:
             try:
@@ -98,7 +171,7 @@ class SkillTask:
             "started_at": started_at,
             "finished_at": finished_at,
             "elapsed_seconds": elapsed_seconds,
-            "error": ("; ".join(str(item) for item in (manifest.get("errors") or [])) if manifest else None),
+            "error": ("; ".join(str(item) for item in (manifest.get("errors") or [])) if manifest else self.error),
             "patient_id": manifest.get("patient_id") if manifest else self.params.get("patient_id"),
             "run_id": manifest.get("run_id") if manifest else self.params.get("run_id"),
             "run_dir": manifest.get("run_dir") if manifest else self.params.get("run_dir"),
@@ -153,6 +226,17 @@ class SkillTaskManager:
         patient_context = option_value("--patient-context")
         skill_id = option_value("--skill-id")
 
+        def usable_path(value: Optional[str]) -> Optional[str]:
+            if not value:
+                return None
+            text = str(value)
+            if "$" in text or "{" in text or "}" in text:
+                return None
+            return text
+
+        run_dir = usable_path(run_dir)
+        patient_context = usable_path(patient_context)
+
         if patient_id:
             payload.setdefault("patient_id", patient_id)
         if run_id:
@@ -185,16 +269,20 @@ class SkillTaskManager:
         """将任务状态写入 DB"""
         try:
             mapper = self._get_mapper()
+            snapshot = task.to_dict()
             await mapper.upsert_skill_task({
                 "task_id": task.task_id,
                 "skill_name": task.skill_name,
                 "params": task.params,
                 "conversation_id": task.conversation_id,
-                "status": task.status,
+                "status": snapshot["status"],
+                "progress": snapshot.get("progress", 0),
                 "created_at": task.created_at,
                 "started_at": task.started_at,
                 "finished_at": task.finished_at,
                 "error": task.error,
+                "output": snapshot.get("output"),
+                "cancelled": snapshot["status"] == "cancelled",
             })
         except Exception as e:
             logger.warning(f"[SkillTaskManager] DB persist failed for {task.task_id}: {e}")
@@ -263,15 +351,108 @@ class SkillTaskManager:
         return task_id
 
     def get_task(self, task_id: str) -> Optional[SkillTask]:
-        return self._tasks.get(task_id)
+        task = self._tasks.get(task_id)
+        if task and task.refresh_from_manifest():
+            self._persist(task)
+        return task
 
     def update_params(self, task_id: str, params: dict) -> bool:
         task = self._tasks.get(task_id)
         if not task:
             return False
-        task.params.update({k: v for k, v in (params or {}).items() if v is not None})
+        clean_params = {}
+        for key, value in (params or {}).items():
+            if value is None:
+                continue
+            if key in {"run_dir", "manifest_path", "patient_context"}:
+                text = str(value)
+                if "$" in text or "{" in text or "}" in text:
+                    continue
+            clean_params[key] = value
+        task.params.update(clean_params)
         self._persist(task)
         return True
+
+    def _resolve_manifest_path(self, task: SkillTask) -> Optional[Path]:
+        manifest_path = task.params.get("manifest_path") if isinstance(task.params, dict) else None
+        run_dir = task.params.get("run_dir") if isinstance(task.params, dict) else None
+        if not manifest_path and run_dir:
+            manifest_path = str(Path(run_dir) / "manifest.json")
+        if not manifest_path or any(token in str(manifest_path) for token in ("$", "{", "}")):
+            return None
+        return Path(str(manifest_path))
+
+    def _resolve_run_dir(self, task: SkillTask) -> Optional[Path]:
+        run_dir = task.params.get("run_dir") if isinstance(task.params, dict) else None
+        if not run_dir:
+            manifest_path = self._resolve_manifest_path(task)
+            if manifest_path:
+                run_dir = str(manifest_path.parent)
+        if not run_dir or any(token in str(run_dir) for token in ("$", "{", "}")):
+            return None
+        return Path(str(run_dir))
+
+    def _write_cancelled_manifest(self, task: SkillTask, reason: str) -> None:
+        manifest_path = self._resolve_manifest_path(task)
+        run_dir = self._resolve_run_dir(task)
+        if not manifest_path and run_dir:
+            manifest_path = run_dir / "manifest.json"
+        if not manifest_path:
+            return
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        now_text = datetime.now().isoformat()
+        manifest: dict = {}
+        if manifest_path.is_file():
+            try:
+                payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+                if isinstance(payload, dict):
+                    manifest = payload
+            except Exception:
+                manifest = {}
+        manifest.setdefault("schema_version", "medagent.skill_manifest.v1")
+        manifest.setdefault("run_id", task.params.get("run_id"))
+        manifest.setdefault("skill_id", task.params.get("skill_id") or task.skill_name)
+        manifest.setdefault("patient_id", task.params.get("patient_id"))
+        manifest.setdefault("run_dir", str(run_dir or manifest_path.parent))
+        manifest["status"] = "cancelled"
+        manifest["summary"] = reason
+        manifest.setdefault("errors", [])
+        if reason not in manifest["errors"]:
+            manifest["errors"].append(reason)
+        manifest["finished_at"] = now_text
+        manifest["updated_at"] = now_text
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _kill_task_process_group(self, task: SkillTask) -> bool:
+        run_dir = self._resolve_run_dir(task)
+        if not run_dir:
+            return False
+        process_path = run_dir / "task_process.json"
+        if not process_path.is_file():
+            return False
+        try:
+            payload = json.loads(process_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.warning(f"[SkillTaskManager] Failed to read process file {process_path}: {exc}")
+            return False
+        pgid = payload.get("pgid")
+        pid = payload.get("pid")
+        try:
+            if isinstance(pgid, int) and pgid > 0:
+                os.killpg(pgid, signal.SIGTERM)
+            elif isinstance(pid, int) and pid > 0:
+                os.kill(pid, signal.SIGTERM)
+            else:
+                return False
+            payload["cancel_requested_at"] = datetime.now().isoformat()
+            payload["cancel_signal"] = "SIGTERM"
+            process_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            return True
+        except ProcessLookupError:
+            return True
+        except Exception as exc:
+            logger.warning(f"[SkillTaskManager] Failed to cancel task process group for {task.task_id}: {exc}")
+            return False
 
     def list_tasks(
         self,
@@ -283,6 +464,9 @@ class SkillTaskManager:
             tasks = [t for t in tasks if t.conversation_id == conversation_id]
         elif conversation_ids is not None:
             tasks = [t for t in tasks if t.conversation_id in conversation_ids]
+        for task in tasks:
+            if task.refresh_from_manifest():
+                self._persist(task)
         return sorted(tasks, key=lambda t: t.created_at, reverse=True)
 
     def delete(self, task_id: str) -> bool:
@@ -297,6 +481,41 @@ class SkillTaskManager:
             pass
         except Exception as e:
             logger.warning(f"[SkillTaskManager] DB delete failed for {task_id}: {e}")
+        return True
+
+    def cancel(self, task_id: str) -> bool:
+        """
+        将任务标记为取消。
+
+        标准 runner 会在 run_dir/task_process.json 写入 wrapper 进程组。
+        manifest-tracked 任务只有读到该进程组信息时才执行取消，避免假取消。
+        """
+        task = self._tasks.get(task_id)
+        if not task:
+            return False
+        if task.refresh_from_manifest() and task.status in TERMINAL_STATUSES:
+            self._persist(task)
+            return True
+        if task.params.get("manifest_path") or task.params.get("run_dir"):
+            cancelled = self._kill_task_process_group(task)
+            if not cancelled:
+                logger.warning(
+                    f"[SkillTaskManager] Cannot cancel manifest-tracked task {task_id}; "
+                    "task_process.json is missing or invalid"
+                )
+                return False
+            task.status = "cancelled"
+            task.error = "任务已取消"
+            task.finished_at = datetime.now()
+            self._write_cancelled_manifest(task, "任务已由用户取消")
+            self._persist(task)
+            logger.info(f"[SkillTaskManager] Manifest-tracked task {task_id} cancelled")
+            return True
+        task.status = "cancelled"
+        task.error = "任务已取消"
+        task.finished_at = datetime.now()
+        self._persist(task)
+        logger.info(f"[SkillTaskManager] Task {task_id} marked as cancelled")
         return True
 
     def clear(self, conversation_id: Optional[str] = None, only_finished: bool = True) -> int:
@@ -316,7 +535,7 @@ class SkillTaskManager:
             task = self._tasks[tid]
             if conversation_id and task.conversation_id != conversation_id:
                 continue
-            if only_finished and task.status not in ("success", "failed"):
+            if only_finished and task.status not in TERMINAL_STATUSES:
                 continue
             self._tasks.pop(tid, None)
             removed_ids.append(tid)
@@ -345,7 +564,7 @@ class SkillTaskManager:
         if task.params.get("manifest_path") or task.params.get("run_dir"):
             logger.info(f"[SkillTaskManager] Task {task_id} is manifest-tracked, skip mark_finished")
             return False
-        if task.status in ("success", "failed"):
+        if task.status in TERMINAL_STATUSES:
             logger.debug(f"[SkillTaskManager] Task {task_id} already in terminal state {task.status}, skip")
             return False
         task.status = "success" if success else "failed"

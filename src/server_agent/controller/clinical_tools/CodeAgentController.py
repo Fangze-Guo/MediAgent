@@ -216,6 +216,31 @@ class CodeAgentController(BaseController):
                 return ResultUtils.error(404, f"任务不存在: {task_id}")
             return ResultUtils.success(True)
 
+        @self.router.post("/skill-tasks/{task_id}/cancel")
+        async def cancel_skill_task(
+            task_id: str,
+            conversation_id: str = Query(..., description="任务所属会话 ID"),
+            user_vo: UserVO = Depends(self._get_current_user)
+        ) -> BaseResponse[bool]:
+            """请求取消 Skill 任务。
+
+            标准 runner 写入 task_process.json 后可可靠终止进程组；
+            若缺少进程组信息，则拒绝假取消。
+            """
+            from src.server_agent.service.SkillTaskManager import get_skill_task_manager
+            manager = get_skill_task_manager()
+            task = manager.get_task(task_id)
+            if (
+                not task
+                or task.conversation_id != conversation_id
+                or not await _is_owned_conversation(task.conversation_id, user_vo.uid)
+            ):
+                return ResultUtils.error(404, f"任务不存在: {task_id}")
+            ok = manager.cancel(task_id)
+            if not ok:
+                return ResultUtils.error(409, "当前任务缺少进程组信息，无法可靠取消")
+            return ResultUtils.success(True)
+
         @self.router.delete("/skill-tasks")
         async def clear_skill_tasks(
             conversation_id: Optional[str] = Query(None, description="仅清理指定会话的任务"),

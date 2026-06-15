@@ -3,7 +3,7 @@
     <!-- 主要内容区域 -->
     <div class="content-grid">
       <!-- 左侧面板：对话列表 + Work Flow -->
-      <div class="left-panel">
+      <div class="left-panel" :class="{ 'skill-task-manager-hidden': !showSkillTaskManager }">
         <!-- 对话列表 -->
         <div class="conversation-list-section">
         <a-card :loading="loadingConversations" class="list-card">
@@ -93,7 +93,7 @@
       </div>
 
       <!-- Work Flow 面板 -->
-      <div class="workflow-section">
+      <div v-if="showSkillTaskManager" class="workflow-section">
         <div class="workflow-header">
           <span class="workflow-title">
             <span class="workflow-title-icon">⚡</span>
@@ -133,15 +133,23 @@
                 <span v-if="task.status === 'running'" class="workflow-spin">⟳</span>
                 <span v-else-if="task.status === 'success'">✓</span>
                 <span v-else-if="task.status === 'failed'">✕</span>
+                <span v-else-if="task.status === 'cancelled'">−</span>
               </span>
               <span class="workflow-task-name" :title="task.skill_name">{{ task.skill_name }}</span>
               <span class="workflow-task-status-text">
                 <span v-if="task.status === 'running'">{{ t('views_CodeAgentView.taskManager.statusRunning') }}</span>
                 <span v-else-if="task.status === 'success'">{{ t('views_CodeAgentView.taskManager.statusSuccess') }}</span>
                 <span v-else-if="task.status === 'failed'">{{ t('views_CodeAgentView.taskManager.statusFailed') }}</span>
+                <span v-else-if="task.status === 'cancelled'">已取消</span>
               </span>
               <!-- 操作按钮 -->
               <div class="workflow-task-actions">
+                <button
+                  v-if="task.status === 'running'"
+                  class="workflow-task-action-btn workflow-task-cancel-btn"
+                  title="取消任务"
+                  @click="handleCancelTask(task.task_id)"
+                >■</button>
                 <button
                   class="workflow-task-action-btn workflow-task-delete-btn"
                   :title="t('views_CodeAgentView.taskManager.deleteTask')"
@@ -532,14 +540,17 @@ import {
   interruptSession,
   getSkillTask,
   listSkillTasks,
+  cancelSkillTask,
   deleteSkillTask,
   exportConversation,
-  getSessionStatus,
-  getSubAgentMessages
+  getSessionStatus
 } from '@/apis/codeAgent'
 
 const { t } = useI18n()
 const route = useRoute()
+
+// 临时隐藏左侧 Skill 任务管理器；恢复时改为 true 即可。
+const showSkillTaskManager = true
 
 // 根据当前路由判断项目标识
 const currentProjectId = computed(() => {
@@ -902,7 +913,7 @@ const allSkillTasks = ref<Array<{
   task_id: string
   skill_name: string
   conversation_id: string
-  status: 'running' | 'success' | 'failed'
+  status: 'running' | 'success' | 'failed' | 'cancelled'
   skill_elapsed_seconds: number | null
   skill_started_at: string | null
   skill_error: string | null
@@ -915,7 +926,7 @@ const liveClockTimer = window.setInterval(() => { now.value = Date.now() }, 1000
 
 // 返回任务的展示时长字符串：running 时实时计时，success 时显示实际耗时
 const taskLiveElapsed = (task: typeof allSkillTasks.value[0]): string => {
-  if (task.status === 'success' && task.skill_elapsed_seconds != null) {
+  if ((task.status === 'success' || task.status === 'cancelled') && task.skill_elapsed_seconds != null) {
     return `${task.skill_elapsed_seconds.toFixed(1)}s`
   }
   if (task.status === 'running' && task.skill_started_at) {
@@ -966,7 +977,7 @@ const runningTaskCount = computed(() =>
 
 // 已完成 / 失败的任务数量（仅当前项目）
 const finishedTaskCount = computed(() =>
-  filteredSkillTasks.value.filter(t => t.status === 'success' || t.status === 'failed').length
+  filteredSkillTasks.value.filter(t => t.status === 'success' || t.status === 'failed' || t.status === 'cancelled').length
 )
 
 // 根据 conversation_id 获取会话标题
@@ -986,6 +997,24 @@ const jumpToConversation = (conversationId: string) => {
   const conv = conversations.value.find(c => c.conversation_id === conversationId)
   if (conv) {
     selectConversation(conv)
+  }
+}
+
+// 取消运行中的任务
+const handleCancelTask = async (taskId: string) => {
+  try {
+    const task = allSkillTasks.value.find(t => t.task_id === taskId)
+    if (!task?.conversation_id) return
+    const res = await cancelSkillTask(taskId, task.conversation_id)
+    if (res.code !== 200) {
+      message.warning(res.message || '当前任务暂时无法可靠取消')
+      return
+    }
+    message.success('已请求取消任务')
+    startSkillTaskPoller(taskId)
+  } catch (e: any) {
+    console.error('[handleCancelTask] 失败:', e)
+    message.warning(e?.response?.data?.message || '当前任务暂时无法可靠取消')
   }
 }
 
@@ -1018,7 +1047,7 @@ const handleClearFinishedTasks = async () => {
   try {
     // 先收集需要清理的任务 id（仅当前项目下、已完成/失败）
     const toRemove = filteredSkillTasks.value
-      .filter(t => t.status === 'success' || t.status === 'failed')
+      .filter(t => t.status === 'success' || t.status === 'failed' || t.status === 'cancelled')
       .map(t => ({ task_id: t.task_id, conversation_id: t.conversation_id }))
     if (toRemove.length === 0) return
 
@@ -1104,7 +1133,7 @@ const startSkillTaskPoller = (taskId: string) => {
         skill_error: task.error ?? null,
       })
       // 终态：停止轮询
-      if (task.status === 'success' || task.status === 'failed') {
+      if (task.status === 'success' || task.status === 'failed' || task.status === 'cancelled') {
         clearInterval(skillTaskPollers[taskId])
         delete skillTaskPollers[taskId]
       }
@@ -1953,6 +1982,10 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+.left-panel.skill-task-manager-hidden .conversation-list-section {
+  flex: 1 1 auto;
+}
+
 /* ==========================================
    Work Flow 面板
 ========================================== */
@@ -2057,6 +2090,11 @@ onUnmounted(() => {
   border-color: rgba(239, 68, 68, 0.3);
 }
 
+.workflow-task-cancelled {
+  background: rgba(148, 163, 184, 0.08);
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
 .workflow-task-header {
   display: flex;
   align-items: center;
@@ -2075,6 +2113,7 @@ onUnmounted(() => {
 .workflow-task-running .workflow-task-status-icon { color: #3b82f6; }
 .workflow-task-success .workflow-task-status-icon { color: #10b981; }
 .workflow-task-failed  .workflow-task-status-icon { color: #ef4444; }
+.workflow-task-cancelled .workflow-task-status-icon { color: #64748b; }
 
 .workflow-task-name {
   font-size: 12px;
@@ -2098,6 +2137,7 @@ onUnmounted(() => {
 .workflow-task-running .workflow-task-status-text { color: #3b82f6; }
 .workflow-task-success .workflow-task-status-text { color: #10b981; }
 .workflow-task-failed  .workflow-task-status-text { color: #ef4444; }
+.workflow-task-cancelled .workflow-task-status-text { color: #64748b; }
 
 .workflow-spin {
   display: inline-block;
@@ -2218,6 +2258,19 @@ onUnmounted(() => {
   padding: 0 6px;
   height: 18px;
   line-height: 16px;
+}
+
+.workflow-task-cancel-btn {
+  font-size: 9px;
+  padding: 0 6px;
+  height: 18px;
+  line-height: 16px;
+}
+
+.workflow-task-cancel-btn:hover {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: #f59e0b;
+  color: #d97706;
 }
 
 .workflow-task-delete-btn:hover {
