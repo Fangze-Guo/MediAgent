@@ -224,14 +224,14 @@
               v-for="message in messages"
               :key="message.message_id"
             >
-              <!-- skill_submitted 消息不渲染任何气泡 -->
-              <template v-if="message.event_type === 'skill_submitted'" />
+              <!-- Skill 调用统一交给 Work Flow 面板展示，不进入对话回答区 -->
+              <template v-if="message.event_type === 'skill_call' || message.event_type === 'skill_submitted'" />
 
               <!-- 其他消息正常渲染 -->
               <div
                 v-else
                 class="message-item"
-                :class="message.event_type === 'sub_agent_call' ? 'message-sub-agent' : (message.event_type === 'todo' ? 'message-todo' : (message.event_type === 'skill_call' ? 'message-skill' : (message.role === 'user' ? 'message-user' : 'message-ai')))"
+                :class="message.event_type === 'sub_agent_call' ? 'message-sub-agent' : (message.event_type === 'todo' ? 'message-todo' : (message.role === 'user' ? 'message-user' : 'message-ai'))"
               >
               <!-- Sub-Agent Call 事件：特殊可折叠卡片 -->
               <template v-if="message.event_type === 'sub_agent_call'">
@@ -240,16 +240,6 @@
                   :conversation-id="selectedConversationId!"
                   :is-streaming="sendingMessage"
                 />
-              </template>
-
-              <!-- Skill Call 事件：橙色气泡（历史记录中的旧格式） -->
-              <template v-else-if="message.event_type === 'skill_call'">
-                <div class="message-bubble bubble-skill">
-                  <span class="skill-icon">🔧</span>
-                  <span class="skill-name">{{ message.skill_name }}</span>
-                  <span class="skill-label">skill call</span>
-                  <span class="skill-time">{{ formatTime(message.created_at) }}</span>
-                </div>
               </template>
 
               <!-- Todo 事件：紫色气泡，内嵌折叠任务列表 -->
@@ -811,17 +801,6 @@ const handleStreamChunk = async (
           created_at: new Date().toISOString(),
           loading: false
         })
-      } else {
-        messages.value.push({
-          message_id: `skill_${Date.now()}`,
-          conversation_id: selectedConversation.value!.conversation_id,
-          role: null,
-          content: '',
-          event_type: 'skill_call',
-          skill_name: event.data.toolName || 'Unknown Tool',
-          created_at: new Date().toISOString(),
-          loading: false
-        })
       }
     })
     pendingToolEvents.value = []
@@ -899,9 +878,9 @@ const handleStreamError = (error: string) => {
   eventDisplay.value = { message: `错误: ${error}`, type: 'info' }
 }
 
-// 暂存待插入的 skill_call 和 todo 事件
+// 暂存待插入的 todo 事件；Skill 任务只在 Work Flow 面板展示
 const pendingToolEvents = ref<Array<{
-  type: 'skill_call' | 'todo'
+  type: 'todo'
   data: any
 }>>([])
 
@@ -935,30 +914,6 @@ const taskLiveElapsed = (task: typeof allSkillTasks.value[0]): string => {
   }
   return ''
 }
-
-// 已见过的任务 id（含初次加载），防止刷新后对历史 success 任务重复弹通知
-const seenTaskIds = new Set<string>()
-
-// 监听任务列表：
-//   - 已见过(seenTaskIds)的任务 → 说明是本次会话新建，状态变为 success 时弹通知
-//   - 未见过的任务(初次加载/刷新恢复) → 静默删除 success，不弹通知
-watch(allSkillTasks, (tasks) => {
-  for (const task of tasks) {
-    if (!seenTaskIds.has(task.task_id)) {
-      seenTaskIds.add(task.task_id)
-      // 初次加载时已是 success：静默删除，不弹通知
-      if (task.status === 'success') {
-        setTimeout(() => handleDeleteTask(task.task_id), 0)
-      }
-      continue
-    }
-    // 本次会话内状态变为 success：弹通知后删除
-    if (task.status === 'success') {
-      message.success(t('views_CodeAgentView.taskManager.taskSuccess', { name: task.skill_name }))
-      setTimeout(() => handleDeleteTask(task.task_id), 1000)
-    }
-  }
-}, { deep: true })
 
 // 任务管理器只展示当前选中会话的任务；欢迎页不关联任何任务。
 const filteredSkillTasks = computed(() => {
@@ -1116,15 +1071,6 @@ const startSkillTaskPoller = (taskId: string) => {
       const res = await getSkillTask(taskId, localTask.conversation_id)
       if (res.code !== 200 || !res.data) return
       const task = res.data
-      // 更新消息气泡
-      const msg = messages.value.find(m => m.skill_task_id === taskId)
-      if (msg) {
-        msg.skill_status = task.status
-        msg.skill_started_at = task.started_at
-        msg.skill_finished_at = task.finished_at
-        msg.skill_elapsed_seconds = task.elapsed_seconds
-        msg.skill_error = task.error ?? null
-      }
       // 更新 Work Flow 面板
       upsertGlobalTask(taskId, {
         status: task.status,
@@ -1160,26 +1106,6 @@ const restoreSkillTasks = async (conversationId: string) => {
         skill_started_at: task.started_at ?? null,
         skill_error: task.error ?? null,
         created_at: task.created_at,
-      })
-
-      // 已经在消息列表里的不重复插入
-      if (messages.value.find(m => m.skill_task_id === task.task_id)) continue
-
-      messages.value.push({
-        message_id: `skill_submitted_${task.task_id}`,
-        conversation_id: conversationId,
-        role: null,
-        content: null,
-        event_type: 'skill_submitted',
-        skill_name: task.skill_name,
-        skill_task_id: task.task_id,
-        skill_status: task.status,
-        skill_started_at: task.started_at,
-        skill_finished_at: task.finished_at,
-        skill_elapsed_seconds: task.elapsed_seconds,
-        skill_error: task.error ?? null,
-        created_at: task.created_at,
-        loading: false
       })
 
       // 未完成的任务恢复轮询
@@ -1236,15 +1162,6 @@ const handleStreamEvent = (event: CodeEventType, capturedSessionId: string | nul
           loading: false
         })
         nextTick(() => scrollToBottom())
-      } else {
-        // 如果 toolName 是 "Skill"，从 input.skill 取具体技能名
-        const displayName = (toolName === 'Skill' && toolEvent.input?.skill)
-          ? toolEvent.input.skill
-          : toolName
-        pendingToolEvents.value.push({
-          type: 'skill_call',
-          data: { toolName: displayName }
-        })
       }
       break
     case 'skill_submitted': {
@@ -1253,18 +1170,6 @@ const handleStreamEvent = (event: CodeEventType, capturedSessionId: string | nul
       const skillName = submittedEvent.skillName || 'Unknown Skill'
       const convId = selectedConversation.value!.conversation_id
       const now = new Date().toISOString()
-      messages.value.push({
-        message_id: `skill_submitted_${taskId}`,
-        conversation_id: convId,
-        role: null,
-        content: null,
-        event_type: 'skill_submitted',
-        skill_name: skillName,
-        skill_task_id: taskId,
-        skill_status: 'running',
-        created_at: now,
-        loading: false
-      })
       // 同步到全局 Work Flow 面板
       upsertGlobalTask(taskId, {
         task_id: taskId,
@@ -1276,23 +1181,10 @@ const handleStreamEvent = (event: CodeEventType, capturedSessionId: string | nul
         skill_error: null,
         created_at: now,
       })
-      nextTick(() => scrollToBottom())
       startSkillTaskPoller(taskId)
       break
     }
     case 'skill_call':
-      const skillEvent = event as any
-      messages.value.push({
-        message_id: `skill_${Date.now()}`,
-        conversation_id: selectedConversation.value!.conversation_id,
-        role: 'assistant',
-        content: '',
-        event_type: 'skill_call',
-        skill_name: skillEvent.skillName || skillEvent.skill_name || 'Unknown Skill',
-        created_at: new Date().toISOString(),
-        loading: false
-      })
-      nextTick(() => scrollToBottom())
       break
     case 'todo':
       const todoEvent = event as any
