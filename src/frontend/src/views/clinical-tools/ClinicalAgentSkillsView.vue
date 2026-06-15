@@ -54,6 +54,21 @@
           class="skill-search"
           allow-clear
         />
+        <input
+          ref="uploadInputRef"
+          type="file"
+          accept=".zip"
+          class="skill-upload-input"
+          @change="handleUploadFileChange"
+        />
+        <a-button
+          class="upload-skill-btn"
+          :loading="uploading"
+          @click="triggerUpload"
+        >
+          <UploadOutlined />
+          上传 Skill
+        </a-button>
       </div>
 
       <!-- 加载态 -->
@@ -88,6 +103,15 @@
             </div>
             <div class="card-badges">
               <span class="type-badge">{{ skill.type }}</span>
+              <span :class="['level-badge', `level-badge--${skill.skill_level || 'plain_claude_skill'}`]">
+                {{ skillLevelLabel(skill.skill_level) }}
+              </span>
+              <a-tooltip
+                v-if="isInstalled(skill.id) && skill.update_available"
+                :title="`全局版本 ${skill.global_version || '-'}，当前安装 ${skill.installed_version || '-'}`"
+              >
+                <span class="update-badge">Update</span>
+              </a-tooltip>
               <span v-if="isInstalled(skill.id)" class="installed-badge">
                 <CheckCircleFilled /> {{ t('views_ClinicalAgentSkillsView.installedBadge') }}
               </span>
@@ -127,6 +151,40 @@
       </div>
 
     </div>
+
+    <a-modal
+      v-model:open="uploadResultOpen"
+      title="Skill 上传结果"
+      width="560px"
+      :footer="null"
+    >
+      <div v-if="lastUploadedSkill" class="upload-result">
+        <div class="result-head">
+          <div>
+            <div class="result-title">{{ lastUploadedSkill.name }}</div>
+            <div class="result-subtitle">{{ lastUploadedSkill.id }}</div>
+          </div>
+          <span :class="['level-badge', `level-badge--${lastUploadedSkill.skill_level || 'plain_claude_skill'}`]">
+            {{ skillLevelLabel(lastUploadedSkill.skill_level) }}
+          </span>
+        </div>
+        <div v-if="lastUploadedSkill.validation?.warnings?.length" class="result-section">
+          <div class="result-section-title">Warnings</div>
+          <div v-for="item in lastUploadedSkill.validation.warnings" :key="item" class="result-line warning">
+            {{ item }}
+          </div>
+        </div>
+        <div v-if="lastUploadedSkill.validation?.errors?.length" class="result-section">
+          <div class="result-section-title">Errors</div>
+          <div v-for="item in lastUploadedSkill.validation.errors" :key="item" class="result-line error">
+            {{ item }}
+          </div>
+        </div>
+        <div v-if="!lastUploadedSkill.validation?.errors?.length && !lastUploadedSkill.validation?.warnings?.length" class="result-empty">
+          校验通过，没有发现错误或警告。
+        </div>
+      </div>
+    </a-modal>
   </div>
 </template>
 
@@ -139,9 +197,10 @@ import {
   LeftOutlined,
   InboxOutlined,
   UserOutlined,
-  CheckCircleFilled
+  CheckCircleFilled,
+  UploadOutlined
 } from '@ant-design/icons-vue'
-import { getSkills, type SkillInfo } from '@/apis/skills'
+import { getSkills, uploadSkill, type SkillInfo } from '@/apis/skills'
 import { listInstalledSkills, installSkill, uninstallSkill } from '@/apis/agents'
 import { getSkillIcon, isSvgIcon } from '@/utils/skillIcon'
 
@@ -159,6 +218,10 @@ const installedIds = ref<string[]>([])
 const operatingId = ref<string | null>(null)
 const searchKeyword = ref('')
 const activeTab = ref<'all' | 'installed' | 'not-installed'>('all')
+const uploadInputRef = ref<HTMLInputElement | null>(null)
+const uploading = ref(false)
+const uploadResultOpen = ref(false)
+const lastUploadedSkill = ref<SkillInfo | null>(null)
 
 const tabs = computed(() => [
   { key: 'all' as const, label: t('views_ClinicalAgentSkillsView.tabAll') },
@@ -168,6 +231,13 @@ const tabs = computed(() => [
 
 // ==================== 计算 ====================
 const isInstalled = (skillId: string) => installedIds.value.includes(skillId)
+
+const skillLevelLabel = (level?: SkillInfo['skill_level']) => {
+  if (level === 'pipeline_ready') return 'Pipeline'
+  if (level === 'patient_skill') return 'Patient'
+  if (level === 'invalid') return 'Invalid'
+  return 'Plain'
+}
 
 /**
  * 已安装列表：以 installedIds 为权威来源，从 allSkills 中取详情；
@@ -252,12 +322,49 @@ const handleUninstall = async (skill: SkillInfo) => {
 
 const goBack = () => router.push('/clinical-tools')
 
+const triggerUpload = () => {
+  uploadInputRef.value?.click()
+}
+
+const refreshSkills = async () => {
+  const skills = await getSkills(undefined, undefined, agentId.value)
+  allSkills.value = skills
+}
+
+const handleUploadFileChange = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  if (!file.name.toLowerCase().endsWith('.zip')) {
+    message.warning('请上传 .zip 格式的 Skill 包')
+    return
+  }
+
+  uploading.value = true
+  try {
+    const uploaded = await uploadSkill(file)
+    await installSkill(agentId.value, uploaded.id)
+    if (!installedIds.value.includes(uploaded.id)) {
+      installedIds.value.push(uploaded.id)
+    }
+    lastUploadedSkill.value = uploaded
+    uploadResultOpen.value = true
+    await refreshSkills()
+    message.success(`Skill ${uploaded.name || uploaded.id} 上传并安装成功`)
+  } catch (error: any) {
+    message.error(error?.response?.data?.message || 'Skill 上传失败')
+  } finally {
+    uploading.value = false
+  }
+}
+
 // ==================== 初始化 ====================
 onMounted(async () => {
   loading.value = true
   try {
     const [skills, installed] = await Promise.all([
-      getSkills(),
+      getSkills(undefined, undefined, agentId.value),
       listInstalledSkills(agentId.value)
     ])
     allSkills.value = skills
@@ -500,6 +607,19 @@ onMounted(async () => {
   width: 280px;
 }
 
+.skill-upload-input {
+  display: none;
+}
+
+.upload-skill-btn {
+  height: 32px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 /* ==================== 状态 ==================== */
 .state-center {
   display: flex;
@@ -618,6 +738,50 @@ onMounted(async () => {
   gap: 4px;
 }
 
+.level-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  border: 1px solid transparent;
+  line-height: 16px;
+}
+
+.level-badge--pipeline_ready {
+  color: #047857;
+  background: rgba(16, 185, 129, 0.11);
+  border-color: rgba(16, 185, 129, 0.28);
+}
+
+.level-badge--patient_skill {
+  color: #1d4ed8;
+  background: rgba(59, 130, 246, 0.11);
+  border-color: rgba(59, 130, 246, 0.28);
+}
+
+.level-badge--plain_claude_skill {
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+}
+
+.level-badge--invalid {
+  color: #b91c1c;
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.28);
+}
+
+.update-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: #7c2d12;
+  background: rgba(249, 115, 22, 0.12);
+  border: 1px solid rgba(249, 115, 22, 0.3);
+  padding: 2px 8px;
+  border-radius: 20px;
+  line-height: 16px;
+}
+
 /* 卡片文字 */
 .skill-name {
   font-size: 15px;
@@ -669,6 +833,71 @@ onMounted(async () => {
   gap: 4px;
   font-size: 11px;
   color: var(--text-tertiary);
+}
+
+.upload-result {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.result-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.result-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.result-subtitle {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+.result-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.result-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.result-line {
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 8px 10px;
+  border-radius: 6px;
+}
+
+.result-line.warning {
+  color: #92400e;
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.result-line.error {
+  color: #b91c1c;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.result-empty {
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  padding: 10px 12px;
 }
 
 /* ==================== 响应式 ==================== */

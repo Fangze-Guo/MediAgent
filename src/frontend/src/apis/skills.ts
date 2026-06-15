@@ -30,6 +30,30 @@ export interface SkillInfo {
   featured: boolean
   tags: string[]
   created_at?: string
+  skill_level?: 'plain_claude_skill' | 'patient_skill' | 'pipeline_ready' | 'invalid'
+  valid_patient_skill?: boolean
+  pipeline_ready?: boolean
+  global_skill_level?: 'plain_claude_skill' | 'patient_skill' | 'pipeline_ready' | 'invalid'
+  global_valid_patient_skill?: boolean
+  global_pipeline_ready?: boolean
+  global_version?: string
+  installed_skill_level?: 'plain_claude_skill' | 'patient_skill' | 'pipeline_ready' | 'invalid' | null
+  installed_valid_patient_skill?: boolean | null
+  installed_pipeline_ready?: boolean | null
+  installed_version?: string | null
+  update_available?: boolean
+  validation?: SkillValidationResult
+}
+
+export interface SkillValidationResult {
+  skill_dir: string
+  installable: boolean
+  skill_level: 'plain_claude_skill' | 'patient_skill' | 'pipeline_ready' | 'invalid'
+  valid_patient_skill: boolean
+  pipeline_ready: boolean
+  skill_id?: string | null
+  errors: string[]
+  warnings: string[]
 }
 
 /**
@@ -159,5 +183,44 @@ export async function uploadSkill(
       }
     },
   })
+  const data: any = response.data.data
+  return {
+    id: data.id || data.slug,
+    name: data.name || data.slug,
+    type: data.type || 'user-invocable',
+    description: data.description || '',
+    full_description: data.full_description,
+    features: data.features,
+    version: data.version || '1.0.0',
+    author: data.author || '',
+    downloads: data.downloads || 0,
+    rating: data.rating || 0,
+    installed: true,
+    featured: false,
+    tags: data.tags || (data.type ? [data.type] : []),
+    created_at: data.created_at,
+    skill_level: data.skill_level,
+    valid_patient_skill: data.valid_patient_skill,
+    pipeline_ready: data.pipeline_ready,
+    global_skill_level: data.global_skill_level,
+    global_valid_patient_skill: data.global_valid_patient_skill,
+    global_pipeline_ready: data.global_pipeline_ready,
+    global_version: data.global_version,
+    installed_skill_level: data.installed_skill_level,
+    installed_valid_patient_skill: data.installed_valid_patient_skill,
+    installed_pipeline_ready: data.installed_pipeline_ready,
+    installed_version: data.installed_version,
+    update_available: data.update_available,
+    validation: data.validation,
+  }
+}
+
+/**
+ * 预校验 Skill zip 包，不安装
+ */
+export async function validateSkillUpload(file: File): Promise<SkillValidationResult> {
+  const form = new FormData()
+  form.append('file', file)
+  const response = await post<BaseResponse<SkillValidationResult>>('/skills/validate-upload', form)
   return response.data.data
 }
