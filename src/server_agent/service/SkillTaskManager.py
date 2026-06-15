@@ -49,7 +49,10 @@ class SkillTask:
         if not value:
             return None
         try:
-            return datetime.fromisoformat(value)
+            parsed = datetime.fromisoformat(value)
+            if parsed.tzinfo is not None:
+                return parsed.replace(tzinfo=None)
+            return parsed
         except Exception:
             return None
 
@@ -81,6 +84,14 @@ class SkillTask:
                 return True
         return False
 
+    def _is_unbound_standard_runner_task(self) -> bool:
+        if not isinstance(self.params, dict):
+            return False
+        command = self.params.get("command")
+        if not isinstance(command, str) or "run_skill_task.py" not in command:
+            return False
+        return not self.params.get("manifest_path") and not self.params.get("run_dir")
+
     def refresh_from_manifest(self) -> bool:
         """Sync the in-memory task status from manifest.json.
 
@@ -89,6 +100,11 @@ class SkillTask:
         """
         manifest = self._read_manifest()
         if not manifest:
+            if self._is_unbound_standard_runner_task():
+                self.status = "failed"
+                self.finished_at = self.finished_at or datetime.now()
+                self.error = "标准 Skill 任务未绑定 manifest_path/run_dir，不能作为医学任务成功状态"
+                return True
             if self.status == "running" and self._has_invalid_manifest_reference():
                 self.status = "failed"
                 self.finished_at = self.finished_at or datetime.now()
@@ -287,8 +303,14 @@ class SkillTaskManager:
         except Exception as e:
             logger.warning(f"[SkillTaskManager] DB persist failed for {task.task_id}: {e}")
 
-    async def restore_from_db(self):
-        """服务启动时从 DB 恢复任务列表（跳过已在内存中的任务）"""
+    async def restore_from_db(self, mark_interrupted: bool = True):
+        """从 DB 恢复任务列表（跳过已在内存中的任务）。
+
+        Args:
+            mark_interrupted: 服务启动恢复时为 True，把仍为 running 且 manifest
+                也未进入终态的旧任务标记为中断；接口查询前补偿同步时为 False，
+                只把其他进程/漏掉的任务合并进内存。
+        """
         try:
             mapper = self._get_mapper()
             rows = await mapper.list_skill_tasks()
@@ -298,11 +320,6 @@ class SkillTaskManager:
                 if task_id in self._tasks:
                     continue
                 status = row["status"]
-                # 服务重启后，上次未完成的任务进程已死，标记为 failed
-                if status == "running":
-                    status = "failed"
-                    row["error"] = (row.get("error") or "") + " [服务重启，任务中断]"
-                    row["finished_at"] = row["finished_at"] or datetime.now()
                 task = SkillTask(
                     task_id=task_id,
                     skill_name=row["skill_name"],
@@ -314,9 +331,17 @@ class SkillTaskManager:
                     finished_at=row["finished_at"],
                     error=row["error"],
                 )
+                refreshed = task.refresh_from_manifest()
+                # 服务重启后，上次未完成且 manifest 仍未终态的任务进程已死，标记为 failed。
+                # 查询接口的补偿同步不做这个判断，避免把其他进程刚登记的任务误杀。
+                if mark_interrupted and status == "running" and task.status == "running":
+                    task.status = "failed"
+                    task.error = (task.error or row.get("error") or "") + " [服务重启，任务中断]"
+                    task.finished_at = task.finished_at or datetime.now()
+                    refreshed = True
                 self._tasks[task_id] = task
                 # 如果状态被修正，同步写回 DB
-                if status != row.get("status"):
+                if refreshed or task.status != row.get("status"):
                     self._persist(task)
                 restored += 1
             logger.info(f"[SkillTaskManager] Restored {restored} tasks from DB")

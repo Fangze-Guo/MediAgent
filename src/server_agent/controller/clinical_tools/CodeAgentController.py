@@ -168,6 +168,7 @@ class CodeAgentController(BaseController):
             """查询 Skill 后台任务列表"""
             from src.server_agent.service.SkillTaskManager import get_skill_task_manager
             manager = get_skill_task_manager()
+            await manager.restore_from_db(mark_interrupted=False)
             if conversation_id:
                 if not await _is_owned_conversation(conversation_id, user_vo.uid):
                     return ResultUtils.success([])
@@ -186,6 +187,7 @@ class CodeAgentController(BaseController):
             """查询单个 Skill 后台任务状态"""
             from src.server_agent.service.SkillTaskManager import get_skill_task_manager
             manager = get_skill_task_manager()
+            await manager.restore_from_db(mark_interrupted=False)
             task = manager.get_task(task_id)
             if (
                 not task
@@ -204,6 +206,7 @@ class CodeAgentController(BaseController):
             """删除单个 Skill 后台任务（运行中会先取消）"""
             from src.server_agent.service.SkillTaskManager import get_skill_task_manager
             manager = get_skill_task_manager()
+            await manager.restore_from_db(mark_interrupted=False)
             task = manager.get_task(task_id)
             if (
                 not task
@@ -229,6 +232,7 @@ class CodeAgentController(BaseController):
             """
             from src.server_agent.service.SkillTaskManager import get_skill_task_manager
             manager = get_skill_task_manager()
+            await manager.restore_from_db(mark_interrupted=False)
             task = manager.get_task(task_id)
             if (
                 not task
@@ -250,6 +254,7 @@ class CodeAgentController(BaseController):
             """批量清理 Skill 后台任务，返回清理的数量"""
             from src.server_agent.service.SkillTaskManager import get_skill_task_manager
             manager = get_skill_task_manager()
+            await manager.restore_from_db(mark_interrupted=False)
             if conversation_id:
                 if not await _is_owned_conversation(conversation_id, user_vo.uid):
                     return ResultUtils.success(0)

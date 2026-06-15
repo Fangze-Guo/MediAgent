@@ -379,6 +379,7 @@ class ClaudeAgent:
         source: str = "tool_use",
     ) -> Optional[str]:
         """Register a Skill task when ClaudeCode invokes the Bash runner."""
+        command = self._ensure_runner_run_id(command)
         detected_skill = self._detect_skill_from_bash_command(command)
         if not detected_skill:
             return None
@@ -392,6 +393,15 @@ class ClaudeAgent:
         for key in map_keys:
             existing_task_id = self._tool_task_map.get(key)
             if existing_task_id:
+                from src.server_agent.service.SkillTaskManager import get_skill_task_manager
+                get_skill_task_manager().update_params(
+                    existing_task_id,
+                    {
+                        "command": command,
+                        "run_in_background": run_in_background,
+                        "registration_source": source,
+                    },
+                )
                 if tool_use_id:
                     self._tool_task_map[str(tool_use_id)] = existing_task_id
                 logger.info(
@@ -1050,6 +1060,19 @@ class ClaudeAgent:
                                 tool_input = normalized.tool_input if isinstance(normalized.tool_input, dict) else {}
                                 command = tool_input.get("command", "")
                                 if command:
+                                    import shlex as _shlex
+                                    try:
+                                        _parts = _shlex.split(command)
+                                    except ValueError:
+                                        _parts = command.split()
+                                    _is_standard_runner = any(Path(part).name == "run_skill_task.py" for part in _parts)
+                                    _has_run_id = any(part == "--run-id" or part.startswith("--run-id=") for part in _parts)
+                                    if _is_standard_runner and not _has_run_id:
+                                        if ws_callback:
+                                            ws_callback(normalized)
+                                        yield normalized
+                                        continue
+                                    command = self._ensure_runner_run_id(command)
                                     await self._submit_skill_task_from_bash(
                                         command=command,
                                         tool_use_id=normalized.tool_id,

@@ -10,6 +10,25 @@ from typing import Any, Dict, List, Optional
 from src.server_agent.model.entity.MessageResponse import MessageResponse
 
 
+GENERIC_TOOL_COMMAND_NAMES = {
+    "Bash",
+    "Read",
+    "Grep",
+    "Glob",
+    "LS",
+    "Edit",
+    "MultiEdit",
+    "Write",
+    "NotebookRead",
+    "NotebookEdit",
+    "TodoWrite",
+    "Task",
+    "Agent",
+    "WebFetch",
+    "WebSearch",
+}
+
+
 def _extract_text_and_thinking(message_content: Any) -> tuple:
     """
     从 JSONL 的 message.content 中提取可见文本与 thinking。
@@ -164,11 +183,12 @@ def parse_jsonl_messages(
             continue
 
         # ======== Skill Call 检测（toolUseResult.commandName） ========
-        # 检查是否是 skill call 触发条目
+        # commandName 里也会出现 Bash/Read/Grep 等 Claude Code 通用工具。
+        # 这些是底层执行细节，不应作为“skill call”回答气泡展示给用户。
         tool_use_result = entry.get("toolUseResult", {})
         command_name = tool_use_result.get("commandName") if isinstance(tool_use_result, dict) else None
 
-        if command_name:
+        if command_name and command_name not in GENERIC_TOOL_COMMAND_NAMES:
             # Skill call 组：收集后续连续的 isMeta/attachment 条目
             group_indices = {i}
             arguments = None
