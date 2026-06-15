@@ -95,6 +95,50 @@ class PatientController(BaseController):
                 },
             )
 
+        @self.router.get("/{patient_id}/body-composition-results")
+        async def get_body_composition_results(
+            patient_id: str,
+            current_user: UserVO = Depends(get_current_user),
+        ) -> BaseResponse[dict]:
+            results = await self.service.get_body_composition_results(patient_id)
+            return ResultUtils.success(results)
+
+        @self.router.post("/{patient_id}/body-composition-results/metrics/{phase}")
+        async def upload_body_composition_metric_file(
+            patient_id: str,
+            phase: str,
+            result_file: UploadFile = File(...),
+            current_user: UserVO = Depends(get_current_user),
+        ) -> BaseResponse[dict]:
+            results = await self.service.upload_body_composition_metric_file(patient_id, phase, result_file)
+            return ResultUtils.success(results)
+
+        @self.router.post("/{patient_id}/body-composition-results/type")
+        async def upload_body_composition_type_file(
+            patient_id: str,
+            result_file: UploadFile = File(...),
+            current_user: UserVO = Depends(get_current_user),
+        ) -> BaseResponse[dict]:
+            results = await self.service.upload_body_composition_type_file(patient_id, result_file)
+            return ResultUtils.success(results)
+
+        @self.router.get("/{patient_id}/body-composition-results/serve/{file_path:path}")
+        async def serve_body_composition_result_file(
+            patient_id: str,
+            file_path: str,
+            current_user: UserVO = Depends(get_current_user),
+        ):
+            result_path = await self.service.get_body_composition_result_file_path(patient_id, file_path)
+            return FileResponse(
+                path=result_path,
+                filename=result_path.name,
+                headers={
+                    "Content-Disposition": f'attachment; filename="{result_path.name}"',
+                    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                    "Pragma": "no-cache",
+                },
+            )
+
         @self.router.get("/{patient_id}/ct/{phase}")
         async def get_ct_status(
             patient_id: str,

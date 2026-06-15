@@ -326,6 +326,78 @@
             </section>
           </div>
 
+          <section class="panel body-results-panel">
+            <div class="panel-header body-results-header">
+              <div>
+                <div class="panel-kicker">BODY COMPOSITION RESULTS</div>
+                <h2>Metrics and Type</h2>
+              </div>
+              <a-button class="ct-icon-action" :loading="loadingBodyResults" title="Refresh body composition results" @click="fetchBodyCompositionResults">
+                <template #icon><ReloadOutlined /></template>
+              </a-button>
+            </div>
+            <a-spin :spinning="loadingBodyResults">
+              <div class="body-results-grid">
+                <div v-for="phase in bodyResultPhases" :key="phase" class="body-result-card">
+                  <div class="body-result-card-header">
+                    <strong>{{ phase.toUpperCase() }} metrics</strong>
+                    <a-tag :color="metricResultForPhase(phase).csv ? 'green' : 'default'">
+                      {{ metricResultForPhase(phase).csv ? metricResultSourceLabel(metricResultForPhase(phase).csv?.source) : 'Empty' }}
+                    </a-tag>
+                  </div>
+                  <div v-if="metricResultForPhase(phase).summary" class="metric-mini-grid">
+                    <div v-for="item in metricSummaryItems(metricResultForPhase(phase).summary)" :key="item.key" class="metric-mini-item">
+                      <span>{{ item.label }}</span>
+                      <strong>{{ item.value }}</strong>
+                    </div>
+                  </div>
+                  <div v-else class="body-result-empty">No metrics table found</div>
+                  <div class="body-result-actions">
+                    <a-button size="small" :disabled="!metricResultForPhase(phase).csv" :loading="downloadingResultPath === metricResultForPhase(phase).csv?.relative_path" @click="downloadResultFile(metricResultForPhase(phase).csv)">
+                      <template #icon><DownloadOutlined /></template>
+                      CSV
+                    </a-button>
+                    <a-button size="small" :disabled="!metricResultForPhase(phase).xlsx" :loading="downloadingResultPath === metricResultForPhase(phase).xlsx?.relative_path" @click="downloadResultFile(metricResultForPhase(phase).xlsx)">
+                      <template #icon><DownloadOutlined /></template>
+                      XLSX
+                    </a-button>
+                    <a-button size="small" :loading="uploadingBodyMetricPhase === phase" @click="triggerBodyMetricUpload(phase)">
+                      <template #icon><UploadOutlined /></template>
+                      Upload
+                    </a-button>
+                  </div>
+                </div>
+
+                <div class="body-result-card type-result-card">
+                  <div class="body-result-card-header">
+                    <strong>Type classification</strong>
+                    <a-tag :color="bodyCompositionResults?.type_classification.json ? 'green' : 'default'">
+                      {{ bodyCompositionResults?.type_classification.json ? metricResultSourceLabel(bodyCompositionResults.type_classification.json.source) : 'Empty' }}
+                    </a-tag>
+                  </div>
+                  <div v-if="bodyCompositionResults?.type_classification.summary?.metric_results" class="type-result-list">
+                    <div v-for="item in typeSummaryItems" :key="item.metric" class="type-result-row">
+                      <span>{{ item.metric }}</span>
+                      <strong>{{ item.type }}</strong>
+                      <small>{{ item.change }}</small>
+                    </div>
+                  </div>
+                  <div v-else class="body-result-empty">No type classification JSON found</div>
+                  <div class="body-result-actions">
+                    <a-button size="small" :disabled="!bodyCompositionResults?.type_classification.json" :loading="downloadingResultPath === bodyCompositionResults?.type_classification.json?.relative_path" @click="downloadResultFile(bodyCompositionResults?.type_classification.json)">
+                      <template #icon><DownloadOutlined /></template>
+                      JSON
+                    </a-button>
+                    <a-button size="small" :loading="uploadingBodyType" @click="triggerBodyTypeUpload">
+                      <template #icon><UploadOutlined /></template>
+                      Upload
+                    </a-button>
+                  </div>
+                </div>
+              </div>
+            </a-spin>
+          </section>
+
           <div class="section-grid module-grid">
             <section v-for="module in analysisModules" :key="module.key" class="panel module-panel">
               <h2>{{ module.title }}</h2>
@@ -451,17 +523,24 @@ import MprViewer from '@/components/patient/MprViewer.vue'
 import {
   deletePatientCt,
   deletePatientMask,
+  downloadBodyCompositionResultFile,
   downloadPatientReport,
   downloadPatientOutput,
+  getBodyCompositionResults,
   getPatient,
   getPatientCtStatus,
   getPatientMaskStatus,
   getPatientOutputs,
+  uploadBodyCompositionMetricFile,
+  uploadBodyCompositionTypeFile,
   uploadPatientCt,
   uploadPatientMask,
+  type BodyCompositionMetricsSummary,
+  type BodyCompositionResults,
   type CtPhase,
   type MaskType,
   type PatientOutputFile,
+  type PatientResultFile,
   type PatientCtStatus,
   type PatientInfo,
   type PatientMaskStatus,
@@ -501,10 +580,15 @@ const uploadingMaskKeys = ref<Record<string, boolean>>({})
 const deletingMaskKeys = ref<Record<string, boolean>>({})
 const exportingReport = ref(false)
 const loadingOutputs = ref(false)
+const loadingBodyResults = ref(false)
 const downloadingOutputPath = ref<string | null>(null)
+const downloadingResultPath = ref<string | null>(null)
+const uploadingBodyMetricPhase = ref<CtPhase | null>(null)
+const uploadingBodyType = ref(false)
 const outputsOpen = ref(false)
 const outputRoot = ref('')
 const outputFiles = ref<PatientOutputFile[]>([])
+const bodyCompositionResults = ref<BodyCompositionResults | null>(null)
 const expandedOutputFolders = ref<Record<string, boolean>>({})
 const maskGroupOverrides = ref<Record<string, boolean>>({})
 const viewerOpen = ref(false)
@@ -574,6 +658,20 @@ const analysisModules = computed(() => [
     desc: t('views_PatientDetailView.modules.mpr.desc'),
   },
 ])
+
+const bodyResultPhases: CtPhase[] = ['pre', 'post']
+
+const typeSummaryItems = computed(() => {
+  const results = bodyCompositionResults.value?.type_classification.summary?.metric_results || {}
+  return ['SMVI', 'VAVI', 'SAVI'].map((metric) => {
+    const item = results[metric] || {}
+    return {
+      metric,
+      type: item.type_label || '-',
+      change: item.change_rate == null ? '-' : `${formatSignedNumber(item.change_rate)}% ${item.change_bucket || ''}`.trim(),
+    }
+  })
+})
 
 interface OutputTreeNode {
   id: string
@@ -735,6 +833,39 @@ function maskGroupSummary(group: MaskGroup) {
   return `${readyCount}/${group.slots.length} ${t('views_PatientDetailView.mask.ready')}`
 }
 
+function metricResultForPhase(phase: CtPhase) {
+  return bodyCompositionResults.value?.metrics?.[phase] || { csv: null, xlsx: null, summary: null }
+}
+
+function metricResultSourceLabel(source?: string | null) {
+  if (source === 'standard') return 'Uploaded'
+  if (source === 'agent_output') return 'Agent'
+  return source || 'Ready'
+}
+
+function formatMetricValue(value?: number | null, digits = 1) {
+  if (value == null || Number.isNaN(Number(value))) return '-'
+  return Number(value).toFixed(digits)
+}
+
+function formatSignedNumber(value?: number | null, digits = 1) {
+  if (value == null || Number.isNaN(Number(value))) return '-'
+  const numberValue = Number(value)
+  return `${numberValue > 0 ? '+' : ''}${numberValue.toFixed(digits)}`
+}
+
+function metricSummaryItems(summary?: BodyCompositionMetricsSummary | null) {
+  if (!summary) return []
+  return [
+    { key: 'smvi', label: 'SMVI', value: formatMetricValue(summary.smvi) },
+    { key: 'vavi', label: 'VAVI', value: formatMetricValue(summary.vavi) },
+    { key: 'savi', label: 'SAVI', value: formatMetricValue(summary.savi) },
+    { key: 'muscle', label: 'Muscle', value: `${formatMetricValue(summary.muscle_cm3, 0)} cm³` },
+    { key: 'vat', label: 'VAT', value: `${formatMetricValue(summary.vat_cm3, 0)} cm³` },
+    { key: 'sat', label: 'SAT', value: `${formatMetricValue(summary.sat_cm3, 0)} cm³` },
+  ]
+}
+
 onMounted(() => {
   fetchPatientDetail()
 })
@@ -755,6 +886,7 @@ async function fetchPatientDetail() {
       tumorPreStatus,
       tumorPostStatus,
       outputs,
+      bodyResults,
     ] = await Promise.all([
       getPatient(patientId.value),
       getPatientCtStatus(patientId.value, 'pre'),
@@ -771,6 +903,10 @@ async function fetchPatientDetail() {
         console.error('Load patient outputs failed:', error)
         return { patient_id: patientId.value, output_root: '', files: [] }
       }),
+      getBodyCompositionResults(patientId.value).catch((error) => {
+        console.error('Load body composition results failed:', error)
+        return null
+      }),
     ])
     patient.value = patientInfo
     preCt.value = preStatus
@@ -785,6 +921,7 @@ async function fetchPatientDetail() {
     tumorPostMask.value = tumorPostStatus
     outputRoot.value = outputs.output_root
     outputFiles.value = outputs.files
+    bodyCompositionResults.value = bodyResults
   } catch (error) {
     console.error('Load patient detail failed:', error)
     message.error(t('views_PatientDetailView.loadFailed'))
@@ -804,6 +941,18 @@ async function fetchPatientOutputs() {
     message.error(error?.message || 'Failed to load output files')
   } finally {
     loadingOutputs.value = false
+  }
+}
+
+async function fetchBodyCompositionResults() {
+  loadingBodyResults.value = true
+  try {
+    bodyCompositionResults.value = await getBodyCompositionResults(patientId.value)
+  } catch (error: any) {
+    console.error('Load body composition results failed:', error)
+    message.error(error?.message || 'Failed to load body composition results')
+  } finally {
+    loadingBodyResults.value = false
   }
 }
 
@@ -853,6 +1002,79 @@ async function handleDownloadOutput(file: PatientOutputFile) {
     message.error(error?.message || 'Failed to download output file')
   } finally {
     downloadingOutputPath.value = null
+  }
+}
+
+async function downloadResultFile(file?: PatientResultFile | null) {
+  if (!file) return
+  downloadingResultPath.value = file.relative_path
+  try {
+    const blob = await downloadBodyCompositionResultFile(file)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = file.name
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (error: any) {
+    console.error('Download body composition result failed:', error)
+    message.error(error?.message || 'Failed to download result file')
+  } finally {
+    downloadingResultPath.value = null
+  }
+}
+
+function triggerBodyMetricUpload(phase: CtPhase) {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.csv,.xlsx'
+  input.onchange = () => {
+    const file = input.files?.[0]
+    if (file) {
+      void uploadBodyMetricFile(phase, file)
+    }
+  }
+  input.click()
+}
+
+async function uploadBodyMetricFile(phase: CtPhase, file: File) {
+  uploadingBodyMetricPhase.value = phase
+  try {
+    bodyCompositionResults.value = await uploadBodyCompositionMetricFile(patientId.value, phase, file)
+    message.success('Metric file uploaded')
+  } catch (error: any) {
+    console.error('Upload metric file failed:', error)
+    message.error(error?.message || 'Failed to upload metric file')
+  } finally {
+    uploadingBodyMetricPhase.value = null
+  }
+}
+
+function triggerBodyTypeUpload() {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.json'
+  input.onchange = () => {
+    const file = input.files?.[0]
+    if (file) {
+      void uploadBodyTypeFile(file)
+    }
+  }
+  input.click()
+}
+
+async function uploadBodyTypeFile(file: File) {
+  uploadingBodyType.value = true
+  try {
+    bodyCompositionResults.value = await uploadBodyCompositionTypeFile(patientId.value, file)
+    message.success('Type classification file uploaded')
+  } catch (error: any) {
+    console.error('Upload type classification failed:', error)
+    message.error(error?.message || 'Failed to upload type classification')
+  } finally {
+    uploadingBodyType.value = false
   }
 }
 
@@ -1773,6 +1995,128 @@ function formatOption(group: OptionGroup, value?: string | null) {
   flex: 0 0 auto;
 }
 
+.body-results-panel {
+  margin-bottom: 14px;
+}
+
+.body-results-header {
+  align-items: center;
+}
+
+.body-results-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.body-result-card {
+  min-width: 0;
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid #e4e9f1;
+  border-radius: 8px;
+}
+
+.body-result-card-header {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.body-result-card-header strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #111827;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metric-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.metric-mini-item {
+  min-width: 0;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid #edf0f5;
+  border-radius: 7px;
+}
+
+.metric-mini-item span {
+  display: block;
+  margin-bottom: 4px;
+  color: #667085;
+  font-size: 11px;
+}
+
+.metric-mini-item strong {
+  color: #111827;
+  font-size: 13px;
+}
+
+.body-result-empty {
+  min-height: 82px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border: 1px dashed #cbd5e1;
+  border-radius: 7px;
+  color: #667085;
+  font-size: 12px;
+}
+
+.body-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.type-result-list {
+  display: grid;
+  gap: 7px;
+}
+
+.type-result-row {
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: 52px 74px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  background: #fff;
+  border: 1px solid #edf0f5;
+  border-radius: 7px;
+}
+
+.type-result-row span {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.type-result-row strong {
+  color: #0f766e;
+  font-size: 14px;
+}
+
+.type-result-row small {
+  min-width: 0;
+  overflow: hidden;
+  color: #667085;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .hidden-file-input {
   display: none;
 }
@@ -1994,7 +2338,8 @@ function formatOption(group: OptionGroup, value?: string | null) {
   .info-grid,
   .section-grid.two,
   .section-grid.module-grid,
-  .mask-slot-grid {
+  .mask-slot-grid,
+  .body-results-grid {
     grid-template-columns: 1fr;
   }
 

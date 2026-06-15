@@ -88,6 +88,59 @@ export interface PatientOutputsResult {
   files: PatientOutputFile[]
 }
 
+export interface PatientResultFile {
+  path: string
+  relative_path: string
+  name: string
+  size: number
+  modified_at: string
+  media_type: string
+  download_url: string
+  source: 'standard' | 'agent_output' | string
+}
+
+export interface BodyCompositionMetricsSummary {
+  file_name?: string | null
+  muscle_cm3?: number | null
+  vat_cm3?: number | null
+  sat_cm3?: number | null
+  smvi?: number | null
+  vavi?: number | null
+  savi?: number | null
+  thoracic_start?: string | null
+  thoracic_end?: string | null
+}
+
+export interface BodyCompositionTypeSummary {
+  status?: string | null
+  message?: string | null
+  metric_results?: Record<string, {
+    status?: string
+    type_label?: string | null
+    type_code?: string | null
+    baseline_group?: string | null
+    change_rate?: number | null
+    change_bucket?: string | null
+  }>
+}
+
+export interface BodyCompositionResults {
+  patient_id: string
+  standard_roots: {
+    metrics: string
+    type_classification: string
+  }
+  metrics: Record<CtPhase, {
+    csv?: PatientResultFile | null
+    xlsx?: PatientResultFile | null
+    summary?: BodyCompositionMetricsSummary | null
+  }>
+  type_classification: {
+    json?: PatientResultFile | null
+    summary?: BodyCompositionTypeSummary | null
+  }
+}
+
 export async function listPatients(params: {
   keyword?: string
   page?: number
@@ -191,5 +244,37 @@ export async function downloadPatientOutput(patientId: string, filePath: string)
     `/patients/${encodeURIComponent(patientId)}/outputs/serve/${encodedPath}`,
     { responseType: 'blob' }
   )
+  return response.data
+}
+
+export async function getBodyCompositionResults(patientId: string): Promise<BodyCompositionResults> {
+  const response = await get<BaseResponse<BodyCompositionResults>>(
+    `/patients/${encodeURIComponent(patientId)}/body-composition-results`
+  )
+  return response.data.data
+}
+
+export async function uploadBodyCompositionMetricFile(patientId: string, phase: CtPhase, file: File): Promise<BodyCompositionResults> {
+  const formData = new FormData()
+  formData.append('result_file', file)
+  const response = await post<BaseResponse<BodyCompositionResults>>(
+    `/patients/${encodeURIComponent(patientId)}/body-composition-results/metrics/${phase}`,
+    formData
+  )
+  return response.data.data
+}
+
+export async function uploadBodyCompositionTypeFile(patientId: string, file: File): Promise<BodyCompositionResults> {
+  const formData = new FormData()
+  formData.append('result_file', file)
+  const response = await post<BaseResponse<BodyCompositionResults>>(
+    `/patients/${encodeURIComponent(patientId)}/body-composition-results/type`,
+    formData
+  )
+  return response.data.data
+}
+
+export async function downloadBodyCompositionResultFile(file: PatientResultFile): Promise<Blob> {
+  const response = await api.get(file.download_url, { responseType: 'blob' })
   return response.data
 }

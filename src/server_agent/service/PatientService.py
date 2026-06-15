@@ -1,5 +1,6 @@
 import re
 import asyncio
+import csv
 import json
 import logging
 import shutil
@@ -32,6 +33,8 @@ MASK_TYPES = {
     "tumor": "tumor",
 }
 MASK_EXTENSIONS = {".nii", ".nii.gz"}
+BODY_COMPOSITION_METRIC_EXTENSIONS = {".csv", ".xlsx"}
+BODY_COMPOSITION_TYPE_EXTENSIONS = {".json"}
 VOLUME_CACHE: Dict[str, Dict[str, Any]] = {}
 SLICE_CACHE_WARMUPS: set[str] = set()
 SLICE_CACHE_WARMUP_LOCK = threading.Lock()
@@ -147,6 +150,39 @@ class PatientService:
 
     def _mask_meta_path(self, patient_id: str, mask_type: str, phase: str) -> Path:
         return self._mask_dir(patient_id, mask_type, phase) / "meta.json"
+
+    def _body_composition_metrics_dir(self, patient_id: str, phase: str) -> Path:
+        patient_dir = self._patient_dir(patient_id)
+        metrics_dir = (patient_dir / "body_composition_metrics" / phase / "table").resolve()
+        try:
+            metrics_dir.relative_to(patient_dir)
+        except ValueError:
+            raise ValidationError(detail="invalid body composition metrics path", field="patient_id")
+        return metrics_dir
+
+    def _body_composition_type_dir(self, patient_id: str) -> Path:
+        patient_dir = self._patient_dir(patient_id)
+        type_dir = (patient_dir / "body_composition_type" / "classification").resolve()
+        try:
+            type_dir.relative_to(patient_dir)
+        except ValueError:
+            raise ValidationError(detail="invalid body composition type path", field="patient_id")
+        return type_dir
+
+    def _standard_result_file_path(self, patient_id: str, file_path: str) -> Path:
+        patient_dir = self._patient_dir(patient_id)
+        if not file_path or Path(file_path).is_absolute():
+            raise ValidationError(detail="invalid result file path", field="file_path")
+        target = (patient_dir / file_path).resolve()
+        try:
+            relative = target.relative_to(patient_dir)
+        except ValueError:
+            raise ValidationError(detail="invalid result file path", field="file_path")
+        if not relative.parts or relative.parts[0] not in {"body_composition_metrics", "body_composition_type"}:
+            raise ValidationError(detail="unsupported result file path", field="file_path")
+        if not target.is_file():
+            raise NotFoundError(resource_type="patient_result_file", resource_id=file_path)
+        return target
 
     def _empty_ct_status(self, phase: str) -> Dict[str, Any]:
         return {
@@ -1336,6 +1372,325 @@ class PatientService:
         if not patient:
             raise NotFoundError(resource_type="patient", resource_id=clean_id)
         return self._agent_output_file_path(clean_id, file_path)
+
+    @staticmethod
+    def _read_json_file(path: Path) -> dict:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    @staticmethod
+    def _parse_iso_datetime(value: Any) -> Optional[datetime]:
+        if not isinstance(value, str) or not value.strip():
+            return None
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError:
+            return None
+
+    def _manifest_sort_time(self, manifest_path: Path, manifest: dict) -> float:
+        for key in ("finished_at", "updated_at", "started_at"):
+            parsed = self._parse_iso_datetime(manifest.get(key))
+            if parsed is not None:
+                return parsed.timestamp()
+        try:
+            return manifest_path.stat().st_mtime
+        except OSError:
+            return 0.0
+
+    def _safe_manifest_output_path(self, run_dir: Path, rel_path: str) -> Optional[Path]:
+        candidate = Path(rel_path)
+        output_path = candidate if candidate.is_absolute() else run_dir / candidate
+        output_path = output_path.resolve()
+        try:
+            relative = output_path.relative_to(run_dir.resolve())
+        except ValueError:
+            return None
+        if "_internal" in relative.parts:
+            return None
+        return output_path if output_path.is_file() else None
+
+    def _latest_agent_output_by_role(
+        self,
+        patient_id: str,
+        skill_id: str,
+        role: str,
+        phase: Optional[str] = None,
+    ) -> Optional[Path]:
+        output_root = self._agent_outputs_dir(patient_id)
+        best: tuple[float, Path] | None = None
+        for manifest_path in sorted(output_root.glob(f"*/steps/{skill_id}/manifest.json")):
+            manifest = self._read_json_file(manifest_path)
+            if manifest.get("status") != "success":
+                continue
+            run_dir_value = manifest.get("run_dir")
+            run_dir = Path(run_dir_value).resolve() if isinstance(run_dir_value, str) else manifest_path.parent.resolve()
+            timestamp = self._manifest_sort_time(manifest_path, manifest)
+            for output in manifest.get("outputs") or []:
+                if not isinstance(output, dict):
+                    continue
+                if output.get("role") != role:
+                    continue
+                if phase is None:
+                    if output.get("phase") is not None:
+                        continue
+                elif output.get("phase") != phase:
+                    continue
+                rel_path = output.get("path")
+                if not isinstance(rel_path, str):
+                    continue
+                output_path = self._safe_manifest_output_path(run_dir, rel_path)
+                if output_path is None:
+                    continue
+                if best is None or timestamp > best[0]:
+                    best = (timestamp, output_path)
+        return best[1] if best else None
+
+    @staticmethod
+    def _first_file_with_ext(base_dir: Path, extensions: set[str]) -> Optional[Path]:
+        if not base_dir.is_dir():
+            return None
+        for path in sorted(base_dir.iterdir()):
+            if not path.is_file():
+                continue
+            name = path.name.lower()
+            if any(name.endswith(ext) for ext in extensions):
+                return path
+        return None
+
+    def _standard_result_file_payload(self, patient_id: str, path: Optional[Path], source: str) -> Optional[dict]:
+        if path is None or not path.is_file():
+            return None
+        if source == "agent_output":
+            output_root = self._agent_outputs_dir(patient_id)
+            relative_path = path.resolve().relative_to(output_root.resolve()).as_posix()
+            download_url = f"/patients/{patient_id}/outputs/serve/{relative_path}"
+        else:
+            patient_dir = self._patient_dir(patient_id)
+            relative_path = path.resolve().relative_to(patient_dir.resolve()).as_posix()
+            download_url = f"/patients/{patient_id}/body-composition-results/serve/{relative_path}"
+        stat = path.stat()
+        media_type, _ = mimetypes.guess_type(path.name)
+        return {
+            "path": str(path),
+            "relative_path": relative_path,
+            "name": path.name,
+            "size": stat.st_size,
+            "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+            "media_type": media_type or "application/octet-stream",
+            "download_url": download_url,
+            "source": source,
+        }
+
+    @staticmethod
+    def _find_numeric_column(row: dict[str, str], explicit_names: list[str], required_tokens: list[str]) -> Optional[float]:
+        for name in explicit_names:
+            value = row.get(name)
+            if value not in (None, ""):
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    return None
+        tokens = [token.lower() for token in required_tokens]
+        for key, value in row.items():
+            if value in (None, ""):
+                continue
+            key_lower = key.lower()
+            if all(token in key_lower for token in tokens):
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    return None
+        return None
+
+    def _summarize_metrics_csv(self, csv_path: Optional[Path], height_cm: Optional[float]) -> Optional[dict]:
+        if csv_path is None or not csv_path.is_file():
+            return None
+        try:
+            with csv_path.open("r", encoding="utf-8-sig", newline="") as handle:
+                row = next(csv.DictReader(handle), None)
+        except Exception:
+            return None
+        if not row:
+            return None
+
+        muscle = self._find_numeric_column(row, ["SMVI", "标签1-骨骼肌-Muscle (cm³)"], ["标签1", "muscle", "cm"])
+        vat = self._find_numeric_column(row, ["VAVI", "VFVI", "标签3-内脏脂肪-VAT (cm³)"], ["标签3", "vat", "cm"])
+        sat = self._find_numeric_column(row, ["SAVI", "标签4-皮下脂肪-SAT (cm³)"], ["标签4", "sat", "cm"])
+        summary = {
+            "file_name": row.get("文件名"),
+            "muscle_cm3": muscle,
+            "vat_cm3": vat,
+            "sat_cm3": sat,
+            "thoracic_start": row.get("胸椎起始"),
+            "thoracic_end": row.get("胸椎结束"),
+        }
+        if height_cm:
+            height_m2 = (float(height_cm) / 100.0) ** 2
+            if height_m2 > 0:
+                summary.update({
+                    "smvi": muscle / height_m2 if muscle is not None else None,
+                    "vavi": vat / height_m2 if vat is not None else None,
+                    "savi": sat / height_m2 if sat is not None else None,
+                })
+        return summary
+
+    def _summarize_type_json(self, json_path: Optional[Path]) -> Optional[dict]:
+        if json_path is None or not json_path.is_file():
+            return None
+        payload = self._read_json_file(json_path)
+        classification = payload.get("classification") if isinstance(payload.get("classification"), dict) else payload
+        metric_results = classification.get("metric_results") if isinstance(classification, dict) else None
+        if not isinstance(metric_results, dict):
+            return None
+        return {
+            "status": classification.get("status"),
+            "message": classification.get("message"),
+            "metric_results": metric_results,
+        }
+
+    def _resolve_body_composition_metric_files(self, patient_id: str, phase: str) -> dict:
+        metrics_dir = self._body_composition_metrics_dir(patient_id, phase)
+        csv_path = self._first_file_with_ext(metrics_dir, {".csv"})
+        xlsx_path = self._first_file_with_ext(metrics_dir, {".xlsx"})
+        csv_source = "standard"
+        xlsx_source = "standard"
+        if csv_path is None:
+            csv_path = self._latest_agent_output_by_role(patient_id, "ct_bodycomp_metrics_thoracic", "metrics_table", phase)
+            csv_source = "agent_output"
+        if xlsx_path is None:
+            xlsx_path = self._latest_agent_output_by_role(patient_id, "ct_bodycomp_metrics_thoracic", "metrics_report", phase)
+            xlsx_source = "agent_output"
+        return {
+            "csv": self._standard_result_file_payload(patient_id, csv_path, csv_source),
+            "xlsx": self._standard_result_file_payload(patient_id, xlsx_path, xlsx_source),
+        }
+
+    def _resolve_body_composition_type_file(self, patient_id: str) -> tuple[Optional[Path], str]:
+        type_dir = self._body_composition_type_dir(patient_id)
+        json_path = self._first_file_with_ext(type_dir, {".json"})
+        if json_path is not None:
+            return json_path, "standard"
+        json_path = self._latest_agent_output_by_role(
+            patient_id,
+            "ct_body_composition_type_classifier",
+            "body_composition_type_classification",
+            None,
+        )
+        return json_path, "agent_output"
+
+    @handle_service_exception
+    async def get_body_composition_results(self, patient_id: str) -> Dict[str, Any]:
+        clean_id = self._validate_patient_id(patient_id)
+        patient = await self.mapper.get_patient(clean_id)
+        if not patient:
+            raise NotFoundError(resource_type="patient", resource_id=clean_id)
+
+        height_cm = getattr(patient, "height_cm", None)
+        pre_files = self._resolve_body_composition_metric_files(clean_id, "pre")
+        post_files = self._resolve_body_composition_metric_files(clean_id, "post")
+        type_path, type_source = self._resolve_body_composition_type_file(clean_id)
+        type_file = self._standard_result_file_payload(clean_id, type_path, type_source)
+
+        return {
+            "patient_id": clean_id,
+            "standard_roots": {
+                "metrics": str(self._patient_dir(clean_id) / "body_composition_metrics"),
+                "type_classification": str(self._patient_dir(clean_id) / "body_composition_type"),
+            },
+            "metrics": {
+                "pre": {
+                    **pre_files,
+                    "summary": self._summarize_metrics_csv(Path(pre_files["csv"]["path"]) if pre_files.get("csv") else None, height_cm),
+                },
+                "post": {
+                    **post_files,
+                    "summary": self._summarize_metrics_csv(Path(post_files["csv"]["path"]) if post_files.get("csv") else None, height_cm),
+                },
+            },
+            "type_classification": {
+                "json": type_file,
+                "summary": self._summarize_type_json(Path(type_file["path"]) if type_file else None),
+            },
+        }
+
+    @handle_service_exception
+    async def upload_body_composition_metric_file(self, patient_id: str, phase: str, result_file: UploadFile) -> Dict[str, Any]:
+        clean_id = self._validate_patient_id(patient_id)
+        clean_phase = self._validate_phase(phase)
+        patient = await self.mapper.get_patient(clean_id)
+        if not patient:
+            raise NotFoundError(resource_type="patient", resource_id=clean_id)
+
+        file_name = self._safe_filename(result_file.filename or "", field="result_file")
+        ext = ".xlsx" if file_name.lower().endswith(".xlsx") else Path(file_name.lower()).suffix
+        if ext not in BODY_COMPOSITION_METRIC_EXTENSIONS:
+            raise ValidationError(detail="Metric file only supports .csv or .xlsx", field="result_file")
+
+        target_dir = self._body_composition_metrics_dir(clean_id, clean_phase)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        for old_file in target_dir.glob(f"*{ext}"):
+            old_file.unlink(missing_ok=True)
+        file_path = target_dir / file_name
+        size = 0
+        try:
+            with file_path.open("wb") as out_file:
+                while True:
+                    chunk = await result_file.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    size += len(chunk)
+                    out_file.write(chunk)
+        finally:
+            await result_file.close()
+        if size <= 0:
+            file_path.unlink(missing_ok=True)
+            raise ValidationError(detail="result_file is empty", field="result_file")
+        return await self.get_body_composition_results(clean_id)
+
+    @handle_service_exception
+    async def upload_body_composition_type_file(self, patient_id: str, result_file: UploadFile) -> Dict[str, Any]:
+        clean_id = self._validate_patient_id(patient_id)
+        patient = await self.mapper.get_patient(clean_id)
+        if not patient:
+            raise NotFoundError(resource_type="patient", resource_id=clean_id)
+
+        file_name = self._safe_filename(result_file.filename or "", field="result_file")
+        if Path(file_name.lower()).suffix not in BODY_COMPOSITION_TYPE_EXTENSIONS:
+            raise ValidationError(detail="Type classification file only supports .json", field="result_file")
+        target_dir = self._body_composition_type_dir(clean_id)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        for old_file in target_dir.glob("*.json"):
+            old_file.unlink(missing_ok=True)
+        file_path = target_dir / file_name
+        size = 0
+        try:
+            with file_path.open("wb") as out_file:
+                while True:
+                    chunk = await result_file.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    size += len(chunk)
+                    out_file.write(chunk)
+        finally:
+            await result_file.close()
+        if size <= 0:
+            file_path.unlink(missing_ok=True)
+            raise ValidationError(detail="result_file is empty", field="result_file")
+        if not self._read_json_file(file_path):
+            file_path.unlink(missing_ok=True)
+            raise ValidationError(detail="result_file must be a JSON object", field="result_file")
+        return await self.get_body_composition_results(clean_id)
+
+    @handle_service_exception
+    async def get_body_composition_result_file_path(self, patient_id: str, file_path: str) -> Path:
+        clean_id = self._validate_patient_id(patient_id)
+        patient = await self.mapper.get_patient(clean_id)
+        if not patient:
+            raise NotFoundError(resource_type="patient", resource_id=clean_id)
+        return self._standard_result_file_path(clean_id, file_path)
 
     @handle_service_exception
     async def export_patient_report(self, patient_id: str) -> Path:
