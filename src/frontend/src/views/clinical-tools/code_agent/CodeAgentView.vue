@@ -142,6 +142,14 @@
                 <span v-else-if="task.status === 'failed'">{{ t('views_CodeAgentView.taskManager.statusFailed') }}</span>
                 <span v-else-if="task.status === 'cancelled'">已取消</span>
               </span>
+              <span
+                v-if="taskLiveElapsed(task)"
+                class="workflow-task-elapsed"
+                :class="{ 'workflow-task-elapsed-live': task.status === 'running' }"
+              >
+                {{ taskLiveElapsed(task) }}
+              </span>
+              <span v-else class="workflow-task-time">{{ formatTime(task.created_at) }}</span>
               <!-- 操作按钮 -->
               <div class="workflow-task-actions">
                 <button
@@ -159,20 +167,10 @@
             </div>
 
             <!-- 底部元信息 -->
-            <div class="workflow-task-meta">
-              <span
-                class="workflow-task-conv"
-                :class="{ 'workflow-task-conv-clickable': canJumpToConv(task.conversation_id) }"
-                :title="canJumpToConv(task.conversation_id) ? t('views_CodeAgentView.taskManager.jumpToConv') : t('views_CodeAgentView.taskManager.convNotInList')"
-                @click="jumpToConversation(task.conversation_id)"
-              >💬 {{ getConvTitle(task.conversation_id) }}</span>
-              <span v-if="taskLiveElapsed(task)" class="workflow-task-elapsed" :class="{ 'workflow-task-elapsed-live': task.status === 'running' }">
-                {{ taskLiveElapsed(task) }}
-              </span>
-              <span v-else-if="task.status === 'failed'" class="workflow-task-error-hint" :title="task.skill_error || ''">
+            <div v-if="task.status === 'failed'" class="workflow-task-meta">
+              <span class="workflow-task-error-hint" :title="task.skill_error || ''">
                 {{ task.skill_error || t('views_CodeAgentView.taskManager.viewError') }}
               </span>
-              <span v-else class="workflow-task-time">{{ formatTime(task.created_at) }}</span>
             </div>
           </div>
         </div>
@@ -486,6 +484,78 @@
           @click="cancelDelete"
         ></div>
       </Teleport>
+
+      <a-modal
+        :open="!!pendingUserQuestion"
+        title="需要确认"
+        :closable="false"
+        :mask-closable="false"
+        :keyboard="false"
+        width="720px"
+        class="user-question-modal"
+        @cancel="handleCancelUserQuestion"
+      >
+        <div v-if="pendingUserQuestion" class="user-question-content">
+          <a-alert
+            type="info"
+            show-icon
+            message="ClaudeCode 需要你确认后才能继续执行"
+            class="user-question-alert"
+          />
+          <div
+            v-for="(question, index) in pendingUserQuestion.questions"
+            :key="index"
+            class="user-question-block"
+          >
+            <div class="user-question-header">{{ question.header || `确认项 ${index + 1}` }}</div>
+            <div class="user-question-title">{{ question.question }}</div>
+
+            <a-checkbox-group
+              v-if="question.multiSelect"
+              v-model:value="userQuestionAnswers[index]"
+              class="user-question-options"
+            >
+              <a-checkbox
+                v-for="option in question.options || []"
+                :key="option.label"
+                :value="option.label"
+                class="user-question-option"
+              >
+                <span class="option-label">{{ option.label }}</span>
+                <span v-if="option.description" class="option-description">{{ option.description }}</span>
+              </a-checkbox>
+            </a-checkbox-group>
+
+            <a-radio-group
+              v-else
+              v-model:value="userQuestionAnswers[index]"
+              class="user-question-options"
+            >
+              <a-radio
+                v-for="option in question.options || []"
+                :key="option.label"
+                :value="option.label"
+                class="user-question-option"
+              >
+                <span class="option-label">{{ option.label }}</span>
+                <span v-if="option.description" class="option-description">{{ option.description }}</span>
+              </a-radio>
+            </a-radio-group>
+          </div>
+        </div>
+
+        <template #footer>
+          <a-button @click="handleCancelUserQuestion" :disabled="submittingUserQuestion">取消</a-button>
+          <a-button
+            type="primary"
+            @click="handleSubmitUserQuestion"
+            :loading="submittingUserQuestion"
+            :disabled="!isUserQuestionComplete"
+          >
+            确认并继续
+          </a-button>
+        </template>
+      </a-modal>
     </div>
   </div>
 </template>
@@ -527,6 +597,8 @@ import {
   updateConversation,
   confirmPermission,
   cancelPermission,
+  answerUserQuestion,
+  cancelUserQuestion,
   interruptSession,
   getSkillTask,
   listSkillTasks,
@@ -623,6 +695,7 @@ const messages = ref<MessageResponse[]>([])
 
 // 当前活动的 session_id（用于中断）
 const currentSessionId = ref<string | null>(null)
+const userInterrupting = ref(false)
 
 // Todo 折叠状态
 const todoCollapsedStates = ref<Record<string, boolean>>({})
@@ -647,6 +720,37 @@ const pendingPermission = ref<{
   requestId: string
 } | null>(null)
 const confirmingPermission = ref(false)
+
+type UserQuestionOption = {
+  label: string
+  description?: string
+}
+
+type UserQuestionItem = {
+  question: string
+  header?: string
+  options?: UserQuestionOption[]
+  multiSelect?: boolean
+}
+
+const pendingUserQuestion = ref<{
+  sessionId: string
+  requestId: string
+  questions: UserQuestionItem[]
+} | null>(null)
+const userQuestionAnswers = ref<any[]>([])
+const submittingUserQuestion = ref(false)
+
+const isUserQuestionComplete = computed(() => {
+  if (!pendingUserQuestion.value) return false
+  return pendingUserQuestion.value.questions.every((question, index) => {
+    const answer = userQuestionAnswers.value[index]
+    if (question.multiSelect) {
+      return Array.isArray(answer) && answer.length > 0
+    }
+    return typeof answer === 'string' && answer.length > 0
+  })
+})
 
 const confirmPlan = () => {
   if (isPlanConfirmed.value) return  // 执行锁
@@ -711,23 +815,120 @@ const handleCancelPermission = async () => {
   }
 }
 
+const prepareUserQuestionAnswers = (questions: UserQuestionItem[]) => {
+  userQuestionAnswers.value = questions.map((question) => {
+    if (question.multiSelect) return []
+    return question.options?.[0]?.label || ''
+  })
+}
+
+const buildUserQuestionPayload = () => {
+  if (!pendingUserQuestion.value) return {}
+
+  const answerItems = pendingUserQuestion.value.questions.map((question, index) => ({
+    index,
+    header: question.header || `确认项 ${index + 1}`,
+    question: question.question,
+    answer: userQuestionAnswers.value[index],
+  }))
+
+  const answersByHeader = answerItems.reduce<Record<string, any>>((acc, item) => {
+    acc[item.header] = item.answer
+    return acc
+  }, {})
+
+  return {
+    answer_items: answerItems,
+    answers_by_header: answersByHeader,
+  }
+}
+
+const handleSubmitUserQuestion = async () => {
+  if (!pendingUserQuestion.value || !isUserQuestionComplete.value) return
+
+  submittingUserQuestion.value = true
+  try {
+    const response = await answerUserQuestion({
+      session_id: pendingUserQuestion.value.sessionId,
+      request_id: pendingUserQuestion.value.requestId,
+      answers: buildUserQuestionPayload()
+    })
+
+    if (response.code === 200) {
+      pendingUserQuestion.value = null
+      userQuestionAnswers.value = []
+    } else {
+      message.error(response.message || '提交确认失败')
+    }
+  } catch (error) {
+    console.error('提交用户确认失败:', error)
+    message.error('提交确认失败')
+  } finally {
+    submittingUserQuestion.value = false
+  }
+}
+
+const handleCancelUserQuestion = async () => {
+  if (!pendingUserQuestion.value) return
+
+  submittingUserQuestion.value = true
+  try {
+    const response = await cancelUserQuestion({
+      session_id: pendingUserQuestion.value.sessionId,
+      request_id: pendingUserQuestion.value.requestId,
+      answers: {}
+    })
+
+    if (response.code === 200) {
+      pendingUserQuestion.value = null
+      userQuestionAnswers.value = []
+    } else {
+      message.error(response.message || '取消确认失败')
+    }
+  } catch (error) {
+    console.error('取消用户确认失败:', error)
+    message.error('取消确认失败')
+  } finally {
+    submittingUserQuestion.value = false
+  }
+}
+
 // 中断对话
 const handleInterrupt = async () => {
-  if (!currentSessionId.value) {
+  let sessionId = currentSessionId.value
+  if (!sessionId && selectedConversationId.value) {
+    try {
+      const statusRes = await getSessionStatus(selectedConversationId.value)
+      sessionId = statusRes.data?.sdk_session_id || null
+    } catch (error) {
+      console.warn('[handleInterrupt] 获取 session-status 失败:', error)
+    }
+  }
+
+  if (!sessionId) {
     message.warning(t('views_CodeAgentView.messages.interruptNoSession'))
     return
   }
 
+  userInterrupting.value = true
+  if (currentStreamAbortController) {
+    currentStreamAbortController.abort()
+    currentStreamAbortController = null
+  }
+
   try {
-    const response = await interruptSession(currentSessionId.value)
+    const response = await interruptSession(sessionId)
     if (response.code === 200) {
       message.success(t('views_CodeAgentView.messages.interruptedConv'))
       sendingMessage.value = false
       currentSessionId.value = null
+      stopActiveSessionPoller()
     } else {
+      userInterrupting.value = false
       message.error(response.message || t('views_CodeAgentView.messages.interruptFailed'))
     }
   } catch (error) {
+    userInterrupting.value = false
     console.error('中断对话失败:', error)
     message.error(t('views_CodeAgentView.messages.interruptConvFailed'))
   }
@@ -738,6 +939,7 @@ const loadingConversationDetail = ref(false)
 
 // 用于取消上次请求的 AbortController
 let currentAbortController: AbortController | null = null
+let currentStreamAbortController: AbortController | null = null
 
 // 获取当前 loading 的 assistant 步骤索引
 const getCurrentStepIndex = (): number => {
@@ -934,26 +1136,6 @@ const runningTaskCount = computed(() =>
 const finishedTaskCount = computed(() =>
   filteredSkillTasks.value.filter(t => t.status === 'success' || t.status === 'failed' || t.status === 'cancelled').length
 )
-
-// 根据 conversation_id 获取会话标题
-const getConvTitle = (conversationId: string): string => {
-  const conv = conversations.value.find(c => c.conversation_id === conversationId)
-  return conv?.title || t('views_CodeAgentView.unnamedConversation')
-}
-
-// 是否可以跳转到该会话
-const canJumpToConv = (conversationId: string): boolean => {
-  return conversations.value.some(c => c.conversation_id === conversationId)
-}
-
-// 跳转到任务对应的会话
-const jumpToConversation = (conversationId: string) => {
-  if (!canJumpToConv(conversationId)) return
-  const conv = conversations.value.find(c => c.conversation_id === conversationId)
-  if (conv) {
-    selectConversation(conv)
-  }
-}
 
 // 取消运行中的任务
 const handleCancelTask = async (taskId: string) => {
@@ -1218,6 +1400,18 @@ const handleStreamEvent = (event: CodeEventType, capturedSessionId: string | nul
       }
       nextTick(() => scrollToBottom())
       break
+    case 'user_question_request': {
+      const questionEvent = event as any
+      const questions = Array.isArray(questionEvent.questions) ? questionEvent.questions : []
+      pendingUserQuestion.value = {
+        sessionId: questionEvent.sessionId,
+        requestId: questionEvent.requestId,
+        questions
+      }
+      prepareUserQuestionAnswers(questions)
+      nextTick(() => scrollToBottom())
+      break
+    }
     case 'stream_event':
       const streamEvent = event as any
       if (streamEvent.event) {
@@ -1538,12 +1732,13 @@ const handleSendMessage = async () => {
   let keepPolling = false
 
   try {
+    currentStreamAbortController = new AbortController()
     const stream = await streamChat({
       conversation_id: streamingConversationId,
       messages: historyMessages,
       message: userMessage,
       project_id: currentProjectId.value
-    })
+    }, currentStreamAbortController.signal)
 
     if (!stream) {
       throw new Error('无法建立流式连接')
@@ -1600,6 +1795,13 @@ const handleSendMessage = async () => {
     }
   } catch (error) {
     console.error('SSE 断流或发送失败:', error)
+    if (userInterrupting.value && ((error as any)?.name === 'AbortError' || String(error).includes('AbortError'))) {
+      const aiMsgIndex = messages.value.length - 1
+      if (messages.value[aiMsgIndex]) {
+        messages.value[aiMsgIndex].loading = false
+      }
+      return
+    }
     // 检测后端 session 是否仍在运行，若是则无缝切换为轮询模式
     try {
       const statusRes = await getSessionStatus(streamingConversationId)
@@ -1626,6 +1828,8 @@ const handleSendMessage = async () => {
     if (!keepPolling) {
       sendingMessage.value = false
       currentSessionId.value = null
+      currentStreamAbortController = null
+      userInterrupting.value = false
     }
   }
 }
@@ -1990,7 +2194,8 @@ onUnmounted(() => {
 .workflow-task-header {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
+  min-width: 0;
 }
 
 .workflow-task-status-icon {
@@ -2045,28 +2250,24 @@ onUnmounted(() => {
 .workflow-task-meta {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-top: 5px;
-}
-
-.workflow-task-conv {
-  font-size: 11px;
-  color: var(--text-secondary);
-  opacity: 0.7;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 140px;
+  margin-top: 6px;
+  min-width: 0;
 }
 
 .workflow-task-elapsed {
-  font-size: 11px;
-  color: #10b981;
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 1;
+  color: #059669;
   font-weight: 500;
+  padding: 3px 5px;
+  border-radius: 5px;
+  background: rgba(16, 185, 129, 0.1);
 }
 
 .workflow-task-elapsed-live {
-  color: #f59e0b;
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.13);
   animation: elapsed-blink 1.5s ease-in-out infinite;
 }
 
@@ -2076,9 +2277,14 @@ onUnmounted(() => {
 }
 
 .workflow-task-time {
-  font-size: 11px;
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 1;
   color: var(--text-secondary);
-  opacity: 0.6;
+  opacity: 0.72;
+  padding: 3px 5px;
+  border-radius: 5px;
+  background: rgba(148, 163, 184, 0.12);
 }
 
 .workflow-task-error-hint {
@@ -2086,7 +2292,7 @@ onUnmounted(() => {
   color: #ef4444;
   cursor: pointer;
   text-decoration: underline dotted;
-  max-width: 160px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2169,18 +2375,6 @@ onUnmounted(() => {
   background: rgba(239, 68, 68, 0.1);
   border-color: #ef4444;
   color: #ef4444;
-}
-
-.workflow-task-conv-clickable {
-  cursor: pointer;
-  text-decoration: underline dotted transparent;
-  transition: color 0.15s, text-decoration-color 0.15s;
-}
-
-.workflow-task-conv-clickable:hover {
-  color: #3b82f6;
-  text-decoration-color: #3b82f6;
-  opacity: 1;
 }
 
 .list-card {
@@ -3544,5 +3738,68 @@ onUnmounted(() => {
   right: 0;
   bottom: 0;
   z-index: 9998;
+}
+
+.user-question-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.user-question-alert {
+  margin-bottom: 2px;
+}
+
+.user-question-block {
+  padding: 12px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  background: var(--bg-secondary, #fafafa);
+}
+
+.user-question-header {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary-color, #1677ff);
+  margin-bottom: 4px;
+}
+
+.user-question-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary, #111827);
+  margin-bottom: 10px;
+}
+
+.user-question-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.user-question-option {
+  width: 100%;
+  min-height: 34px;
+  margin-inline-start: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 6px;
+  background: var(--bg-primary, #fff);
+}
+
+.option-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #111827);
+}
+
+.option-description {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary, #6b7280);
 }
 </style>

@@ -177,6 +177,9 @@ class CodeAgentService:
                 elif kind == MessageKind.PERMISSION_REQUEST:
                     chunk_data["type"] = "permission_request"
                     logger.info(f"[CodeAgentService] Permission request: {chunk_data.get('toolName')}")
+                elif kind == MessageKind.USER_QUESTION_REQUEST:
+                    chunk_data["type"] = "user_question_request"
+                    logger.info(f"[CodeAgentService] User question request: {chunk_data.get('requestId')}")
                 elif kind == "skill_submitted":
                     chunk_data["type"] = "skill_submitted"
                     logger.info(f"[CodeAgentService] Skill submitted: task={chunk_data.get('taskId')}")
@@ -223,6 +226,16 @@ class CodeAgentService:
         """取消权限请求 — 通过 session_id 找到持有该 session 的 Agent"""
         agent = find_agent_by_session(session_id) or get_code_agent()
         await agent.cancel_permission(session_id, request_id)
+
+    async def answer_user_question(self, session_id: str, request_id: str, answers: dict):
+        """提交 AskUserQuestion 的前端确认答案。"""
+        agent = find_agent_by_session(session_id) or get_code_agent()
+        await agent.answer_user_question(session_id, request_id, answers)
+
+    async def cancel_user_question(self, session_id: str, request_id: str):
+        """取消 AskUserQuestion 的前端确认。"""
+        agent = find_agent_by_session(session_id) or get_code_agent()
+        await agent.cancel_user_question(session_id, request_id)
 
     async def interrupt_session(self, session_id: str) -> bool:
         """中断会话"""

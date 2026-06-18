@@ -42,6 +42,12 @@ class PermissionRequest(BaseModel):
     request_id: Optional[str] = Field(None, description="权限请求ID，用于精确定位并发工具调用")
 
 
+class UserQuestionAnswerRequest(BaseModel):
+    session_id: str = Field(..., description="会话ID")
+    request_id: str = Field(..., description="用户问题请求ID")
+    answers: Dict[str, Any] = Field(default_factory=dict, description="前端收集的用户答案")
+
+
 class ConversationInfoResponse(BaseModel):
     conversation_id: Optional[str] = None
     session_id: Optional[str] = None
@@ -147,6 +153,34 @@ class CodeAgentController(BaseController):
                 return ResultUtils.success("权限已取消")
             except Exception as e:
                 return ResultUtils.error(500, f"取消权限失败: {str(e)}")
+
+        @self.router.post("/answer_user_question")
+        async def answer_user_question(
+            request: UserQuestionAnswerRequest,
+            user_vo: UserVO = Depends(self._get_current_user)
+        ) -> BaseResponse[str]:
+            """提交 Claude Code AskUserQuestion 的用户选择"""
+            try:
+                await self.service.answer_user_question(
+                    request.session_id,
+                    request.request_id,
+                    request.answers,
+                )
+                return ResultUtils.success("用户选择已提交")
+            except Exception as e:
+                return ResultUtils.error(500, f"提交用户选择失败: {str(e)}")
+
+        @self.router.post("/cancel_user_question")
+        async def cancel_user_question(
+            request: UserQuestionAnswerRequest,
+            user_vo: UserVO = Depends(self._get_current_user)
+        ) -> BaseResponse[str]:
+            """取消 Claude Code AskUserQuestion"""
+            try:
+                await self.service.cancel_user_question(request.session_id, request.request_id)
+                return ResultUtils.success("用户选择已取消")
+            except Exception as e:
+                return ResultUtils.error(500, f"取消用户选择失败: {str(e)}")
 
         @self.router.post("/interrupt/{session_id}")
         async def interrupt_session(

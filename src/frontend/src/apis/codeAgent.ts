@@ -176,6 +176,24 @@ export interface PermissionRequestEvent {
 }
 
 /**
+ * Claude Code AskUserQuestion 前端确认事件
+ */
+export interface UserQuestionRequestEvent {
+  kind: 'user_question_request'
+  sessionId: string
+  requestId: string
+  questions: Array<{
+    question: string
+    header?: string
+    options?: Array<{
+      label: string
+      description?: string
+    }>
+    multiSelect?: boolean
+  }>
+}
+
+/**
  * Skill 后台提交事件
  */
 export interface SkillSubmittedEvent {
@@ -195,6 +213,7 @@ export type CodeEventType =
   | ResultEvent
   | SessionCreatedEvent
   | PermissionRequestEvent
+  | UserQuestionRequestEvent
   | SkillSubmittedEvent
 
 /**
@@ -307,7 +326,7 @@ export interface BaseResponse<T = any> {
  * @param request 聊天请求
  * @returns ReadableStream
  */
-export async function streamChat(request: ChatRequest): Promise<ReadableStream<Uint8Array> | null> {
+export async function streamChat(request: ChatRequest, signal?: AbortSignal): Promise<ReadableStream<Uint8Array> | null> {
   try {
     // 获取 API 基础 URL
     const baseURL = (import.meta as any).env?.VITE_API_BASE || '/api'
@@ -325,7 +344,8 @@ export async function streamChat(request: ChatRequest): Promise<ReadableStream<U
     const response = await fetch(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify(request)
+      body: JSON.stringify(request),
+      signal
     })
 
     if (!response.ok) {
@@ -399,8 +419,8 @@ export async function parseStreamResponse(
               }
             } else if (kind === 'error') {
               onError(data.content || 'Unknown error')
-            } else if (kind === 'session_created' || kind === 'permission_request') {
-              // 会话创建事件和权限请求事件，传递给 onEvent 处理
+            } else if (kind === 'session_created' || kind === 'permission_request' || kind === 'user_question_request') {
+              // 会话创建事件、权限请求和用户确认请求，传递给 onEvent 处理
               if (onEvent) {
                 onEvent(data as any)
               }
@@ -537,6 +557,28 @@ export async function confirmPermission(request: PermissionRequest): Promise<Bas
  */
 export async function cancelPermission(request: PermissionRequest): Promise<BaseResponse<boolean>> {
   const response = await post<BaseResponse<boolean>>('/code-agent/cancel_permission', request)
+  return response.data
+}
+
+export interface UserQuestionAnswerRequest {
+  session_id: string
+  request_id: string
+  answers: Record<string, any>
+}
+
+/**
+ * 提交 Claude Code AskUserQuestion 的前端选择
+ */
+export async function answerUserQuestion(request: UserQuestionAnswerRequest): Promise<BaseResponse<boolean>> {
+  const response = await post<BaseResponse<boolean>>('/code-agent/answer_user_question', request)
+  return response.data
+}
+
+/**
+ * 取消 Claude Code AskUserQuestion
+ */
+export async function cancelUserQuestion(request: UserQuestionAnswerRequest): Promise<BaseResponse<boolean>> {
+  const response = await post<BaseResponse<boolean>>('/code-agent/cancel_user_question', request)
   return response.data
 }
 

@@ -103,6 +103,7 @@ class MessageKind:
     COMPLETE = "complete"
     PERMISSION_REQUEST = "permission_request"
     PERMISSION_CANCELLED = "permission_cancelled"
+    USER_QUESTION_REQUEST = "user_question_request"
     SESSION_CREATED = "session_created"
     STATUS = "status"
 
@@ -234,6 +235,11 @@ class ClaudeAgent:
         self._permission_queue: asyncio.Queue = asyncio.Queue()  # 权限请求队列
         self._permission_events: dict[str, asyncio.Event] = {}  # request_id -> event
         self._permission_results: dict[str, bool] = {}  # request_id -> allow/deny
+
+        # Claude Code AskUserQuestion 确认相关。与工具权限分开，避免业务选择和安全确认混淆。
+        self._question_queue: asyncio.Queue = asyncio.Queue()
+        self._question_events: dict[str, asyncio.Event] = {}
+        self._question_results: dict[str, dict[str, Any]] = {}
         self._skill_event_queues: dict[str, set[asyncio.Queue]] = {}
 
         # ClaudeSDKClient 实例（每个会话一个）
@@ -293,13 +299,23 @@ class ClaudeAgent:
             parts = shlex.split(command)
         except ValueError:
             parts = command.split()
-        if any(Path(part).name == "run_skill_task.py" for part in parts):
-            for index, part in enumerate(parts):
+        runner_indices = [
+            index for index, part in enumerate(parts)
+            if Path(part).name == "run_skill_task.py"
+        ]
+        for runner_index in runner_indices:
+            previous = parts[runner_index - 1] if runner_index > 0 else ""
+            is_interpreter_target = Path(previous).name.startswith("python")
+            is_direct_runner = "/" in parts[runner_index] or runner_index == 0
+            if not is_interpreter_target and not is_direct_runner:
+                continue
+
+            for index, part in enumerate(parts[runner_index + 1:], start=runner_index + 1):
                 if part == "--skill-id" and index + 1 < len(parts):
                     return parts[index + 1]
                 if part.startswith("--skill-id="):
                     return part.split("=", 1)[1]
-            return "run_skill_task"
+            return None
 
         # Match interpreter-backed entrypoints such as:
         #   python /.../.claude/skills/lung-crop/scripts/run_lung_crop.py
@@ -322,34 +338,96 @@ class ClaudeAgent:
         return self._skill_script_map.get(Path(script_path).name)
 
     def _ensure_runner_run_id(self, command: str) -> str:
-        """Inject a run_id for simple run_skill_task.py commands so manifest_path is known at submit time."""
+        """Normalize standard runner commands so task tracking can bind manifest_path.
+
+        ClaudeCode may wrap the runner with shell decorations such as
+        ``2>&1 | tail -30``. The task manager cannot reliably parse or monitor
+        those commands, so we rebuild patient-level runner invocations into the
+        single supported form before execution.
+        """
         import shlex
 
-        if not command or any(token in command for token in (";", "&&", "||", "|", "<", ">")):
+        if not command:
             return command
         try:
             parts = shlex.split(command)
         except ValueError:
             return command
-        if not any(Path(part).name == "run_skill_task.py" for part in parts):
+
+        runner_index = next(
+            (index for index, part in enumerate(parts) if Path(part).name == "run_skill_task.py"),
+            None,
+        )
+        if runner_index is None:
             return command
 
+        previous = parts[runner_index - 1] if runner_index > 0 else ""
+        python_executable = previous if Path(previous).name.startswith("python") else "python"
+        runner_token = parts[runner_index]
+        if not Path(runner_token).is_absolute() and self._project_config:
+            runner_token = str((self._project_config.base_dir / runner_token).resolve())
+
+        shell_stop_tokens = {"|", ";", "&&", "||"}
+        option_parts: list[str] = []
+        for part in parts[runner_index + 1:]:
+            if (
+                part in shell_stop_tokens
+                or part.startswith("<")
+                or part.startswith(">")
+                or ">&" in part
+                or part.endswith(">")
+            ):
+                break
+            option_parts.append(part)
+
+        value_options = [
+            "--patient-id",
+            "--skill-id",
+            "--run-id",
+            "--task-slug",
+            "--phase",
+            "--mode",
+            "--model",
+            "--label-prompt",
+            "--device",
+            "--thoracic-start",
+            "--thoracic-end",
+        ]
+        flag_options = {"--overwrite", "--keep-workspace", "--dry-run"}
+
         def option_value(name: str) -> Optional[str]:
-            for index, part in enumerate(parts):
-                if part == name and index + 1 < len(parts):
-                    return parts[index + 1]
+            for index, part in enumerate(option_parts):
+                if part == name and index + 1 < len(option_parts):
+                    return option_parts[index + 1]
                 prefix = f"{name}="
                 if part.startswith(prefix):
                     return part[len(prefix):]
             return None
 
-        if option_value("--run-id"):
+        patient_id = option_value("--patient-id")
+        skill_id = option_value("--skill-id")
+        if not patient_id or not skill_id:
             return command
-        skill_id = option_value("--skill-id") or "skill_task"
+
+        normalized = [python_executable, runner_token, "--patient-id", patient_id, "--skill-id", skill_id]
+        for name in value_options:
+            if name in {"--patient-id", "--skill-id", "--run-id"}:
+                continue
+            value = option_value(name)
+            if value is not None:
+                normalized.extend([name, value])
+
+        present_flags = {part for part in option_parts if part in flag_options}
+        for name in sorted(present_flags):
+            normalized.append(name)
+
+        run_id = option_value("--run-id")
         phase = option_value("--phase") or "both"
-        slug = skill_id if phase == "both" else f"{skill_id}_{phase}"
-        run_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{slug.strip().lower().replace('-', '_')}"
-        return shlex.join([*parts, "--run-id", run_id])
+        if not run_id:
+            slug = skill_id if phase == "both" else f"{skill_id}_{phase}"
+            run_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{slug.strip().lower().replace('-', '_')}"
+        normalized.extend(["--run-id", run_id])
+        return shlex.join(normalized)
 
     def _register_skill_event_queue(self, conversation_id: Optional[str], queue: asyncio.Queue) -> None:
         if conversation_id:
@@ -713,6 +791,9 @@ class ClaudeAgent:
         logger.info(f"[PERMISSION] Input data: {input_data}")
         logger.info(f"[PERMISSION] Context: {context}")
 
+        if tool_name == "AskUserQuestion":
+            return await self._handle_user_question_tool(input_data, context)
+
         # ===== Bash 工具调用 Skill 脚本：检测并创建后台任务 =====
         if tool_name == "Bash":
             command = input_data.get("command", "") if isinstance(input_data, dict) else ""
@@ -829,6 +910,89 @@ class ClaudeAgent:
         #     logger.info(f"[PERMISSION] User denied tool: {tool_name}")
         #     return PermissionResultDeny(message="用户拒绝了此操作")
 
+    def _extract_hook_session_id(self, context: Any) -> str:
+        return (
+            getattr(context, "session_id", None)
+            or (context.get("session_id") if isinstance(context, dict) else None)
+            or self._last_session_id
+            or ""
+        )
+
+    async def _handle_user_question_tool(self, input_data: Any, context: Any):
+        """把 Claude Code 的 AskUserQuestion 转成前端确认弹窗并等待用户回答。"""
+        session_id = self._extract_hook_session_id(context)
+        request_id = str(uuid.uuid4())
+        questions = []
+        if isinstance(input_data, dict):
+            raw_questions = input_data.get("questions", [])
+            if isinstance(raw_questions, list):
+                questions = raw_questions
+
+        if not questions:
+            return PermissionResultDeny(
+                message="AskUserQuestion 缺少有效 questions。请直接在对话中向用户提问。"
+            )
+
+        event = asyncio.Event()
+        self._question_events[request_id] = event
+        await self._question_queue.put({
+            "session_id": session_id,
+            "conversation_id": self._session_conversation_map.get(session_id, ""),
+            "request_id": request_id,
+            "questions": questions,
+            "tool_input": input_data if isinstance(input_data, dict) else {},
+        })
+        logger.info(
+            f"[USER_QUESTION] Request queued: session={session_id}, "
+            f"request_id={request_id}, count={len(questions)}"
+        )
+
+        try:
+            await asyncio.wait_for(event.wait(), timeout=900.0)
+        except asyncio.TimeoutError:
+            self._question_events.pop(request_id, None)
+            self._question_results.pop(request_id, None)
+            logger.warning(f"[USER_QUESTION] Timeout: request_id={request_id}")
+            return PermissionResultDeny(message="用户确认超时，请稍后重新询问用户。")
+
+        result = self._question_results.pop(request_id, {})
+        self._question_events.pop(request_id, None)
+        if result.get("cancelled"):
+            logger.info(f"[USER_QUESTION] Cancelled by user: request_id={request_id}")
+            return PermissionResultDeny(message="用户取消了本次确认，请停止执行并等待用户新的指示。")
+
+        answers = result.get("answers") or {}
+        answer_text = json.dumps(answers, ensure_ascii=False, indent=2)
+        logger.info(f"[USER_QUESTION] Answered: request_id={request_id}")
+
+        # Claude Code 内置 AskUserQuestion 没有可由 SDK 直接注入 tool_result 的 API。
+        # 在 can_use_tool 阶段阻止原工具继续执行，并把前端真实答案作为 deny message
+        # 交回模型，可避免 CLI 生成空 answers 后自动继续。
+        return PermissionResultDeny(
+            message=(
+                "前端已经完成用户确认。不要再次询问用户，请严格依据以下用户选择继续执行：\n"
+                f"{answer_text}"
+            )
+        )
+
+    async def answer_user_question(self, session_id: str, request_id: str, answers: dict[str, Any]):
+        key = request_id or session_id
+        logger.info(f"[USER_QUESTION] Answering question, key={key}")
+        self._question_results[key] = {"answers": answers or {}}
+        if key in self._question_events:
+            self._question_events[key].set()
+        else:
+            logger.warning(f"[USER_QUESTION] No pending event for key={key}")
+
+    async def cancel_user_question(self, session_id: str, request_id: str):
+        key = request_id or session_id
+        logger.info(f"[USER_QUESTION] Canceling question, key={key}")
+        self._question_results[key] = {"cancelled": True}
+        if key in self._question_events:
+            self._question_events[key].set()
+        else:
+            logger.warning(f"[USER_QUESTION] No pending event for key={key}")
+
     async def confirm_permission(self, session_id: str, request_id: Optional[str] = None):
         """确认权限请求，优先用 request_id 定位，兜底用 session_id 匹配第一个等待中的请求"""
         key = request_id or session_id
@@ -925,6 +1089,35 @@ class ClaudeAgent:
         self._active_sessions.pop(session_id, None)
         self._session_conversation_map.pop(session_id, None)
 
+    async def _cancel_running_skill_tasks_for_session(self, session_id: str, reason: str) -> None:
+        """Cancel manifest-tracked Skill tasks that belong to a Claude session."""
+        conversation_id = self._session_conversation_map.get(session_id, "")
+        if not conversation_id:
+            return
+        try:
+            from src.server_agent.service.SkillTaskManager import get_skill_task_manager
+            task_manager = get_skill_task_manager()
+            cancelled_ids: set[str] = set()
+            for task in task_manager.list_tasks(conversation_id=conversation_id):
+                if task.status != "running":
+                    continue
+                if task_manager.cancel(task.task_id):
+                    cancelled_ids.add(task.task_id)
+                else:
+                    task_manager.mark_finished(task.task_id, success=False, error=reason)
+                    cancelled_ids.add(task.task_id)
+
+            self._tool_task_map = {
+                key: task_id for key, task_id in self._tool_task_map.items()
+                if task_id not in cancelled_ids
+            }
+            for task_id in cancelled_ids:
+                watcher = self._bg_watchers.pop(task_id, None)
+                if watcher and not watcher.done():
+                    watcher.cancel()
+        except Exception as exc:
+            logger.warning(f"[INTERRUPT] Failed to cancel running skill tasks for session {session_id}: {exc}")
+
     async def aclose(self):
         """关闭当前 Agent 的全部资源。"""
         self._is_closing = True
@@ -947,6 +1140,8 @@ class ClaudeAgent:
         self._tool_task_map.clear()
         self._permission_events.clear()
         self._permission_results.clear()
+        self._question_events.clear()
+        self._question_results.clear()
         self._session_last_active.clear()
 
     async def query(
@@ -1060,19 +1255,8 @@ class ClaudeAgent:
                                 tool_input = normalized.tool_input if isinstance(normalized.tool_input, dict) else {}
                                 command = tool_input.get("command", "")
                                 if command:
-                                    import shlex as _shlex
-                                    try:
-                                        _parts = _shlex.split(command)
-                                    except ValueError:
-                                        _parts = command.split()
-                                    _is_standard_runner = any(Path(part).name == "run_skill_task.py" for part in _parts)
-                                    _has_run_id = any(part == "--run-id" or part.startswith("--run-id=") for part in _parts)
-                                    if _is_standard_runner and not _has_run_id:
-                                        if ws_callback:
-                                            ws_callback(normalized)
-                                        yield normalized
-                                        continue
                                     command = self._ensure_runner_run_id(command)
+                                    tool_input["command"] = command
                                     await self._submit_skill_task_from_bash(
                                         command=command,
                                         tool_use_id=normalized.tool_id,
@@ -1371,6 +1555,41 @@ class ClaudeAgent:
             except Exception as e:
                 logger.error(f"[PERMISSION_LISTENER] Error: {e}")
 
+        async def user_question_listener():
+            try:
+                while not stream_done.is_set():
+                    try:
+                        question_data = await asyncio.wait_for(
+                            self._question_queue.get(),
+                            timeout=0.1
+                        )
+                        target_conversation_id = question_data.get("conversation_id")
+                        if (
+                            target_conversation_id
+                            and conversation_id
+                            and target_conversation_id != conversation_id
+                        ):
+                            await self._question_queue.put(question_data)
+                            await asyncio.sleep(0.05)
+                            continue
+                        question_msg = {
+                            "kind": MessageKind.USER_QUESTION_REQUEST,
+                            "sessionId": question_data["session_id"],
+                            "requestId": question_data["request_id"],
+                            "questions": question_data["questions"],
+                            "provider": "claude",
+                            "done": False,
+                        }
+                        logger.info(
+                            f"[USER_QUESTION_LISTENER] Forwarding question request: "
+                            f"{question_data['request_id']}"
+                        )
+                        await output_queue.put(("user_question", question_msg))
+                    except asyncio.TimeoutError:
+                        continue
+            except Exception as e:
+                logger.error(f"[USER_QUESTION_LISTENER] Error: {e}")
+
         async def skill_event_listener():
             try:
                 while not stream_done.is_set():
@@ -1402,6 +1621,7 @@ class ClaudeAgent:
 
         # 启动后台任务
         permission_task = asyncio.create_task(permission_listener())
+        user_question_task = asyncio.create_task(user_question_listener())
         skill_event_task = asyncio.create_task(skill_event_listener())
         stream_task = asyncio.create_task(message_stream_handler())
 
@@ -1416,6 +1636,10 @@ class ClaudeAgent:
                 elif item_type == "permission":
                     # 发送权限请求
                     logger.info(f"[PERMISSION_REQUEST] Sending to frontend: {item_data['toolName']}")
+                    yield json.dumps(item_data, ensure_ascii=False)
+
+                elif item_type == "user_question":
+                    logger.info(f"[USER_QUESTION_REQUEST] Sending to frontend: {item_data['requestId']}")
                     yield json.dumps(item_data, ensure_ascii=False)
 
                 elif item_type == "skill_submitted":
@@ -1510,10 +1734,15 @@ class ClaudeAgent:
             stream_done.set()
             self._unregister_skill_event_queue(conversation_id, skill_event_queue)
             permission_task.cancel()
+            user_question_task.cancel()
             skill_event_task.cancel()
             stream_task.cancel()
             try:
                 await permission_task
+            except asyncio.CancelledError:
+                pass
+            try:
+                await user_question_task
             except asyncio.CancelledError:
                 pass
             try:
@@ -1562,13 +1791,26 @@ class ClaudeAgent:
         return full_content
 
     async def interrupt(self, session_id: str) -> bool:
-        """中断指定会话（不关闭 client，保留 resume 能力）"""
-        if session_id in self._active_sessions:
-            self._active_sessions[session_id].set()
-            self._touch_session(session_id)
-            logger.info(f"Session {session_id} interrupted")
-            return True
-        return False
+        """Hard-interrupt a session and close the current ClaudeCode client."""
+        active_event = self._active_sessions.get(session_id)
+        client = self._clients.get(session_id)
+        if not active_event and not client:
+            return False
+
+        if active_event:
+            active_event.set()
+
+        if client:
+            try:
+                await client.interrupt()
+            except Exception as exc:
+                logger.warning(f"[INTERRUPT] SDK interrupt failed for session {session_id}: {exc}")
+
+        await self._cancel_running_skill_tasks_for_session(session_id, "会话被用户终止")
+        await self.close_client(session_id)
+        self._dead_sessions.add(session_id)
+        logger.info(f"Session {session_id} hard-interrupted and client closed")
+        return True
 
 
 # 全局 Agent 实例（按项目隔离）
