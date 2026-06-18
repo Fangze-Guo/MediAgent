@@ -59,7 +59,44 @@
                 <div>
                   <div class="panel-kicker">PRE</div>
                 </div>
-                <a-tag :color="ctStatusColor(preCt.status)">{{ ctStatusLabel(preCt.status) }}</a-tag>
+                <div class="result-card-tools">
+                  <a-button
+                    type="text"
+                    class="ct-icon-action result-upload-action"
+                    :loading="uploadingPhase.pre"
+                    :title="preCt.status === 'ready' ? t('views_PatientDetailView.ct.replace') : t('views_PatientDetailView.ct.uploadPre')"
+                    @click="triggerCtUpload('pre')"
+                  >
+                    <template #icon><UploadOutlined /></template>
+                  </a-button>
+                  <a-button
+                    type="text"
+                    class="ct-icon-action result-upload-action"
+                    title="Select from agent outputs"
+                    @click="openOutputImportModal({ kind: 'ct', phase: 'pre' })"
+                  >
+                    <template #icon><FolderOpenOutlined /></template>
+                  </a-button>
+                  <a-popconfirm
+                    v-if="preCt.status === 'ready'"
+                    :title="t('views_PatientDetailView.ct.deleteConfirmPre')"
+                    :ok-text="t('common.delete')"
+                    :cancel-text="t('common.cancel')"
+                    ok-type="danger"
+                    @confirm="handleDeleteCt('pre')"
+                  >
+                    <a-button
+                      type="text"
+                      danger
+                      class="ct-icon-action result-upload-action"
+                      :loading="deletingPhase.pre"
+                      :title="t('views_PatientDetailView.ct.delete')"
+                    >
+                      <template #icon><DeleteOutlined /></template>
+                    </a-button>
+                  </a-popconfirm>
+                  <a-tag :color="ctStatusColor(preCt.status)">{{ ctStatusLabel(preCt.status) }}</a-tag>
+                </div>
               </div>
               <div
                 v-if="preCt.status === 'ready'"
@@ -115,24 +152,6 @@
                     <span>{{ t('views_PatientDetailView.dragDrop.ct') }}</span>
                   </div>
                 </div>
-              <div class="ct-action-bar">
-                <a-button class="ct-primary-action" :loading="uploadingPhase.pre" @click="triggerCtUpload('pre')">
-                  <template #icon><UploadOutlined /></template>
-                  {{ preCt.status === 'ready' ? t('views_PatientDetailView.ct.replace') : t('views_PatientDetailView.ct.uploadPre') }}
-                </a-button>
-                <a-popconfirm
-                  v-if="preCt.status === 'ready'"
-                  :title="t('views_PatientDetailView.ct.deleteConfirmPre')"
-                  :ok-text="t('common.delete')"
-                  :cancel-text="t('common.cancel')"
-                  ok-type="danger"
-                  @confirm="handleDeleteCt('pre')"
-                >
-                  <a-button class="ct-icon-action" danger :loading="deletingPhase.pre" :title="t('views_PatientDetailView.ct.delete')">
-                    <template #icon><DeleteOutlined /></template>
-                  </a-button>
-                </a-popconfirm>
-              </div>
             </section>
 
             <section class="panel ct-panel">
@@ -140,7 +159,44 @@
                 <div>
                   <div class="panel-kicker">POST</div>
                 </div>
-                <a-tag :color="ctStatusColor(postCt.status)">{{ ctStatusLabel(postCt.status) }}</a-tag>
+                <div class="result-card-tools">
+                  <a-button
+                    type="text"
+                    class="ct-icon-action result-upload-action"
+                    :loading="uploadingPhase.post"
+                    :title="postCt.status === 'ready' ? t('views_PatientDetailView.ct.replace') : t('views_PatientDetailView.ct.uploadPost')"
+                    @click="triggerCtUpload('post')"
+                  >
+                    <template #icon><UploadOutlined /></template>
+                  </a-button>
+                  <a-button
+                    type="text"
+                    class="ct-icon-action result-upload-action"
+                    title="Select from agent outputs"
+                    @click="openOutputImportModal({ kind: 'ct', phase: 'post' })"
+                  >
+                    <template #icon><FolderOpenOutlined /></template>
+                  </a-button>
+                  <a-popconfirm
+                    v-if="postCt.status === 'ready'"
+                    :title="t('views_PatientDetailView.ct.deleteConfirmPost')"
+                    :ok-text="t('common.delete')"
+                    :cancel-text="t('common.cancel')"
+                    ok-type="danger"
+                    @confirm="handleDeleteCt('post')"
+                  >
+                    <a-button
+                      type="text"
+                      danger
+                      class="ct-icon-action result-upload-action"
+                      :loading="deletingPhase.post"
+                      :title="t('views_PatientDetailView.ct.delete')"
+                    >
+                      <template #icon><DeleteOutlined /></template>
+                    </a-button>
+                  </a-popconfirm>
+                  <a-tag :color="ctStatusColor(postCt.status)">{{ ctStatusLabel(postCt.status) }}</a-tag>
+                </div>
               </div>
               <div
                 v-if="postCt.status === 'ready'"
@@ -196,24 +252,6 @@
                   <span>{{ t('views_PatientDetailView.dragDrop.ct') }}</span>
                 </div>
               </div>
-              <div class="ct-action-bar">
-                <a-button class="ct-primary-action" :loading="uploadingPhase.post" @click="triggerCtUpload('post')">
-                  <template #icon><UploadOutlined /></template>
-                  {{ postCt.status === 'ready' ? t('views_PatientDetailView.ct.replace') : t('views_PatientDetailView.ct.uploadPost') }}
-                </a-button>
-                <a-popconfirm
-                  v-if="postCt.status === 'ready'"
-                  :title="t('views_PatientDetailView.ct.deleteConfirmPost')"
-                  :ok-text="t('common.delete')"
-                  :cancel-text="t('common.cancel')"
-                  ok-type="danger"
-                  @confirm="handleDeleteCt('post')"
-                >
-                  <a-button class="ct-icon-action" danger :loading="deletingPhase.post" :title="t('views_PatientDetailView.ct.delete')">
-                    <template #icon><DeleteOutlined /></template>
-                  </a-button>
-                </a-popconfirm>
-              </div>
             </section>
           </div>
 
@@ -234,7 +272,44 @@
                 <div v-for="slot in group.slots" :key="slot.phase" class="mask-slot">
                   <div class="mask-slot-header">
                     <strong>{{ slot.label }}</strong>
-                    <a-tag :color="maskStatusColor(slot.status.status)">{{ maskStatusLabel(slot.status.status) }}</a-tag>
+                    <div class="result-card-tools">
+                      <a-button
+                        type="text"
+                        class="ct-icon-action result-upload-action"
+                        :loading="uploadingMaskKeys[maskKey(group.maskType, slot.phase)]"
+                        :title="slot.status.status === 'ready' ? t('views_PatientDetailView.mask.replace') : t('views_PatientDetailView.mask.upload')"
+                        @click="triggerMaskUpload(group.maskType, slot.phase)"
+                      >
+                        <template #icon><UploadOutlined /></template>
+                      </a-button>
+                      <a-button
+                        type="text"
+                        class="ct-icon-action result-upload-action"
+                        title="Select from agent outputs"
+                        @click="openOutputImportModal({ kind: 'mask', maskType: group.maskType, phase: slot.phase })"
+                      >
+                        <template #icon><FolderOpenOutlined /></template>
+                      </a-button>
+                      <a-popconfirm
+                        v-if="slot.status.status === 'ready'"
+                        :title="t('views_PatientDetailView.mask.deleteConfirm')"
+                        :ok-text="t('common.delete')"
+                        :cancel-text="t('common.cancel')"
+                        ok-type="danger"
+                        @confirm="handleDeleteMask(group.maskType, slot.phase)"
+                      >
+                        <a-button
+                          type="text"
+                          danger
+                          class="ct-icon-action result-upload-action"
+                          :loading="deletingMaskKeys[maskKey(group.maskType, slot.phase)]"
+                          :title="t('views_PatientDetailView.mask.delete')"
+                        >
+                          <template #icon><DeleteOutlined /></template>
+                        </a-button>
+                      </a-popconfirm>
+                      <a-tag :color="maskStatusColor(slot.status.status)">{{ maskStatusLabel(slot.status.status) }}</a-tag>
+                    </div>
                   </div>
                   <div
                     v-if="slot.status.status === 'ready'"
@@ -294,56 +369,39 @@
                       <span>{{ t('views_PatientDetailView.dragDrop.mask') }}</span>
                     </div>
                   </div>
-                  <div class="ct-action-bar">
-                    <a-button
-                      class="ct-primary-action"
-                      :loading="uploadingMaskKeys[maskKey(group.maskType, slot.phase)]"
-                      @click="triggerMaskUpload(group.maskType, slot.phase)"
-                    >
-                      <template #icon><UploadOutlined /></template>
-                      {{ slot.status.status === 'ready' ? t('views_PatientDetailView.mask.replace') : t('views_PatientDetailView.mask.upload') }}
-                    </a-button>
-                    <a-popconfirm
-                      v-if="slot.status.status === 'ready'"
-                      :title="t('views_PatientDetailView.mask.deleteConfirm')"
-                      :ok-text="t('common.delete')"
-                      :cancel-text="t('common.cancel')"
-                      ok-type="danger"
-                      @confirm="handleDeleteMask(group.maskType, slot.phase)"
-                    >
-                      <a-button
-                        class="ct-icon-action"
-                        danger
-                        :loading="deletingMaskKeys[maskKey(group.maskType, slot.phase)]"
-                        :title="t('views_PatientDetailView.mask.delete')"
-                      >
-                        <template #icon><DeleteOutlined /></template>
-                      </a-button>
-                    </a-popconfirm>
-                  </div>
                 </div>
               </div>
             </section>
           </div>
 
-          <section class="panel body-results-panel">
+          <section class="panel body-results-panel" :class="{ collapsed: !bodyResultsExpanded }">
             <div class="panel-header body-results-header">
               <div>
                 <div class="panel-kicker">BODY COMPOSITION RESULTS</div>
-                <h2>Metrics and Type</h2>
               </div>
-              <a-button class="ct-icon-action" :loading="loadingBodyResults" title="Refresh body composition results" @click="fetchBodyCompositionResults">
-                <template #icon><ReloadOutlined /></template>
+              <a-button class="mask-collapse-action" :title="bodyResultsExpanded ? t('common.collapse') : t('common.expand')" @click="bodyResultsExpanded = !bodyResultsExpanded">
+                <span class="mask-collapse-chevron" :class="{ expanded: bodyResultsExpanded }">⌄</span>
               </a-button>
             </div>
-            <a-spin :spinning="loadingBodyResults">
+            <a-spin v-if="bodyResultsExpanded" :spinning="loadingBodyResults">
               <div class="body-results-grid">
                 <div v-for="phase in bodyResultPhases" :key="phase" class="body-result-card">
                   <div class="body-result-card-header">
                     <strong>{{ phase.toUpperCase() }} metrics</strong>
-                    <a-tag :color="metricResultForPhase(phase).csv ? 'green' : 'default'">
-                      {{ metricResultForPhase(phase).csv ? metricResultSourceLabel(metricResultForPhase(phase).csv?.source) : 'Empty' }}
-                    </a-tag>
+                    <div class="result-card-tools">
+                      <a-button
+                        type="text"
+                        class="ct-icon-action result-upload-action"
+                        :loading="uploadingBodyMetricPhase === phase"
+                        :title="metricResultForPhase(phase).csv || metricResultForPhase(phase).xlsx ? 'Replace file' : 'Upload file'"
+                        @click="triggerBodyMetricUpload(phase)"
+                      >
+                        <template #icon><UploadOutlined /></template>
+                      </a-button>
+                      <a-tag :color="metricResultForPhase(phase).csv ? 'green' : 'default'">
+                        {{ metricResultForPhase(phase).csv ? metricResultSourceLabel(metricResultForPhase(phase).csv?.source) : 'Empty' }}
+                      </a-tag>
+                    </div>
                   </div>
                   <div v-if="metricResultForPhase(phase).summary" class="metric-mini-grid">
                     <div v-for="item in metricSummaryItems(metricResultForPhase(phase).summary)" :key="item.key" class="metric-mini-item">
@@ -352,28 +410,25 @@
                     </div>
                   </div>
                   <div v-else class="body-result-empty">No metrics table found</div>
-                  <div class="body-result-actions">
-                    <a-button size="small" :disabled="!metricResultForPhase(phase).csv" :loading="downloadingResultPath === metricResultForPhase(phase).csv?.relative_path" @click="downloadResultFile(metricResultForPhase(phase).csv)">
-                      <template #icon><DownloadOutlined /></template>
-                      CSV
-                    </a-button>
-                    <a-button size="small" :disabled="!metricResultForPhase(phase).xlsx" :loading="downloadingResultPath === metricResultForPhase(phase).xlsx?.relative_path" @click="downloadResultFile(metricResultForPhase(phase).xlsx)">
-                      <template #icon><DownloadOutlined /></template>
-                      XLSX
-                    </a-button>
-                    <a-button size="small" :loading="uploadingBodyMetricPhase === phase" @click="triggerBodyMetricUpload(phase)">
-                      <template #icon><UploadOutlined /></template>
-                      Upload
-                    </a-button>
-                  </div>
                 </div>
 
                 <div class="body-result-card type-result-card">
                   <div class="body-result-card-header">
                     <strong>Type classification</strong>
-                    <a-tag :color="bodyCompositionResults?.type_classification.json ? 'green' : 'default'">
-                      {{ bodyCompositionResults?.type_classification.json ? metricResultSourceLabel(bodyCompositionResults.type_classification.json.source) : 'Empty' }}
-                    </a-tag>
+                    <div class="result-card-tools">
+                      <a-button
+                        type="text"
+                        class="ct-icon-action result-upload-action"
+                        :loading="uploadingBodyType"
+                        :title="bodyCompositionResults?.type_classification.json ? 'Replace JSON' : 'Upload JSON'"
+                        @click="triggerBodyTypeUpload"
+                      >
+                        <template #icon><UploadOutlined /></template>
+                      </a-button>
+                      <a-tag :color="bodyCompositionResults?.type_classification.json ? 'green' : 'default'">
+                        {{ bodyCompositionResults?.type_classification.json ? metricResultSourceLabel(bodyCompositionResults.type_classification.json.source) : 'Empty' }}
+                      </a-tag>
+                    </div>
                   </div>
                   <div v-if="bodyCompositionResults?.type_classification.summary?.metric_results" class="type-result-list">
                     <div v-for="item in typeSummaryItems" :key="item.metric" class="type-result-row">
@@ -383,28 +438,102 @@
                     </div>
                   </div>
                   <div v-else class="body-result-empty">No type classification JSON found</div>
-                  <div class="body-result-actions">
-                    <a-button size="small" :disabled="!bodyCompositionResults?.type_classification.json" :loading="downloadingResultPath === bodyCompositionResults?.type_classification.json?.relative_path" @click="downloadResultFile(bodyCompositionResults?.type_classification.json)">
-                      <template #icon><DownloadOutlined /></template>
-                      JSON
-                    </a-button>
-                    <a-button size="small" :loading="uploadingBodyType" @click="triggerBodyTypeUpload">
-                      <template #icon><UploadOutlined /></template>
-                      Upload
-                    </a-button>
-                  </div>
                 </div>
               </div>
             </a-spin>
           </section>
 
-          <div class="section-grid module-grid">
-            <section v-for="module in analysisModules" :key="module.key" class="panel module-panel">
-              <h2>{{ module.title }}</h2>
-              <p>{{ module.desc }}</p>
-              <a-button disabled>{{ t('views_PatientDetailView.notConfigured') }}</a-button>
+          <section class="panel prediction-results-panel" :class="{ collapsed: !predictionResultsExpanded }">
+            <div class="panel-header body-results-header">
+              <div>
+                <div class="panel-kicker">LUNG PREDICTION RESULTS</div>
+              </div>
+              <a-button class="mask-collapse-action" :title="predictionResultsExpanded ? t('common.collapse') : t('common.expand')" @click="predictionResultsExpanded = !predictionResultsExpanded">
+                <span class="mask-collapse-chevron" :class="{ expanded: predictionResultsExpanded }">⌄</span>
+              </a-button>
+            </div>
+            <section v-if="predictionResultsExpanded" class="prediction-results-grid">
+              <div class="prediction-card tumor-card">
+                <div class="prediction-card-header">
+                  <div>
+                    <span>Tumor radiomics</span>
+                    <strong>MPR score</strong>
+                  </div>
+                  <div class="result-card-tools">
+                    <a-button
+                      type="text"
+                      class="ct-icon-action result-upload-action"
+                      :loading="uploadingLungPredictionType === 'tumor-radiomics-mpr'"
+                      :title="tumorMprFile ? 'Replace JSON' : 'Upload JSON'"
+                      @click="triggerLungPredictionUpload('tumor-radiomics-mpr')"
+                    >
+                      <template #icon><UploadOutlined /></template>
+                    </a-button>
+                    <a-tag :color="tumorMprFile ? 'green' : 'default'">
+                      {{ tumorMprFile ? metricResultSourceLabel(tumorMprFile.source) : 'Empty' }}
+                    </a-tag>
+                  </div>
+                </div>
+                <template v-if="tumorMprSummary">
+                  <div class="prediction-score-row">
+                    <div>
+                      <span>Probability</span>
+                      <strong>{{ formatPercent(tumorMprSummary.probability) }}</strong>
+                    </div>
+                    <div>
+                      <span>Model</span>
+                      <strong>{{ tumorMprSummary.selected_model || '-' }}</strong>
+                    </div>
+                  </div>
+                </template>
+                <div v-else class="body-result-empty">No tumor radiomics MPR JSON found</div>
+              </div>
+
+              <div class="prediction-card mpr-card">
+                <div class="prediction-card-header">
+                  <div>
+                    <span>Integrated prediction</span>
+                    <strong>MPR / DFS</strong>
+                  </div>
+                  <div class="result-card-tools">
+                    <a-button
+                      type="text"
+                      class="ct-icon-action result-upload-action"
+                      :loading="uploadingLungPredictionType === 'mpr-dfs'"
+                      :title="mprDfsFile ? 'Replace JSON' : 'Upload JSON'"
+                      @click="triggerLungPredictionUpload('mpr-dfs')"
+                    >
+                      <template #icon><UploadOutlined /></template>
+                    </a-button>
+                    <a-tag :color="mprDfsFile ? 'green' : 'default'">
+                      {{ mprDfsFile ? metricResultSourceLabel(mprDfsFile.source) : 'Empty' }}
+                    </a-tag>
+                  </div>
+                </div>
+                <template v-if="mprDfsSummary">
+                  <div class="prediction-score-row compact-four">
+                    <div>
+                      <span>MPR probability</span>
+                      <strong>{{ formatPercent(mprDfsSummary.probability) }}</strong>
+                    </div>
+                    <div>
+                      <span>DFS risk</span>
+                      <strong>{{ mprDfsSummary.dfs_risk_group ? formatDisplayText(mprDfsSummary.dfs_risk_group) : '-' }}</strong>
+                    </div>
+                    <div>
+                      <span>Model</span>
+                      <strong>{{ mprDfsSummary.selected_model || '-' }}</strong>
+                    </div>
+                    <div>
+                      <span>DFS score</span>
+                      <strong>{{ formatDfsScore(mprDfsSummary.dfs_risk_score, mprDfsSummary.dfs_cutpoint) }}</strong>
+                    </div>
+                  </div>
+                </template>
+                <div v-else class="body-result-empty">No MPR / DFS prediction JSON found</div>
+              </div>
             </section>
-          </div>
+          </section>
         </template>
 
         <a-empty v-else-if="!loading" :description="t('views_PatientDetailView.notFound')" />
@@ -428,6 +557,73 @@
         :mask-volume-url="viewerTarget.maskVolumeUrl"
         :cache-key="viewerTarget.cacheKey"
       />
+    </a-modal>
+
+    <a-modal
+      v-model:open="outputImportOpen"
+      :title="outputImportTitle"
+      width="760px"
+      :footer="null"
+      class="outputs-modal"
+    >
+      <div class="outputs-modal-toolbar">
+        <span>{{ outputFiles.length }} files</span>
+        <a-button class="ct-icon-action" :loading="loadingOutputs" title="Refresh outputs" @click="fetchPatientOutputs">
+          <template #icon><ReloadOutlined /></template>
+        </a-button>
+      </div>
+      <a-spin :spinning="loadingOutputs">
+        <div v-if="visibleOutputTreeNodes.length" class="output-tree">
+          <div
+            v-for="node in visibleOutputTreeNodes"
+            :key="`import:${node.id}`"
+            class="output-tree-row"
+            :class="node.kind"
+            :style="{ '--tree-depth': node.depth }"
+          >
+            <button
+              v-if="node.kind === 'folder'"
+              class="output-tree-main output-tree-folder-button"
+              type="button"
+              @click="toggleOutputFolder(node.path)"
+            >
+              <span class="output-tree-chevron">
+                <DownOutlined v-if="isOutputFolderExpanded(node.path)" />
+                <RightOutlined v-else />
+              </span>
+              <span class="output-tree-icon"><FolderFilled /></span>
+              <strong>{{ node.name }}</strong>
+              <span>{{ node.fileCount }} files</span>
+            </button>
+            <template v-else-if="node.file">
+              <div class="output-file-main">
+                <span class="output-tree-spacer"></span>
+                <span class="output-tree-icon"><FileOutlined /></span>
+                <div>
+                  <strong>{{ node.file.name }}</strong>
+                </div>
+              </div>
+              <div class="output-file-meta">
+                <span>{{ formatFileSize(node.file.size) }}</span>
+                <span>{{ formatDateTime(node.file.modified_at) }}</span>
+                <a-button
+                  class="ct-icon-action"
+                  :loading="importingOutputPath === node.file.path"
+                  :disabled="importingOutputPath !== null"
+                  :title="`Select ${node.file.name}`"
+                  @click="handleImportOutputFile(node.file)"
+                >
+                  <template #icon><UploadOutlined /></template>
+                </a-button>
+              </div>
+            </template>
+          </div>
+        </div>
+        <div v-else class="outputs-empty">
+          <FolderOpenOutlined />
+          <span>No output files yet</span>
+        </div>
+      </a-spin>
     </a-modal>
 
     <a-modal
@@ -467,6 +663,26 @@
               <strong>{{ node.name }}</strong>
               <span>{{ node.fileCount }} files</span>
             </button>
+            <div v-if="node.kind === 'folder'" class="output-folder-actions">
+              <a-popconfirm
+                v-if="canDeleteOutputFolder(node)"
+                title="Delete this output directory?"
+                ok-text="Delete"
+                cancel-text="Cancel"
+                ok-type="danger"
+                @confirm="handleDeleteOutputFolder(node)"
+              >
+                <a-button
+                  type="text"
+                  class="ct-icon-action output-delete-action"
+                  :loading="deletingOutputFolderPath === node.path"
+                  :disabled="deletingOutputFolderPath !== null"
+                  :title="`Delete ${node.name}`"
+                >
+                  <template #icon><DeleteOutlined /></template>
+                </a-button>
+              </a-popconfirm>
+            </div>
             <template v-else-if="node.file">
               <div class="output-file-main">
                 <span class="output-tree-spacer"></span>
@@ -523,7 +739,7 @@ import MprViewer from '@/components/patient/MprViewer.vue'
 import {
   deletePatientCt,
   deletePatientMask,
-  downloadBodyCompositionResultFile,
+  deletePatientOutputDirectory,
   downloadPatientReport,
   downloadPatientOutput,
   getBodyCompositionResults,
@@ -531,19 +747,24 @@ import {
   getPatientCtStatus,
   getPatientMaskStatus,
   getPatientOutputs,
+  importPatientCtFromOutput,
+  importPatientMaskFromOutput,
   uploadBodyCompositionMetricFile,
   uploadBodyCompositionTypeFile,
+  uploadLungPredictionResultFile,
   uploadPatientCt,
   uploadPatientMask,
   type BodyCompositionMetricsSummary,
   type BodyCompositionResults,
   type CtPhase,
+  type LungPredictionResultType,
   type MaskType,
+  type MprDfsPredictionSummary,
   type PatientOutputFile,
-  type PatientResultFile,
   type PatientCtStatus,
   type PatientInfo,
   type PatientMaskStatus,
+  type TumorRadiomicsMprSummary,
 } from '@/apis/patients'
 
 const { t } = useI18n()
@@ -582,15 +803,21 @@ const exportingReport = ref(false)
 const loadingOutputs = ref(false)
 const loadingBodyResults = ref(false)
 const downloadingOutputPath = ref<string | null>(null)
-const downloadingResultPath = ref<string | null>(null)
+const deletingOutputFolderPath = ref<string | null>(null)
 const uploadingBodyMetricPhase = ref<CtPhase | null>(null)
 const uploadingBodyType = ref(false)
+const uploadingLungPredictionType = ref<LungPredictionResultType | null>(null)
 const outputsOpen = ref(false)
+const outputImportOpen = ref(false)
+const outputImportTarget = ref<OutputImportTarget | null>(null)
+const importingOutputPath = ref<string | null>(null)
 const outputRoot = ref('')
 const outputFiles = ref<PatientOutputFile[]>([])
 const bodyCompositionResults = ref<BodyCompositionResults | null>(null)
 const expandedOutputFolders = ref<Record<string, boolean>>({})
 const maskGroupOverrides = ref<Record<string, boolean>>({})
+const bodyResultsExpanded = ref(true)
+const predictionResultsExpanded = ref(true)
 const viewerOpen = ref(false)
 const viewerTitle = ref('')
 const viewerTarget = ref<{
@@ -646,20 +873,14 @@ const workflowSteps = computed(() => [
   },
 ])
 
-const analysisModules = computed(() => [
-  {
-    key: 'bc',
-    title: t('views_PatientDetailView.modules.bc.title'),
-    desc: t('views_PatientDetailView.modules.bc.desc'),
-  },
-  {
-    key: 'mpr',
-    title: t('views_PatientDetailView.modules.mpr.title'),
-    desc: t('views_PatientDetailView.modules.mpr.desc'),
-  },
-])
-
 const bodyResultPhases: CtPhase[] = ['pre', 'post']
+
+const tumorMprResult = computed(() => bodyCompositionResults.value?.lung_predictions?.tumor_radiomics_mpr)
+const mprDfsResult = computed(() => bodyCompositionResults.value?.lung_predictions?.mpr_dfs)
+const tumorMprFile = computed(() => tumorMprResult.value?.json || null)
+const mprDfsFile = computed(() => mprDfsResult.value?.json || null)
+const tumorMprSummary = computed<TumorRadiomicsMprSummary | null>(() => tumorMprResult.value?.summary || null)
+const mprDfsSummary = computed<MprDfsPredictionSummary | null>(() => mprDfsResult.value?.summary || null)
 
 const typeSummaryItems = computed(() => {
   const results = bodyCompositionResults.value?.type_classification.summary?.metric_results || {}
@@ -689,6 +910,10 @@ interface OutputTreeFolder {
   folders: Map<string, OutputTreeFolder>
   files: PatientOutputFile[]
 }
+
+type OutputImportTarget =
+  | { kind: 'ct'; phase: CtPhase }
+  | { kind: 'mask'; maskType: MaskType; phase: CtPhase }
 
 function createOutputFolder(name: string, path: string): OutputTreeFolder {
   return { name, path, folders: new Map(), files: [] }
@@ -732,6 +957,15 @@ function toggleOutputFolder(path: string) {
   }
 }
 
+function canDeleteOutputFolder(node: OutputTreeNode) {
+  return node.kind === 'folder' && node.path !== outputTreeRoot.value.path
+}
+
+function outputFolderApiPath(path: string) {
+  const rootPath = `${outputTreeRoot.value.path}/`
+  return path.startsWith(rootPath) ? path.slice(rootPath.length) : path
+}
+
 const visibleOutputTreeNodes = computed<OutputTreeNode[]>(() => {
   const nodes: OutputTreeNode[] = []
   const visit = (folder: OutputTreeFolder, depth: number) => {
@@ -764,6 +998,13 @@ const visibleOutputTreeNodes = computed<OutputTreeNode[]>(() => {
     visit(outputTreeRoot.value, 0)
   }
   return nodes
+})
+
+const outputImportTitle = computed(() => {
+  const target = outputImportTarget.value
+  if (!target) return 'Select from agent outputs'
+  if (target.kind === 'ct') return `Select ${target.phase.toUpperCase()} CT from agent outputs`
+  return `Select ${maskDisplayName(target.maskType)} ${target.phase.toUpperCase()} mask from agent outputs`
 })
 
 const maskGroups = computed(() => [
@@ -848,10 +1089,31 @@ function formatMetricValue(value?: number | null, digits = 1) {
   return Number(value).toFixed(digits)
 }
 
+function formatPercent(value?: number | null, digits = 1) {
+  if (value == null || Number.isNaN(Number(value))) return '-'
+  return `${(Number(value) * 100).toFixed(digits)}%`
+}
+
 function formatSignedNumber(value?: number | null, digits = 1) {
   if (value == null || Number.isNaN(Number(value))) return '-'
   const numberValue = Number(value)
   return `${numberValue > 0 ? '+' : ''}${numberValue.toFixed(digits)}`
+}
+
+function formatDisplayText(value?: string | null) {
+  if (!value) return '-'
+  return value
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function formatDfsScore(score?: number | null, cutpoint?: number | null) {
+  const scoreText = formatMetricValue(score, 2)
+  if (scoreText === '-') return '-'
+  const cutpointText = formatMetricValue(cutpoint, 2)
+  return cutpointText === '-' ? scoreText : `${scoreText} / cutoff ${cutpointText}`
 }
 
 function metricSummaryItems(summary?: BodyCompositionMetricsSummary | null) {
@@ -944,24 +1206,18 @@ async function fetchPatientOutputs() {
   }
 }
 
-async function fetchBodyCompositionResults() {
-  loadingBodyResults.value = true
-  try {
-    bodyCompositionResults.value = await getBodyCompositionResults(patientId.value)
-  } catch (error: any) {
-    console.error('Load body composition results failed:', error)
-    message.error(error?.message || 'Failed to load body composition results')
-  } finally {
-    loadingBodyResults.value = false
-  }
-}
-
 function goBack() {
   router.push('/patients')
 }
 
 async function openOutputsModal() {
   outputsOpen.value = true
+  await fetchPatientOutputs()
+}
+
+async function openOutputImportModal(target: OutputImportTarget) {
+  outputImportTarget.value = target
+  outputImportOpen.value = true
   await fetchPatientOutputs()
 }
 
@@ -1005,24 +1261,25 @@ async function handleDownloadOutput(file: PatientOutputFile) {
   }
 }
 
-async function downloadResultFile(file?: PatientResultFile | null) {
-  if (!file) return
-  downloadingResultPath.value = file.relative_path
+async function handleDeleteOutputFolder(node: OutputTreeNode) {
+  if (!canDeleteOutputFolder(node)) return
+  deletingOutputFolderPath.value = node.path
   try {
-    const blob = await downloadBodyCompositionResultFile(file)
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = file.name
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    URL.revokeObjectURL(url)
+    await deletePatientOutputDirectory(patientId.value, outputFolderApiPath(node.path))
+    message.success('Output directory deleted')
+    const nextExpanded = { ...expandedOutputFolders.value }
+    for (const path of Object.keys(nextExpanded)) {
+      if (path === node.path || path.startsWith(`${node.path}/`)) {
+        delete nextExpanded[path]
+      }
+    }
+    expandedOutputFolders.value = nextExpanded
+    await fetchPatientOutputs()
   } catch (error: any) {
-    console.error('Download body composition result failed:', error)
-    message.error(error?.message || 'Failed to download result file')
+    console.error('Delete patient output directory failed:', error)
+    message.error(error?.message || 'Failed to delete output directory')
   } finally {
-    downloadingResultPath.value = null
+    deletingOutputFolderPath.value = null
   }
 }
 
@@ -1075,6 +1332,32 @@ async function uploadBodyTypeFile(file: File) {
     message.error(error?.message || 'Failed to upload type classification')
   } finally {
     uploadingBodyType.value = false
+  }
+}
+
+function triggerLungPredictionUpload(resultType: LungPredictionResultType) {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.json'
+  input.onchange = () => {
+    const file = input.files?.[0]
+    if (file) {
+      void uploadLungPredictionFile(resultType, file)
+    }
+  }
+  input.click()
+}
+
+async function uploadLungPredictionFile(resultType: LungPredictionResultType, file: File) {
+  uploadingLungPredictionType.value = resultType
+  try {
+    bodyCompositionResults.value = await uploadLungPredictionResultFile(patientId.value, resultType, file)
+    message.success('Prediction result uploaded')
+  } catch (error: any) {
+    console.error('Upload prediction result failed:', error)
+    message.error(error?.message || 'Failed to upload prediction result')
+  } finally {
+    uploadingLungPredictionType.value = null
   }
 }
 
@@ -1145,6 +1428,41 @@ async function uploadCtFile(phase: CtPhase, file: File) {
     message.error(error?.message || t('views_PatientDetailView.ct.uploadFailed'))
   } finally {
     uploadingPhase.value[phase] = false
+  }
+}
+
+async function handleImportOutputFile(file: PatientOutputFile) {
+  const target = outputImportTarget.value
+  if (!target) return
+  const lowerPath = file.path.toLowerCase()
+  const allowed = target.kind === 'ct'
+    ? ['.nii', '.nii.gz', '.dcm', '.zip']
+    : ['.nii', '.nii.gz']
+  if (!allowed.some((ext) => lowerPath.endsWith(ext))) {
+    message.error(target.kind === 'ct' ? 'Please select a CT file (.nii, .nii.gz, .dcm, .zip)' : 'Please select a mask file (.nii, .nii.gz)')
+    return
+  }
+  importingOutputPath.value = file.path
+  try {
+    if (target.kind === 'ct') {
+      const status = await importPatientCtFromOutput(patientId.value, target.phase, file.path)
+      if (target.phase === 'pre') preCt.value = status
+      else postCt.value = status
+      message.success(t('views_PatientDetailView.ct.uploaded'))
+    } else {
+      const status = await importPatientMaskFromOutput(patientId.value, target.maskType, target.phase, file.path)
+      setMaskStatus(status)
+      if (target.maskType === 'tumor') {
+        await refreshCtStatus(target.phase)
+      }
+      message.success(t('views_PatientDetailView.mask.uploaded'))
+    }
+    outputImportOpen.value = false
+  } catch (error: any) {
+    console.error('Import output file failed:', error)
+    message.error(error?.message || 'Failed to import output file')
+  } finally {
+    importingOutputPath.value = null
   }
 }
 
@@ -1560,11 +1878,6 @@ function formatOption(group: OptionGroup, value?: string | null) {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.section-grid.module-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-top: 14px;
-}
-
 .full-span {
   grid-column: 1 / -1;
 }
@@ -1639,8 +1952,7 @@ function formatOption(group: OptionGroup, value?: string | null) {
   transform: rotate(0deg);
 }
 
-.panel-header h2,
-.module-panel h2 {
+.panel-header h2 {
   margin: 2px 0 0;
   color: #111827;
   font-size: 18px;
@@ -1980,16 +2292,6 @@ function formatOption(group: OptionGroup, value?: string | null) {
   font-size: 13px;
 }
 
-.ct-action-bar {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.ct-primary-action {
-  flex: 1;
-}
-
 .ct-icon-action {
   width: 40px;
   flex: 0 0 auto;
@@ -1997,6 +2299,20 @@ function formatOption(group: OptionGroup, value?: string | null) {
 
 .body-results-panel {
   margin-bottom: 14px;
+}
+
+.prediction-results-panel {
+  margin-bottom: 14px;
+}
+
+.body-results-panel.collapsed,
+.prediction-results-panel.collapsed {
+  padding-bottom: 14px;
+}
+
+.body-results-panel.collapsed .body-results-header,
+.prediction-results-panel.collapsed .body-results-header {
+  margin-bottom: 0;
 }
 
 .body-results-header {
@@ -2017,6 +2333,115 @@ function formatOption(group: OptionGroup, value?: string | null) {
   border-radius: 8px;
 }
 
+.prediction-results-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 12px;
+}
+
+.prediction-card {
+  min-width: 0;
+  padding: 14px;
+  background: #f8fafc;
+  border: 1px solid #e4e9f1;
+  border-radius: 8px;
+}
+
+.prediction-card-header {
+  min-height: 36px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.prediction-card-header span {
+  display: block;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.prediction-card-header strong {
+  display: block;
+  margin-top: 3px;
+  color: #111827;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.prediction-score-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.prediction-score-row.single {
+  grid-template-columns: 1fr;
+}
+
+.prediction-score-row.compact-four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.prediction-score-row > div {
+  min-width: 0;
+  padding: 11px;
+  background: #fff;
+  border: 1px solid #e4e9f1;
+  border-radius: 8px;
+}
+
+.prediction-score-row span,
+.prediction-detail-list span {
+  display: block;
+  margin-bottom: 4px;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.prediction-score-row strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: #111827;
+  font-size: 22px;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prediction-score-row.compact-four strong {
+  font-size: 18px;
+}
+
+.prediction-detail-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin-bottom: 10px;
+}
+
+.prediction-detail-list > div {
+  min-width: 0;
+}
+
+.prediction-detail-list strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: #111827;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .body-result-card-header {
   min-height: 28px;
   display: flex;
@@ -2024,6 +2449,26 @@ function formatOption(group: OptionGroup, value?: string | null) {
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 10px;
+}
+
+.result-card-tools {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.result-upload-action {
+  width: 28px;
+  height: 28px;
+  color: #667085;
+}
+
+.result-upload-action:hover,
+.result-upload-action:focus {
+  color: #0f766e;
+  background: rgba(15, 118, 110, 0.08);
 }
 
 .body-result-card-header strong {
@@ -2296,6 +2741,33 @@ function formatOption(group: OptionGroup, value?: string | null) {
   white-space: nowrap;
 }
 
+.output-folder-actions {
+  width: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 6px 12px 6px 0;
+}
+
+.output-delete-action {
+  opacity: 0;
+  color: #8c959f;
+  transition: opacity 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.output-tree-row.folder:hover .output-delete-action,
+.output-delete-action:focus,
+.output-delete-action.ant-btn-loading {
+  opacity: 1;
+}
+
+.output-delete-action:hover,
+.output-delete-action:focus {
+  color: #cf222e;
+  background: rgba(207, 34, 46, 0.08);
+}
+
+.output-folder-actions .ct-icon-action,
 .output-file-meta .ct-icon-action {
   width: 30px;
   height: 30px;
@@ -2323,23 +2795,12 @@ function formatOption(group: OptionGroup, value?: string | null) {
   font-size: 24px;
 }
 
-.module-panel {
-  min-height: 210px;
-}
-
-.module-panel p {
-  min-height: 48px;
-  margin: 8px 0 18px;
-  color: #667085;
-  line-height: 1.6;
-}
-
 @media (max-width: 980px) {
   .info-grid,
   .section-grid.two,
-  .section-grid.module-grid,
   .mask-slot-grid,
-  .body-results-grid {
+  .body-results-grid,
+  .prediction-results-grid {
     grid-template-columns: 1fr;
   }
 

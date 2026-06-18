@@ -1,4 +1,4 @@
-from fastapi import Depends, File, Query, UploadFile
+from fastapi import Body, Depends, File, Query, UploadFile
 from fastapi.responses import FileResponse
 
 from src.server_agent.common import BaseResponse, ResultUtils
@@ -95,6 +95,15 @@ class PatientController(BaseController):
                 },
             )
 
+        @self.router.delete("/{patient_id}/outputs/directories/{dir_path:path}")
+        async def delete_patient_output_directory(
+            patient_id: str,
+            dir_path: str,
+            current_user: UserVO = Depends(get_current_user),
+        ) -> BaseResponse[dict]:
+            result = await self.service.delete_agent_output_directory(patient_id, dir_path)
+            return ResultUtils.success(result)
+
         @self.router.get("/{patient_id}/body-composition-results")
         async def get_body_composition_results(
             patient_id: str,
@@ -120,6 +129,16 @@ class PatientController(BaseController):
             current_user: UserVO = Depends(get_current_user),
         ) -> BaseResponse[dict]:
             results = await self.service.upload_body_composition_type_file(patient_id, result_file)
+            return ResultUtils.success(results)
+
+        @self.router.post("/{patient_id}/lung-prediction-results/{result_type}")
+        async def upload_lung_prediction_file(
+            patient_id: str,
+            result_type: str,
+            result_file: UploadFile = File(...),
+            current_user: UserVO = Depends(get_current_user),
+        ) -> BaseResponse[dict]:
+            results = await self.service.upload_lung_prediction_file(patient_id, result_type, result_file)
             return ResultUtils.success(results)
 
         @self.router.get("/{patient_id}/body-composition-results/serve/{file_path:path}")
@@ -168,6 +187,16 @@ class PatientController(BaseController):
             status = await self.service.upload_ct_file(patient_id, phase, ct_file)
             return ResultUtils.success(status)
 
+        @self.router.post("/{patient_id}/ct/{phase}/import-output")
+        async def import_ct_from_output(
+            patient_id: str,
+            phase: str,
+            payload: dict = Body(...),
+            current_user: UserVO = Depends(get_current_user),
+        ) -> BaseResponse[dict]:
+            status = await self.service.import_ct_from_agent_output(patient_id, phase, str(payload.get("source_path") or ""))
+            return ResultUtils.success(status)
+
         @self.router.post("/{patient_id}/mask/{mask_type}/{phase}")
         async def upload_mask_file(
             patient_id: str,
@@ -177,6 +206,22 @@ class PatientController(BaseController):
             current_user: UserVO = Depends(get_current_user),
         ) -> BaseResponse[dict]:
             status = await self.service.upload_mask_file(patient_id, mask_type, phase, mask_file)
+            return ResultUtils.success(status)
+
+        @self.router.post("/{patient_id}/mask/{mask_type}/{phase}/import-output")
+        async def import_mask_from_output(
+            patient_id: str,
+            mask_type: str,
+            phase: str,
+            payload: dict = Body(...),
+            current_user: UserVO = Depends(get_current_user),
+        ) -> BaseResponse[dict]:
+            status = await self.service.import_mask_from_agent_output(
+                patient_id,
+                mask_type,
+                phase,
+                str(payload.get("source_path") or ""),
+            )
             return ResultUtils.success(status)
 
         @self.router.get("/{patient_id}/ct/{phase}/preview")

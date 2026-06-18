@@ -42,6 +42,7 @@ export interface PatientListResult {
 
 export type CtPhase = 'pre' | 'post'
 export type MaskType = 'body-composition' | 'spine' | 'lung' | 'tumor'
+export type LungPredictionResultType = 'tumor-radiomics-mpr' | 'mpr-dfs'
 
 export interface PatientCtStatus {
   phase: CtPhase
@@ -124,6 +125,46 @@ export interface BodyCompositionTypeSummary {
   }>
 }
 
+export interface TumorRadiomicsMprSummary {
+  status?: string | null
+  mode?: string | null
+  requested_mode?: string | null
+  probability?: number | null
+  selected_model?: string | null
+  pre_available?: boolean | null
+  post_available?: boolean | null
+  fusion_eligible?: boolean | null
+  result_level?: string | null
+  result_level_label?: string | null
+  usable_for_main_mpr?: boolean | null
+  can_export_tumor_radiomics_score?: boolean | null
+  downgraded?: boolean | null
+  missing_input_labels?: string[]
+  message?: string | null
+}
+
+export interface MprDfsPredictionSummary {
+  status?: string | null
+  probability?: number | null
+  selected_model?: string | null
+  selected_feature_groups?: string | null
+  prediction_scope?: string | null
+  prediction_scope_label?: string | null
+  dfs_available?: boolean | null
+  dfs_risk_score?: number | null
+  dfs_risk_group?: string | null
+  dfs_cutpoint?: number | null
+  tumor_radiomics_score?: number | null
+  downgraded?: boolean | null
+  downgrade_reason?: string | null
+  unavailable_features?: string[]
+  next_required_field_labels?: string[]
+  used_information_category_labels?: string[]
+  can_start_prediction?: boolean | null
+  can_be_more_complete?: boolean | null
+  message?: string | null
+}
+
 export interface BodyCompositionResults {
   patient_id: string
   standard_roots: {
@@ -138,6 +179,18 @@ export interface BodyCompositionResults {
   type_classification: {
     json?: PatientResultFile | null
     summary?: BodyCompositionTypeSummary | null
+  }
+  lung_predictions?: {
+    tumor_radiomics_mpr: {
+      json?: PatientResultFile | null
+      summary?: TumorRadiomicsMprSummary | null
+      default_path_rule?: string | null
+    }
+    mpr_dfs: {
+      json?: PatientResultFile | null
+      summary?: MprDfsPredictionSummary | null
+      default_path_rule?: string | null
+    }
   }
 }
 
@@ -193,6 +246,14 @@ export async function uploadPatientCt(patientId: string, phase: CtPhase, file: F
   return response.data.data
 }
 
+export async function importPatientCtFromOutput(patientId: string, phase: CtPhase, sourcePath: string): Promise<PatientCtStatus> {
+  const response = await post<BaseResponse<PatientCtStatus>>(
+    `/patients/${encodeURIComponent(patientId)}/ct/${phase}/import-output`,
+    { source_path: sourcePath }
+  )
+  return response.data.data
+}
+
 export async function deletePatientCt(patientId: string, phase: CtPhase): Promise<PatientCtStatus> {
   const response = await del<BaseResponse<PatientCtStatus>>(
     `/patients/${encodeURIComponent(patientId)}/ct/${phase}`
@@ -213,6 +274,19 @@ export async function uploadPatientMask(patientId: string, maskType: MaskType, p
   const response = await post<BaseResponse<PatientMaskStatus>>(
     `/patients/${encodeURIComponent(patientId)}/mask/${maskType}/${phase}`,
     formData
+  )
+  return response.data.data
+}
+
+export async function importPatientMaskFromOutput(
+  patientId: string,
+  maskType: MaskType,
+  phase: CtPhase,
+  sourcePath: string
+): Promise<PatientMaskStatus> {
+  const response = await post<BaseResponse<PatientMaskStatus>>(
+    `/patients/${encodeURIComponent(patientId)}/mask/${maskType}/${phase}/import-output`,
+    { source_path: sourcePath }
   )
   return response.data.data
 }
@@ -247,6 +321,17 @@ export async function downloadPatientOutput(patientId: string, filePath: string)
   return response.data
 }
 
+export async function deletePatientOutputDirectory(
+  patientId: string,
+  dirPath: string
+): Promise<{ patient_id: string; deleted_path: string }> {
+  const encodedPath = dirPath.split('/').map(encodeURIComponent).join('/')
+  const response = await del<BaseResponse<{ patient_id: string; deleted_path: string }>>(
+    `/patients/${encodeURIComponent(patientId)}/outputs/directories/${encodedPath}`
+  )
+  return response.data.data
+}
+
 export async function getBodyCompositionResults(patientId: string): Promise<BodyCompositionResults> {
   const response = await get<BaseResponse<BodyCompositionResults>>(
     `/patients/${encodeURIComponent(patientId)}/body-composition-results`
@@ -269,6 +354,20 @@ export async function uploadBodyCompositionTypeFile(patientId: string, file: Fil
   formData.append('result_file', file)
   const response = await post<BaseResponse<BodyCompositionResults>>(
     `/patients/${encodeURIComponent(patientId)}/body-composition-results/type`,
+    formData
+  )
+  return response.data.data
+}
+
+export async function uploadLungPredictionResultFile(
+  patientId: string,
+  resultType: LungPredictionResultType,
+  file: File
+): Promise<BodyCompositionResults> {
+  const formData = new FormData()
+  formData.append('result_file', file)
+  const response = await post<BaseResponse<BodyCompositionResults>>(
+    `/patients/${encodeURIComponent(patientId)}/lung-prediction-results/${resultType}`,
     formData
   )
   return response.data.data

@@ -35,6 +35,7 @@ MASK_TYPES = {
 MASK_EXTENSIONS = {".nii", ".nii.gz"}
 BODY_COMPOSITION_METRIC_EXTENSIONS = {".csv", ".xlsx"}
 BODY_COMPOSITION_TYPE_EXTENSIONS = {".json"}
+LUNG_PREDICTION_EXTENSIONS = {".json"}
 VOLUME_CACHE: Dict[str, Dict[str, Any]] = {}
 SLICE_CACHE_WARMUPS: set[str] = set()
 SLICE_CACHE_WARMUP_LOCK = threading.Lock()
@@ -169,6 +170,24 @@ class PatientService:
             raise ValidationError(detail="invalid body composition type path", field="patient_id")
         return type_dir
 
+    def _lung_prediction_dir(self, patient_id: str, result_type: str) -> Path:
+        patient_dir = self._patient_dir(patient_id)
+        if result_type == "tumor-radiomics-mpr":
+            prediction_dir = (patient_dir / "lung_predictions" / "tumor_radiomics_mpr").resolve()
+        elif result_type == "mpr-dfs":
+            prediction_dir = (patient_dir / "lung_predictions" / "mpr_dfs").resolve()
+        else:
+            raise ValidationError(
+                detail="result_type must be tumor-radiomics-mpr or mpr-dfs",
+                field="result_type",
+                context={"result_type": result_type},
+            )
+        try:
+            prediction_dir.relative_to(patient_dir)
+        except ValueError:
+            raise ValidationError(detail="invalid lung prediction path", field="patient_id")
+        return prediction_dir
+
     def _standard_result_file_path(self, patient_id: str, file_path: str) -> Path:
         patient_dir = self._patient_dir(patient_id)
         if not file_path or Path(file_path).is_absolute():
@@ -178,7 +197,7 @@ class PatientService:
             relative = target.relative_to(patient_dir)
         except ValueError:
             raise ValidationError(detail="invalid result file path", field="file_path")
-        if not relative.parts or relative.parts[0] not in {"body_composition_metrics", "body_composition_type"}:
+        if not relative.parts or relative.parts[0] not in {"body_composition_metrics", "body_composition_type", "lung_predictions"}:
             raise ValidationError(detail="unsupported result file path", field="file_path")
         if not target.is_file():
             raise NotFoundError(resource_type="patient_result_file", resource_id=file_path)
@@ -644,6 +663,134 @@ class PatientService:
         ]
         return [(label, str(value)) for label, value in fields if value not in (None, "")]
 
+    @staticmethod
+    def _report_number(value: Any, digits: int = 1) -> Optional[str]:
+        if value is None:
+            return None
+        try:
+            return f"{float(value):.{digits}f}"
+        except (TypeError, ValueError):
+            return str(value)
+
+    @staticmethod
+    def _report_percent(value: Any, digits: int = 1) -> Optional[str]:
+        if value is None:
+            return None
+        try:
+            return f"{float(value) * 100:.{digits}f}%"
+        except (TypeError, ValueError):
+            return str(value)
+
+    @staticmethod
+    def _report_title_text(value: Any) -> Optional[str]:
+        if value in (None, ""):
+            return None
+        text = str(value)
+        return " ".join(part.capitalize() for part in re.split(r"[_\s-]+", text) if part)
+
+    @staticmethod
+    def _report_source_label(file_payload: Optional[dict]) -> Optional[str]:
+        if not file_payload:
+            return None
+        source = file_payload.get("source")
+        if source == "standard":
+            return "Uploaded"
+        if source == "agent_output":
+            return "Agent"
+        return str(source) if source else None
+
+    def _report_body_composition_fields(self, patient) -> list[tuple[str, str]]:
+        patient_id = patient.patient_id
+        height_cm = getattr(patient, "height_cm", None)
+        fields: list[tuple[str, str]] = []
+        for phase in ("pre", "post"):
+            files = self._resolve_body_composition_metric_files(patient_id, phase)
+            csv_file = files.get("csv")
+            summary = self._summarize_metrics_csv(Path(csv_file["path"]) if csv_file else None, height_cm)
+            if not summary:
+                continue
+            prefix = phase.upper()
+            source = self._report_source_label(csv_file)
+            if source:
+                fields.append((f"{prefix} metrics source", source))
+            values = [
+                ("SMVI", self._report_number(summary.get("smvi"))),
+                ("VAVI", self._report_number(summary.get("vavi"))),
+                ("SAVI", self._report_number(summary.get("savi"))),
+                ("Muscle", f"{self._report_number(summary.get('muscle_cm3'), 0)} cm3" if summary.get("muscle_cm3") is not None else None),
+                ("VAT", f"{self._report_number(summary.get('vat_cm3'), 0)} cm3" if summary.get("vat_cm3") is not None else None),
+                ("SAT", f"{self._report_number(summary.get('sat_cm3'), 0)} cm3" if summary.get("sat_cm3") is not None else None),
+            ]
+            fields.extend((f"{prefix} {label}", value) for label, value in values if value not in (None, ""))
+
+        type_path, type_source = self._resolve_body_composition_type_file(patient_id)
+        type_file = self._standard_result_file_payload(patient_id, type_path, type_source)
+        type_summary = self._summarize_type_json(Path(type_file["path"]) if type_file else None)
+        metric_results = type_summary.get("metric_results") if type_summary else None
+        if isinstance(metric_results, dict):
+            source = self._report_source_label(type_file)
+            if source:
+                fields.append(("Type source", source))
+            for metric in ("SMVI", "VAVI", "SAVI"):
+                item = metric_results.get(metric) or {}
+                type_label = item.get("type_label")
+                change_rate = item.get("change_rate")
+                change_bucket = item.get("change_bucket")
+                parts = [str(type_label)] if type_label else []
+                if change_rate is not None:
+                    parts.append(f"{self._report_number(change_rate)}%")
+                if change_bucket:
+                    parts.append(str(change_bucket))
+                if parts:
+                    fields.append((f"{metric} type", " ".join(parts)))
+        return fields
+
+    def _report_lung_prediction_fields(self, patient_id: str) -> list[tuple[str, str]]:
+        fields: list[tuple[str, str]] = []
+        tumor_path, tumor_source = self._resolve_lung_prediction_file(
+            patient_id,
+            "ct_lung_tumor_mpr_predict",
+            "tumor_radiomics_score_json",
+            "tumor_radiomics_mpr_result.json",
+        )
+        tumor_file = self._standard_result_file_payload(patient_id, tumor_path, tumor_source)
+        tumor_summary = self._summarize_tumor_mpr_json(Path(tumor_file["path"]) if tumor_file else None)
+        if tumor_summary:
+            source = self._report_source_label(tumor_file)
+            if source:
+                fields.append(("Tumor MPR source", source))
+            values = [
+                ("Tumor MPR probability", self._report_percent(tumor_summary.get("probability"))),
+                ("Tumor model", tumor_summary.get("selected_model")),
+            ]
+            fields.extend((label, str(value)) for label, value in values if value not in (None, ""))
+
+        mpr_path, mpr_source = self._resolve_lung_prediction_file(
+            patient_id,
+            "ct_lung_mpr_predict",
+            "mpr_probability",
+            "mpr_dfs_prediction.json",
+        )
+        mpr_file = self._standard_result_file_payload(patient_id, mpr_path, mpr_source)
+        mpr_summary = self._summarize_mpr_prediction_json(Path(mpr_file["path"]) if mpr_file else None)
+        if mpr_summary:
+            source = self._report_source_label(mpr_file)
+            if source:
+                fields.append(("MPR/DFS source", source))
+            dfs_score = self._report_number(mpr_summary.get("dfs_risk_score"), 2)
+            dfs_cutpoint = self._report_number(mpr_summary.get("dfs_cutpoint"), 2)
+            dfs_score_text = None
+            if dfs_score:
+                dfs_score_text = dfs_score if not dfs_cutpoint else f"{dfs_score} / cutoff {dfs_cutpoint}"
+            values = [
+                ("MPR probability", self._report_percent(mpr_summary.get("probability"))),
+                ("DFS risk", self._report_title_text(mpr_summary.get("dfs_risk_group"))),
+                ("Model", mpr_summary.get("selected_model")),
+                ("DFS score", dfs_score_text),
+            ]
+            fields.extend((label, str(value)) for label, value in values if value not in (None, ""))
+        return fields
+
     def _draw_section_label(self, draw, x: int, y: int, text: str):
         font = self._font(18, bold=True)
         width = max(180, self._text_width(draw, text, font) + 52)
@@ -739,6 +886,28 @@ class PatientService:
         margin_x = 76
         content_w = page_w - margin_x * 2
         pages = []
+
+        def new_page():
+            new_page_image = Image.new("RGB", (page_w, page_h), "#f5fbfc")
+            return new_page_image, ImageDraw.Draw(new_page_image)
+
+        def ensure_space(required_height: int, current_y: int):
+            nonlocal page, draw
+            if current_y + required_height <= page_h - 80:
+                return current_y
+            pages.append(page)
+            page, draw = new_page()
+            return 80
+
+        def draw_field_section(current_y: int, title: str, fields: list[tuple[str, str]], columns: int = 3):
+            if not fields:
+                return current_y
+            rows = (len(fields) + columns - 1) // columns
+            required_height = 58 + rows * 108 + 30
+            current_y = ensure_space(required_height, current_y)
+            current_y = self._draw_section_label(draw, 30, current_y, title)
+            return self._draw_info_grid(draw, margin_x, current_y, content_w, fields, min(columns, max(1, len(fields))))
+
         page = Image.new("RGB", (page_w, page_h), "#f5fbfc")
         draw = ImageDraw.Draw(page)
 
@@ -764,13 +933,12 @@ class PatientService:
         for title, images in self._build_report_sections(patient.patient_id):
             required_rows = (len(images) + 2) // 3
             required_height = 58 + required_rows * 242 + 30
-            if y + required_height > page_h - 80:
-                pages.append(page)
-                page = Image.new("RGB", (page_w, page_h), "#f5fbfc")
-                draw = ImageDraw.Draw(page)
-                y = 80
+            y = ensure_space(required_height, y)
             y = self._draw_section_label(draw, 30, y, title)
             y = self._draw_image_grid(page, draw, margin_x, y, content_w, images, columns=3)
+
+        y = draw_field_section(y, "Body composition results", self._report_body_composition_fields(patient), columns=3)
+        y = draw_field_section(y, "Lung prediction results", self._report_lung_prediction_fields(patient.patient_id), columns=4)
 
         if y < page_h - 120:
             note_font = self._font(13)
@@ -1329,6 +1497,21 @@ class PatientService:
             raise NotFoundError(resource_type="patient_output_file", resource_id=file_path)
         return target
 
+    def _agent_output_directory_path(self, patient_id: str, dir_path: str) -> Path:
+        output_root = self._agent_outputs_dir(patient_id)
+        if not dir_path or Path(dir_path).is_absolute():
+            raise ValidationError(detail="invalid output directory path", field="dir_path")
+        target = (output_root / dir_path).resolve()
+        try:
+            relative = target.relative_to(output_root)
+        except ValueError:
+            raise ValidationError(detail="invalid output directory path", field="dir_path")
+        if not relative.parts or "_internal" in relative.parts:
+            raise ValidationError(detail="invalid output directory path", field="dir_path")
+        if not target.is_dir():
+            raise NotFoundError(resource_type="patient_output_directory", resource_id=dir_path)
+        return target
+
     @handle_service_exception
     async def list_agent_output_files(self, patient_id: str) -> Dict[str, Any]:
         clean_id = self._validate_patient_id(patient_id)
@@ -1372,6 +1555,20 @@ class PatientService:
         if not patient:
             raise NotFoundError(resource_type="patient", resource_id=clean_id)
         return self._agent_output_file_path(clean_id, file_path)
+
+    @handle_service_exception
+    async def delete_agent_output_directory(self, patient_id: str, dir_path: str) -> Dict[str, Any]:
+        clean_id = self._validate_patient_id(patient_id)
+        patient = await self.mapper.get_patient(clean_id)
+        if not patient:
+            raise NotFoundError(resource_type="patient", resource_id=clean_id)
+        target = self._agent_output_directory_path(clean_id, dir_path)
+        relative_path = target.relative_to(self._agent_outputs_dir(clean_id)).as_posix()
+        shutil.rmtree(target)
+        return {
+            "patient_id": clean_id,
+            "deleted_path": relative_path,
+        }
 
     @staticmethod
     def _read_json_file(path: Path) -> dict:
@@ -1551,6 +1748,85 @@ class PatientService:
             "metric_results": metric_results,
         }
 
+    def _resolve_lung_prediction_file(self, patient_id: str, skill_id: str, role: str, fallback_name: str) -> tuple[Optional[Path], str]:
+        result_type_by_skill = {
+            "ct_lung_tumor_mpr_predict": "tumor-radiomics-mpr",
+            "ct_lung_mpr_predict": "mpr-dfs",
+        }
+        standard_path = self._first_file_with_ext(
+            self._lung_prediction_dir(patient_id, result_type_by_skill[skill_id]),
+            LUNG_PREDICTION_EXTENSIONS,
+        )
+        if standard_path:
+            return standard_path, "standard"
+
+        path = self._latest_agent_output_by_role(patient_id, skill_id, role)
+        if path:
+            return path, "agent_output"
+        output_root = self._agent_outputs_dir(patient_id)
+        best: tuple[float, Path] | None = None
+        for candidate in output_root.glob(f"*/steps/{skill_id}/{fallback_name}"):
+            if not candidate.is_file():
+                continue
+            try:
+                candidate.relative_to(output_root)
+            except ValueError:
+                continue
+            timestamp = candidate.stat().st_mtime
+            if best is None or timestamp > best[0]:
+                best = (timestamp, candidate)
+        return (best[1], "agent_output") if best else (None, "agent_output")
+
+    def _summarize_tumor_mpr_json(self, json_path: Optional[Path]) -> Optional[dict]:
+        if json_path is None or not json_path.is_file():
+            return None
+        payload = self._read_json_file(json_path)
+        return {
+            "status": payload.get("status"),
+            "mode": payload.get("mode"),
+            "requested_mode": payload.get("requested_mode"),
+            "probability": payload.get("probability"),
+            "selected_model": payload.get("selected_model") or payload.get("model"),
+            "pre_available": payload.get("pre_available"),
+            "post_available": payload.get("post_available"),
+            "fusion_eligible": payload.get("fusion_eligible"),
+            "result_level": payload.get("result_level"),
+            "result_level_label": payload.get("result_level_label"),
+            "usable_for_main_mpr": payload.get("usable_for_main_mpr"),
+            "can_export_tumor_radiomics_score": payload.get("can_export_tumor_radiomics_score"),
+            "downgraded": payload.get("downgraded"),
+            "missing_input_labels": payload.get("missing_input_labels") or [],
+            "message": payload.get("message"),
+        }
+
+    def _summarize_mpr_prediction_json(self, json_path: Optional[Path]) -> Optional[dict]:
+        if json_path is None or not json_path.is_file():
+            return None
+        payload = self._read_json_file(json_path)
+        prediction = payload.get("prediction") if isinstance(payload.get("prediction"), dict) else payload
+        features = payload.get("features") if isinstance(payload.get("features"), dict) else {}
+        return {
+            "status": prediction.get("status"),
+            "probability": prediction.get("probability"),
+            "selected_model": prediction.get("selected_model"),
+            "selected_feature_groups": prediction.get("selected_feature_groups"),
+            "prediction_scope": prediction.get("prediction_scope"),
+            "prediction_scope_label": prediction.get("prediction_scope_label"),
+            "dfs_available": prediction.get("dfs_available"),
+            "dfs_risk_score": prediction.get("dfs_risk_score"),
+            "dfs_risk_group": prediction.get("dfs_risk_group"),
+            "dfs_cutpoint": prediction.get("dfs_cutpoint"),
+            "tumor_radiomics_score": features.get("tumor_radiomics_score"),
+            "downgraded": prediction.get("downgraded"),
+            "downgrade_reason": prediction.get("downgrade_reason"),
+            "unavailable_features": payload.get("unavailable_features") or [],
+            "next_required_field_labels": prediction.get("next_required_field_labels") or [],
+            "used_information_category_labels": prediction.get("used_information_category_labels") or [],
+            "can_start_prediction": prediction.get("can_start_prediction"),
+            "can_be_more_complete": prediction.get("can_be_more_complete"),
+            "message": prediction.get("message"),
+        }
+
     def _resolve_body_composition_metric_files(self, patient_id: str, phase: str) -> dict:
         metrics_dir = self._body_composition_metrics_dir(patient_id, phase)
         csv_path = self._first_file_with_ext(metrics_dir, {".csv"})
@@ -1593,6 +1869,20 @@ class PatientService:
         post_files = self._resolve_body_composition_metric_files(clean_id, "post")
         type_path, type_source = self._resolve_body_composition_type_file(clean_id)
         type_file = self._standard_result_file_payload(clean_id, type_path, type_source)
+        tumor_path, tumor_source = self._resolve_lung_prediction_file(
+            clean_id,
+            "ct_lung_tumor_mpr_predict",
+            "tumor_radiomics_score_json",
+            "tumor_radiomics_mpr_result.json",
+        )
+        mpr_path, mpr_source = self._resolve_lung_prediction_file(
+            clean_id,
+            "ct_lung_mpr_predict",
+            "mpr_probability",
+            "mpr_dfs_prediction.json",
+        )
+        tumor_file = self._standard_result_file_payload(clean_id, tumor_path, tumor_source)
+        mpr_file = self._standard_result_file_payload(clean_id, mpr_path, mpr_source)
 
         return {
             "patient_id": clean_id,
@@ -1613,6 +1903,18 @@ class PatientService:
             "type_classification": {
                 "json": type_file,
                 "summary": self._summarize_type_json(Path(type_file["path"]) if type_file else None),
+            },
+            "lung_predictions": {
+                "tumor_radiomics_mpr": {
+                    "json": tumor_file,
+                    "summary": self._summarize_tumor_mpr_json(Path(tumor_file["path"]) if tumor_file else None),
+                    "default_path_rule": "agent_outputs/{run_id}/steps/ct_lung_tumor_mpr_predict/tumor_radiomics_mpr_result.json",
+                },
+                "mpr_dfs": {
+                    "json": mpr_file,
+                    "summary": self._summarize_mpr_prediction_json(Path(mpr_file["path"]) if mpr_file else None),
+                    "default_path_rule": "agent_outputs/{run_id}/steps/ct_lung_mpr_predict/mpr_dfs_prediction.json",
+                },
             },
         }
 
@@ -1661,6 +1963,40 @@ class PatientService:
         if Path(file_name.lower()).suffix not in BODY_COMPOSITION_TYPE_EXTENSIONS:
             raise ValidationError(detail="Type classification file only supports .json", field="result_file")
         target_dir = self._body_composition_type_dir(clean_id)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        for old_file in target_dir.glob("*.json"):
+            old_file.unlink(missing_ok=True)
+        file_path = target_dir / file_name
+        size = 0
+        try:
+            with file_path.open("wb") as out_file:
+                while True:
+                    chunk = await result_file.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    size += len(chunk)
+                    out_file.write(chunk)
+        finally:
+            await result_file.close()
+        if size <= 0:
+            file_path.unlink(missing_ok=True)
+            raise ValidationError(detail="result_file is empty", field="result_file")
+        if not self._read_json_file(file_path):
+            file_path.unlink(missing_ok=True)
+            raise ValidationError(detail="result_file must be a JSON object", field="result_file")
+        return await self.get_body_composition_results(clean_id)
+
+    @handle_service_exception
+    async def upload_lung_prediction_file(self, patient_id: str, result_type: str, result_file: UploadFile) -> Dict[str, Any]:
+        clean_id = self._validate_patient_id(patient_id)
+        patient = await self.mapper.get_patient(clean_id)
+        if not patient:
+            raise NotFoundError(resource_type="patient", resource_id=clean_id)
+
+        file_name = self._safe_filename(result_file.filename or "", field="result_file")
+        if Path(file_name.lower()).suffix not in LUNG_PREDICTION_EXTENSIONS:
+            raise ValidationError(detail="Lung prediction file only supports .json", field="result_file")
+        target_dir = self._lung_prediction_dir(clean_id, result_type)
         target_dir.mkdir(parents=True, exist_ok=True)
         for old_file in target_dir.glob("*.json"):
             old_file.unlink(missing_ok=True)
@@ -1815,6 +2151,68 @@ class PatientService:
         return meta
 
     @handle_service_exception
+    async def import_ct_from_agent_output(self, patient_id: str, phase: str, source_path: str) -> Dict[str, Any]:
+        clean_id = self._validate_patient_id(patient_id)
+        clean_phase = self._validate_phase(phase)
+        patient = await self.mapper.get_patient(clean_id)
+        if not patient:
+            raise NotFoundError(resource_type="patient", resource_id=clean_id)
+
+        source = self._agent_output_file_path(clean_id, source_path)
+        file_name = self._safe_filename(source.name)
+        ext = self._ct_ext(file_name)
+        if ext not in CT_EXTENSIONS:
+            raise ValidationError(
+                detail="CT file only supports .nii, .nii.gz, .dcm, or .zip",
+                field="source_path",
+                context={"filename": file_name},
+            )
+
+        ct_dir = self._ct_dir(clean_id, clean_phase)
+        if ct_dir.exists():
+            shutil.rmtree(ct_dir)
+        ct_dir.mkdir(parents=True, exist_ok=True)
+        file_path = ct_dir / file_name
+        shutil.copy2(source, file_path)
+        size = file_path.stat().st_size
+        if size <= 0:
+            shutil.rmtree(ct_dir, ignore_errors=True)
+            raise ValidationError(detail="source_path is empty", field="source_path")
+
+        meta = {
+            "phase": clean_phase,
+            "status": "ready",
+            "file_name": file_name,
+            "file_size": size,
+            "uploaded_at": datetime.now().isoformat(timespec="seconds"),
+            "preview_updated_at": None,
+            "preview_url": None,
+            "preview_planes": None,
+            "display_window": None,
+            "viewer_metadata": None,
+        }
+        try:
+            self._write_ct_preview_metadata(clean_id, clean_phase, file_path, meta)
+        except Exception as exc:
+            logger.exception(
+                "Failed to generate CT preview from agent output: patient=%s phase=%s file=%s error=%s",
+                clean_id,
+                clean_phase,
+                file_name,
+                exc,
+            )
+            meta["preview_url"] = None
+
+        self._ct_meta_path(clean_id, clean_phase).write_text(
+            json.dumps(meta, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        warmup_key = f"ct:{clean_id}:{clean_phase}:{file_path.stat().st_mtime}:{size}"
+        self._schedule_slice_cache_warmup(warmup_key, file_path, ct_dir)
+        self._schedule_related_mask_warmups(clean_id, clean_phase, file_path)
+        return meta
+
+    @handle_service_exception
     async def upload_mask_file(self, patient_id: str, mask_type: str, phase: str, mask_file: UploadFile) -> Dict[str, Any]:
         clean_id = self._validate_patient_id(patient_id)
         clean_type = self._validate_mask_type(mask_type)
@@ -1907,6 +2305,95 @@ class PatientService:
                 except Exception as exc:
                     logger.exception(
                         "Failed to refresh CT preview with tumor mask: patient=%s phase=%s error=%s",
+                        clean_id,
+                        clean_phase,
+                        exc,
+                    )
+        return meta
+
+    @handle_service_exception
+    async def import_mask_from_agent_output(self, patient_id: str, mask_type: str, phase: str, source_path: str) -> Dict[str, Any]:
+        clean_id = self._validate_patient_id(patient_id)
+        clean_type = self._validate_mask_type(mask_type)
+        clean_phase = self._validate_phase(phase)
+        patient = await self.mapper.get_patient(clean_id)
+        if not patient:
+            raise NotFoundError(resource_type="patient", resource_id=clean_id)
+
+        source = self._agent_output_file_path(clean_id, source_path)
+        file_name = self._safe_filename(source.name, field="source_path")
+        ext = self._ct_ext(file_name)
+        if ext not in MASK_EXTENSIONS:
+            raise ValidationError(
+                detail="Mask file only supports .nii or .nii.gz",
+                field="source_path",
+                context={"filename": file_name},
+            )
+
+        mask_dir = self._mask_dir(clean_id, clean_type, clean_phase)
+        if mask_dir.exists():
+            shutil.rmtree(mask_dir)
+        mask_dir.mkdir(parents=True, exist_ok=True)
+        file_path = mask_dir / file_name
+        shutil.copy2(source, file_path)
+        size = file_path.stat().st_size
+        if size <= 0:
+            shutil.rmtree(mask_dir, ignore_errors=True)
+            raise ValidationError(detail="source_path is empty", field="source_path")
+
+        meta = {
+            "mask_type": clean_type,
+            "phase": clean_phase,
+            "status": "ready",
+            "file_name": file_name,
+            "file_size": size,
+            "uploaded_at": datetime.now().isoformat(timespec="seconds"),
+            "preview_url": None,
+            "preview_planes": None,
+        }
+        preview_path = mask_dir / "preview.png"
+        try:
+            if self._make_mask_preview(file_path, preview_path, clean_id, clean_phase):
+                meta["preview_url"] = f"/patients/{clean_id}/mask/{clean_type}/{clean_phase}/preview"
+                meta["preview_planes"] = {
+                    plane: f"/patients/{clean_id}/mask/{clean_type}/{clean_phase}/preview/{plane}"
+                    for plane in ("axial", "coronal", "sagittal")
+                }
+        except ValidationError:
+            shutil.rmtree(mask_dir, ignore_errors=True)
+            raise
+        except Exception as exc:
+            logger.exception(
+                "Failed to generate mask preview from agent output: patient=%s mask_type=%s phase=%s file=%s error=%s",
+                clean_id,
+                clean_type,
+                clean_phase,
+                file_name,
+                exc,
+            )
+            meta["preview_url"] = None
+
+        self._mask_meta_path(clean_id, clean_type, clean_phase).write_text(
+            json.dumps(meta, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        ct_dir = self._ct_dir(clean_id, clean_phase)
+        ct_path = self._uploaded_file_from_meta(self._ct_meta_path(clean_id, clean_phase), ct_dir)
+        if ct_path:
+            warmup_key = f"mask:{clean_id}:{clean_type}:{clean_phase}:{ct_path.stat().st_mtime}:{file_path.stat().st_mtime}"
+            self._schedule_slice_cache_warmup(warmup_key, ct_path, mask_dir, overlay=True, mask_path=file_path)
+            if clean_type == "tumor":
+                ct_meta_path = self._ct_meta_path(clean_id, clean_phase)
+                try:
+                    ct_meta = json.loads(ct_meta_path.read_text(encoding="utf-8")) if ct_meta_path.is_file() else {}
+                    self._write_ct_preview_metadata(clean_id, clean_phase, ct_path, ct_meta)
+                    ct_meta_path.write_text(
+                        json.dumps(ct_meta, ensure_ascii=False, indent=2),
+                        encoding="utf-8",
+                    )
+                except Exception as exc:
+                    logger.exception(
+                        "Failed to refresh CT preview with imported tumor mask: patient=%s phase=%s error=%s",
                         clean_id,
                         clean_phase,
                         exc,
