@@ -21,12 +21,8 @@ from src.server_agent.mapper.AgentMapper import AgentMapper
 logger = logging.getLogger(__name__)
 
 GLOBAL_SKILLS_DIR = Path(os.getenv("GLOBAL_SKILLS_DIR", os.path.expanduser("~/.claude/skills")))
-ROLE_REGISTRY_PATH = Path(
-    os.getenv(
-        "MEDIAGENT_ROLE_REGISTRY",
-        "/home/fetters/medwiser/agents/NICE-BCX/config/role_registry.json",
-    )
-)
+ROLE_REGISTRY_ENV = os.getenv("MEDIAGENT_ROLE_REGISTRY")
+ROLE_REGISTRY_PATH = Path(ROLE_REGISTRY_ENV).expanduser() if ROLE_REGISTRY_ENV else None
 SKILL_ID_RE = re.compile(r"^[a-z0-9_]+$")
 STANDARD_WRAPPER_ARGS = (
     "--patient-context",
@@ -73,6 +69,8 @@ class SkillRegistryService:
         self._mapper = mapper
 
     def _load_role_registry(self) -> dict[str, Any]:
+        if ROLE_REGISTRY_PATH is None:
+            return {}
         if not ROLE_REGISTRY_PATH.is_file():
             return {}
         payload = _read_json(ROLE_REGISTRY_PATH)
@@ -124,6 +122,7 @@ class SkillRegistryService:
             return result
 
         roles = self._load_role_registry()
+        validate_roles = ROLE_REGISTRY_PATH is not None
         skill_id = config.get("skill_id")
         result["skill_id"] = skill_id
         if not isinstance(skill_id, str) or not SKILL_ID_RE.fullmatch(skill_id):
@@ -185,16 +184,20 @@ class SkillRegistryService:
                 errors.append("Each inputs item must be an object.")
                 continue
             role = input_spec.get("role")
-            if role not in roles:
-                errors.append(f"Unknown input role: {role}")
+            if validate_roles and role not in roles:
+                warnings.append(
+                    f"Unknown input role: {role}; it should be registered or mapped when the Skill is installed into an agent."
+                )
 
         for output_spec in _as_list(config.get("outputs")):
             if not isinstance(output_spec, dict):
                 errors.append("Each outputs item must be an object.")
                 continue
             role = output_spec.get("role")
-            if role not in roles:
-                errors.append(f"Unknown output role: {role}")
+            if validate_roles and role not in roles:
+                warnings.append(
+                    f"Unknown output role: {role}; it should be registered or mapped when the Skill is installed into an agent."
+                )
             phases = _as_list(output_spec.get("phases"))
             if isinstance(role, str) and not phases:
                 output_refs.add((role, None))
@@ -218,8 +221,12 @@ class SkillRegistryService:
             if (output_role, phase_value) not in output_refs:
                 errors.append(f"context_exports item does not match outputs role/phase: {output_role}/{phase_value}")
             role_config = roles.get(output_role)
-            if not isinstance(role_config, dict):
-                errors.append(f"Unknown context export role: {output_role}")
+            if not validate_roles:
+                pass
+            elif not isinstance(role_config, dict):
+                warnings.append(
+                    f"Unknown context export role: {output_role}; export target validation is deferred until agent installation."
+                )
             elif target_path_key not in _as_list(role_config.get("path_keys")):
                 errors.append(f"context_exports target_path_key is not valid for role {output_role}: {target_path_key}")
             if priority != "fallback_when_no_uploaded_file":
