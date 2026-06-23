@@ -9,6 +9,7 @@ import spineSvg from '@/assets/skill-icon/spine.svg?raw'
 import tumorSvg from '@/assets/skill-icon/tumour.svg?raw'
 import recordsSvg from '@/assets/skill-icon/medical_records.svg?raw'
 import esophagusSvg from '@/assets/skill-icon/intestine.svg?raw'
+import radiomicsSvg from '@/assets/skill-icon/radiomics.svg?raw'
 
 const iconMap: Record<string, string> = {
   'analysis': recordsSvg,
@@ -18,6 +19,7 @@ const iconMap: Record<string, string> = {
   'spine': spineSvg,
   'tumor': tumorSvg,
   'esophagus': esophagusSvg,
+  'radiomics': radiomicsSvg,
 }
 
 export function getSkillIcon(type: string): string {
