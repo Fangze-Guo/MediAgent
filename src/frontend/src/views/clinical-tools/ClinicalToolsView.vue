@@ -68,7 +68,9 @@
                 </div>
                 <div class="project-info">
                   <h2 class="project-name">{{ project.name }}</h2>
-                  <p class="project-description">{{ project.description }}</p>
+                  <a-tooltip :title="project.description" placement="bottomLeft">
+                    <p class="project-description" tabindex="0">{{ project.description }}</p>
+                  </a-tooltip>
                 </div>
                 <button class="card-edit-btn" :title="t('views_ClinicalToolsView.editBtnTitle')" @click.stop="openEditModal(project.id)">
                   <EditOutlined />
@@ -669,6 +671,14 @@ onMounted(async () => {
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  cursor: help;
+  outline: none;
+  transition: color 0.2s ease;
+}
+
+.project-description:hover,
+.project-description:focus-visible {
+  color: var(--link-color);
 }
 
 /* ==================== 工具列表 ==================== */

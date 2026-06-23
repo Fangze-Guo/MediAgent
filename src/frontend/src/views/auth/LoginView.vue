@@ -8,7 +8,7 @@
           <!-- Logo 区域 -->
           <div class="logo-section">
             <div class="logo-icon">
-              <img src="../../public/MedWiser.png" alt="Logo" style="width: 60px; height: 60px" />
+              <img src="/MedWiser.png" alt="Logo" style="width: 60px; height: 60px" />
             </div>
 
             <h1 class="logo-text">MedWiser</h1>
