@@ -97,12 +97,6 @@ class CodeAgentService:
         sdk_session_id = existing.session_id
         code_agent = self._get_agent_for_project(existing.project_id)
 
-        if sdk_session_id and hasattr(code_agent, '_dead_sessions') and sdk_session_id in code_agent._dead_sessions:
-            logger.warning(f"[CodeAgentService] Session {sdk_session_id} is dead, forcing new session")
-            await self.mapper.update_conversation_session_id(conversation_id, None)
-            code_agent._dead_sessions.discard(sdk_session_id)
-            sdk_session_id = None
-
         if not sdk_session_id:
             logger.info(f"[CodeAgentService] First message for {conversation_id}")
         else:

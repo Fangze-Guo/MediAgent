@@ -7,6 +7,7 @@ Claude Code Agent - 使用 ClaudeSDKClient 模式
 import asyncio
 import json
 import logging
+import re
 import uuid
 import time
 from datetime import datetime
@@ -259,6 +260,10 @@ class ClaudeAgent:
         # 会话取消/异常时可撤销，防止僵尸 watcher 改写已终态的任务
         self._bg_watchers: dict[str, asyncio.Task] = {}
 
+        # 当前用户请求内的阶段任务 run_id。一次 query 里触发多个
+        # run_skill_task.py 时复用同一个 run_id，让输出聚合到同一任务下。
+        self._query_stage_run_ids: dict[str, str] = {}
+
         # Skill 脚本映射缓存：{脚本文件名: skill_name | None}
         # 用于命令仅执行相对路径脚本时反查 skill。重名脚本标记为 None，避免误归类。
         self._skill_script_map: dict[str, Optional[str]] = {}
@@ -337,7 +342,19 @@ class ClaudeAgent:
 
         return self._skill_script_map.get(Path(script_path).name)
 
-    def _ensure_runner_run_id(self, command: str) -> str:
+    def _stage_run_id_for_query(self, session_id: Optional[str], task_slug: Optional[str]) -> str:
+        query_key = session_id or self._last_session_id or "__default__"
+        existing = self._query_stage_run_ids.get(query_key)
+        if existing:
+            return existing
+
+        slug = (task_slug or "skill_pipeline").strip().lower().replace("-", "_")
+        slug = re.sub(r"[^a-z0-9_]+", "_", slug).strip("_") or "skill_pipeline"
+        run_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{slug}"
+        self._query_stage_run_ids[query_key] = run_id
+        return run_id
+
+    def _ensure_runner_run_id(self, command: str, session_id: Optional[str] = None) -> str:
         """Normalize standard runner commands so task tracking can bind manifest_path.
 
         ClaudeCode may wrap the runner with shell decorations such as
@@ -388,6 +405,7 @@ class ClaudeAgent:
             "--phase",
             "--mode",
             "--model",
+            "--mask-role",
             "--label-prompt",
             "--device",
             "--thoracic-start",
@@ -424,8 +442,7 @@ class ClaudeAgent:
         run_id = option_value("--run-id")
         phase = option_value("--phase") or "both"
         if not run_id:
-            slug = skill_id if phase == "both" else f"{skill_id}_{phase}"
-            run_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{slug.strip().lower().replace('-', '_')}"
+            run_id = self._stage_run_id_for_query(session_id, option_value("--task-slug"))
         normalized.extend(["--run-id", run_id])
         return shlex.join(normalized)
 
@@ -457,7 +474,7 @@ class ClaudeAgent:
         source: str = "tool_use",
     ) -> Optional[str]:
         """Register a Skill task when ClaudeCode invokes the Bash runner."""
-        command = self._ensure_runner_run_id(command)
+        command = self._ensure_runner_run_id(command, session_id=session_id)
         detected_skill = self._detect_skill_from_bash_command(command)
         if not detected_skill:
             return None
@@ -536,6 +553,7 @@ class ClaudeAgent:
             self._active_sessions,
             self._session_last_active,
             self._session_conversation_map,
+            self._query_stage_run_ids,
         ):
             if old_session_id in mapping:
                 mapping[new_session_id] = mapping.pop(old_session_id)
@@ -798,7 +816,10 @@ class ClaudeAgent:
         if tool_name == "Bash":
             command = input_data.get("command", "") if isinstance(input_data, dict) else ""
             run_in_background = input_data.get("run_in_background", False) if isinstance(input_data, dict) else False
-            command = self._ensure_runner_run_id(command)
+            hook_session_id = getattr(context, "session_id", None) or (
+                context.get("session_id") if isinstance(context, dict) else None
+            ) or self._last_session_id or ""
+            command = self._ensure_runner_run_id(command, session_id=hook_session_id)
             if isinstance(input_data, dict):
                 input_data["command"] = command
 
@@ -807,9 +828,6 @@ class ClaudeAgent:
                 logger.info(f"[PERMISSION] Skill detected: '{detected_skill}' (background={run_in_background})")
 
             if detected_skill:
-                hook_session_id = getattr(context, "session_id", None) or (
-                    context.get("session_id") if isinstance(context, dict) else None
-                ) or self._last_session_id or ""
                 hook_tool_use_id = (
                     getattr(context, "tool_use_id", None) or
                     (context.get("tool_use_id") if isinstance(context, dict) else None)
@@ -1255,7 +1273,10 @@ class ClaudeAgent:
                                 tool_input = normalized.tool_input if isinstance(normalized.tool_input, dict) else {}
                                 command = tool_input.get("command", "")
                                 if command:
-                                    command = self._ensure_runner_run_id(command)
+                                    command = self._ensure_runner_run_id(
+                                        command,
+                                        session_id=normalized.session_id or captured_session_id,
+                                    )
                                     tool_input["command"] = command
                                     await self._submit_skill_task_from_bash(
                                         command=command,
@@ -1385,6 +1406,7 @@ class ClaudeAgent:
                 is_error=True,
             )
         finally:
+            self._query_stage_run_ids.pop(captured_session_id, None)
             self._active_sessions.pop(captured_session_id, None)
 
     def _normalize_message(self, message, session_id: Optional[str]) -> list[NormalizedMessage]:
@@ -1791,7 +1813,7 @@ class ClaudeAgent:
         return full_content
 
     async def interrupt(self, session_id: str) -> bool:
-        """Hard-interrupt a session and close the current ClaudeCode client."""
+        """Interrupt the active request while keeping the SDK session resumable."""
         active_event = self._active_sessions.get(session_id)
         client = self._clients.get(session_id)
         if not active_event and not client:
@@ -1808,8 +1830,8 @@ class ClaudeAgent:
 
         await self._cancel_running_skill_tasks_for_session(session_id, "会话被用户终止")
         await self.close_client(session_id)
-        self._dead_sessions.add(session_id)
-        logger.info(f"Session {session_id} hard-interrupted and client closed")
+        self._dead_sessions.discard(session_id)
+        logger.info(f"Session {session_id} interrupted and client closed; session remains resumable")
         return True
 
 
