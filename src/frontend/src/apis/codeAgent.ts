@@ -447,6 +447,10 @@ export async function parseStreamResponse(
       } catch {}
     }
   } catch (error) {
+    const errorText = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+    if (/AbortError|aborted|BodyStreamBuffer/i.test(errorText)) {
+      return
+    }
     onError(error instanceof Error ? error.message : '流式读取失败')
   } finally {
     reader.releaseLock()

@@ -357,6 +357,15 @@
             <div ref="messagesEndRef" style="height: 1px;" />
           </div>
 
+          <button
+            v-if="!isAtBottom"
+            class="scroll-to-bottom-btn"
+            type="button"
+            @click="scrollToBottom(true)"
+          >
+            回到底部
+          </button>
+
           <!-- 输入区域 -->
           <div class="input-area">
             <div class="input-container">
@@ -1067,6 +1076,19 @@ const handleStreamComplete = (finalContent: string) => {
 
 // 处理流式响应错误
 const handleStreamError = (error: string) => {
+  if (/AbortError|aborted|BodyStreamBuffer|Session interrupted by user/i.test(error)) {
+    const idx = getCurrentStepIndex()
+    if (idx >= 0) {
+      messages.value[idx].loading = false
+    }
+    isPlanConfirmed.value = false
+    hasPlanShown.value = false
+    sendingMessage.value = false
+    currentSessionId.value = null
+    eventDisplay.value = null
+    return
+  }
+
   console.error('流式对话错误:', error)
   const idx = getCurrentStepIndex()
   if (idx >= 0) {
@@ -1548,7 +1570,7 @@ const selectConversation = async (conversation: ConversationInfo) => {
 
       // 等待消息渲染完成后再滚动到底部
       await nextTick()
-      scrollToBottom()
+      scrollToBottom(true)
       setupResizeObserver()
     } else {
       message.error(t('views_CodeAgentView.messages.loadDetailFailed'))
@@ -1699,7 +1721,7 @@ const handleSendMessage = async () => {
   }
   messages.value.push(userMsg)
   isAtBottom.value = true 
-  scrollToBottom()
+  scrollToBottom(true)
 
   // 新消息时重置 Plan 状态
   isPlanConfirmed.value = false
@@ -1724,7 +1746,7 @@ const handleSendMessage = async () => {
     created_at: new Date().toISOString(),
     loading: true
   })
-  scrollToBottom()
+  scrollToBottom(true)
 
   // 发送时锁定当前会话 ID，防止流式响应期间切换会话导致消息串入其他会话
   const streamingConversationId = selectedConversation.value!.conversation_id
@@ -1836,10 +1858,12 @@ const handleSendMessage = async () => {
 
 // 滚动到底部
 let resizeObserver: ResizeObserver | null = null
-const scrollToBottom = async () => {
+const scrollToBottom = async (force = false) => {
   await nextTick()
   if (!messagesEndRef.value || !messagesContainer.value) return
+  if (!force && !isAtBottom.value) return
   messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+  isAtBottom.value = true
 }
 
 // 设置 ResizeObserver 监听容器高度变化
@@ -2567,6 +2591,7 @@ onUnmounted(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
+  position: relative;
   overflow: hidden;
   border: 1px solid var(--border-color);
   border-radius: 0 !important;
@@ -2845,6 +2870,30 @@ onUnmounted(() => {
   scrollbar-gutter: stable;
   overflow-anchor: none;
   will-change: scroll-position;
+}
+
+.scroll-to-bottom-btn {
+  position: absolute;
+  left: 50%;
+  bottom: 132px;
+  transform: translateX(-50%);
+  z-index: 8;
+  border: 1px solid var(--border-color);
+  border-radius: 18px;
+  padding: 6px 14px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.4;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.14);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.scroll-to-bottom-btn:hover {
+  border-color: #1890ff;
+  color: #1890ff;
+  box-shadow: 0 6px 18px rgba(24, 144, 255, 0.16);
 }
 
 .event-display {
