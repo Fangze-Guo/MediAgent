@@ -1866,6 +1866,12 @@ const scrollToBottom = async (force = false) => {
   isAtBottom.value = true
 }
 
+const isMessagesNearBottom = () => {
+  if (!messagesContainer.value) return true
+  const { scrollTop, scrollHeight, clientHeight } = messagesContainer.value
+  return scrollHeight - scrollTop - clientHeight < 80
+}
+
 // 设置 ResizeObserver 监听容器高度变化
 const setupResizeObserver = () => {
   if (!messagesContainer.value) return
@@ -1883,10 +1889,8 @@ const setupResizeObserver = () => {
 
 // 监听用户手动滚动
 const handleScroll = () => {
-  if (!messagesContainer.value) return
-  const { scrollTop, scrollHeight, clientHeight } = messagesContainer.value
   // 距离底部 80px 以内认为是"在底部"
-  isAtBottom.value = scrollHeight - scrollTop - clientHeight < 80
+  isAtBottom.value = isMessagesNearBottom()
 }
 
 // 格式化时间（精确到秒）
@@ -1950,9 +1954,13 @@ const startActiveSessionPoller = (conversationId: string) => {
         // Session 已结束，刷新一次消息后停止
         const detail = await getConversationDetail(conversationId)
         if (detail.code === 200 && detail.data && selectedConversationId.value === conversationId) {
+          const shouldFollow = isMessagesNearBottom()
+          isAtBottom.value = shouldFollow
           messages.value = detail.data.messages || []
           await nextTick()
-          scrollToBottom()
+          if (shouldFollow) {
+            scrollToBottom(true)
+          }
         }
         stopActiveSessionPoller()
         sendingMessage.value = false
@@ -1962,9 +1970,13 @@ const startActiveSessionPoller = (conversationId: string) => {
       // Session 仍活跃，刷新消息列表
       const detail = await getConversationDetail(conversationId)
       if (detail.code === 200 && detail.data && selectedConversationId.value === conversationId) {
+        const shouldFollow = isMessagesNearBottom()
+        isAtBottom.value = shouldFollow
         messages.value = detail.data.messages || []
         await nextTick()
-        scrollToBottom()
+        if (shouldFollow) {
+          scrollToBottom(true)
+        }
       }
     } catch (e) {
       console.error('[ActivePoller] 轮询失败:', e)
