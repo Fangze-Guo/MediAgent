@@ -3,7 +3,7 @@
     <!-- ==================== 顶部标题区 ==================== -->
     <div class="sidebar-header" @click="router.push('/')" style="cursor:pointer;">
       <img src="/MedWiser.png" alt="MedWiser Logo" class="logo-image" />
-      <h3>MedWiser Agent</h3>
+      <h3>MedWiser</h3>
     </div>
 
     <!-- ==================== 主内容区 ==================== -->

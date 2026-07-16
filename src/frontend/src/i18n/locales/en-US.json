@@ -578,9 +578,9 @@
     "loadFailed": "Failed to get file list"
   },
   "views_HomeView": {
-    "welcome": "Welcome to MedWiser Agent",
+    "welcome": "Welcome to MedWiser",
     "subtitle": "(Enter your question and start a conversation with your assistant)",
-    "description": "MedWiser Agent is an intelligent application platform for multimodal medical imaging and clinical research, focusing on precision disease diagnosis, AI intelligent analysis, and research knowledge empowerment. With medical wisdom as the core, it aggregates professional models and knowledge bases to provide researchers and clinicians with one-stop medical AI intelligent services of intelligent judgment, efficient analysis, and accelerated research.",
+    "description": "MedWiser is an intelligent application platform for multimodal medical imaging and clinical research, focusing on precision disease diagnosis, AI intelligent analysis, and research knowledge empowerment. With medical wisdom as the core, it aggregates professional models and knowledge bases to provide researchers and clinicians with one-stop medical AI intelligent services of intelligent judgment, efficient analysis, and accelerated research.",
     "startConversation": "Start Conversation",
     "programming": "💻 Programming",
     "writing": "✍️ Writing Assistance",

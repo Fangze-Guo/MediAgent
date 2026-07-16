@@ -578,9 +578,9 @@
     "loadFailed": "获取文件列表失败"
   },
   "views_HomeView": {
-    "welcome": "欢迎使用 MedWiser Agent",
+    "welcome": "欢迎使用 MedWiser",
     "subtitle": "（输入你的问题，开始与助手对话）",
-    "description": "MedWiser Agent 是面向多模态医学影像与临床科研的智能体应用平台，聚焦疾病精准诊疗、AI 智能分析与科研知识赋能。以医学智慧为核心，聚合专业模型与知识库，为科研工作者、临床医师提供智能研判、高效分析、科研加速的一站式医学 AI 智能服务。",
+    "description": "MedWiser 是面向多模态医学影像与临床科研的智能体应用平台，聚焦疾病精准诊疗、AI 智能分析与科研知识赋能。以医学智慧为核心，聚合专业模型与知识库，为科研工作者、临床医师提供智能研判、高效分析、科研加速的一站式医学 AI 智能服务。",
     "startConversation": "开始对话",
     "programming": "💻 编程",
     "writing": "✍️ 写作助手",
