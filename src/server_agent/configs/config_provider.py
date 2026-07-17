@@ -9,17 +9,19 @@ from typing import Dict, Any, Optional
 class ModelSnapshot:
     """模型快照，用来驱动运行态"原子重建" """
     current_model_id: str
+    model: str
     api_key: Optional[str]
     base_url: Optional[str]
+    temperature: float = 0.2
 
 
 class ConfigProvider:
     """
-    唯一可信的数据源，负责从磁盘读取/写入 model_configs.json，
-    并生成"只读快照"供运行态重建使用
+    全局模型目录的数据源，负责读取系统默认项和主模型配置，
+    并为单次请求生成不可变的模型快照。
     
     新架构：
-    - user_config.json: {"current_model_id": "xxx"}
+    - model_configs.json: {"current_model_id": "xxx"}（仅作为系统默认值）
     - main_model_config.json: 包含所有模型的详细信息
     """
 
@@ -72,30 +74,41 @@ class ConfigProvider:
             self._write_to_disk()
             return True
 
-    def get_snapshot(self) -> ModelSnapshot:
-        """生成快照，用于只读"""
+    def get_model_snapshot(self, model_id: str) -> Optional[ModelSnapshot]:
+        """按配置 ID 获取一个不可变、可用于单次请求的模型快照。"""
         with self._lock:
-            # 重新从磁盘加载最新配置
             self.reload_from_disk()
-            
-            current_model_id = self._data.get("current_model_id", "")
-            
-            # 从主配置获取当前模型的详细信息
-            api_key = None
-            base_url = None
-            
-            if current_model_id:
-                main_models = self._main_data.get("models", {})
-                current_model = main_models.get(current_model_id, {})
-                config = current_model.get("config", {})
-                api_key = config.get("api_key")
-                base_url = config.get("base_url")
-            
+            current_model = self._main_data.get("models", {}).get(model_id)
+            if not current_model or not current_model.get("enabled", True):
+                return None
+
+            config = current_model.get("config", {})
             return ModelSnapshot(
-                current_model_id=current_model_id,
-                api_key=api_key,
-                base_url=base_url,
+                current_model_id=model_id,
+                model=config.get("model") or model_id,
+                api_key=config.get("api_key"),
+                base_url=config.get("base_url"),
+                temperature=float(config.get("temperature", 0.2)),
             )
+
+    def get_default_model_id(self) -> str:
+        """返回有效的系统默认模型；默认项失效时回退到第一个启用模型。"""
+        with self._lock:
+            self.reload_from_disk()
+            models = self._main_data.get("models", {})
+            current_model_id = self._data.get("current_model_id", "")
+            current_model = models.get(current_model_id)
+            if current_model and current_model.get("enabled", True):
+                return current_model_id
+            return next(
+                (model_id for model_id, model in models.items() if model.get("enabled", True)),
+                "",
+            )
+
+    def get_snapshot(self) -> Optional[ModelSnapshot]:
+        """生成系统默认模型快照（兼容旧调用）。"""
+        model_id = self.get_default_model_id()
+        return self.get_model_snapshot(model_id) if model_id else None
 
     def get_current_model_id(self) -> str:
         """获取当前模型ID"""

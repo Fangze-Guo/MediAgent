@@ -11,8 +11,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from src.server_agent.agent.conversation_agent import AgentConfig, ConversationAgent
-from src.server_agent.agent.react_agent import ReActAgent
 from src.server_agent.configs.config_provider import ConfigProvider
 from src.server_agent.exceptions import setup_exception_handlers
 from src.server_agent.runtime_registry import RuntimeRegistry
@@ -104,16 +102,8 @@ async def lifespan(app: FastAPI):
     provider = ConfigProvider()
     app.state.config_provider = provider
 
-    # ---- Conversation agent ----
-    snapshot = provider.get_snapshot()
-    agent_cfg = AgentConfig(
-        model=snapshot.current_model_id if snapshot else os.getenv("MODEL", "qwen3-30b-a3b"),
-        api_key=snapshot.api_key if snapshot else os.getenv("MODEL_API_KEY"),
-        base_url=snapshot.base_url if snapshot else os.getenv("MODEL_URL"),
-    )
-    agent = ConversationAgent(agent_cfg)
-    react_agent = ReActAgent(agent_cfg)
-    registry = RuntimeRegistry(agent, react_agent)
+    # ---- Request-scoped conversation agent factory ----
+    registry = RuntimeRegistry(provider)
     app.state.runtime_registry = registry
 
     logger.info("[LIFESPAN] Application startup completed")
