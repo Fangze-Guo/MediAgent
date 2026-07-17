@@ -5,11 +5,13 @@
 
 from typing import List, Dict, Optional
 
-from fastapi import HTTPException
+from fastapi import Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from src.server_agent.common import BaseResponse
 from src.server_agent.common.ResultUtils import ResultUtils
+from src.server_agent.dependencies import get_current_admin_user, get_current_user
+from src.server_agent.model.vo.UserVO import UserVO
 from src.server_agent.service.ModelConfigService import ModelConfigService, ModelConfig
 from .base import BaseController
 
@@ -96,37 +98,58 @@ class ModelController(BaseController):
                 json.dump(config, f, ensure_ascii=False, indent=2)
             temp_path.replace(config_path)
 
+        async def resolve_user_model_id(
+            req: Request,
+            current_user: UserVO,
+        ) -> str:
+            """读取用户偏好；无偏好或模型失效时回退到系统默认值。"""
+            provider = req.app.state.config_provider
+            mapper = req.app.state.conv_mapper
+            model_id = await mapper.get_user_model_preference(str(current_user.uid))
+            if not model_id or provider.get_model_snapshot(model_id) is None:
+                model_id = provider.get_default_model_id()
+                if model_id:
+                    await mapper.set_user_model_preference(str(current_user.uid), model_id)
+            return model_id
+
+        async def save_user_model_id(
+            req: Request,
+            current_user: UserVO,
+            model_id: str,
+        ) -> None:
+            """校验并保存当前用户的模型，不修改任何全局运行时。"""
+            if req.app.state.config_provider.get_model_snapshot(model_id) is None:
+                raise HTTPException(status_code=400, detail=f"模型 {model_id} 不存在或未启用")
+            await req.app.state.conv_mapper.set_user_model_preference(
+                str(current_user.uid), model_id
+            )
+
         @self.router.get("/configs", response_model=BaseResponse[ModelConfigsResponse])
-        async def getModelConfigs() -> BaseResponse[ModelConfigsResponse]:
+        async def getModelConfigs(
+            req: Request,
+            current_user: UserVO = Depends(get_current_user),
+        ) -> BaseResponse[ModelConfigsResponse]:
             """获取所有已启用的模型配置"""
             try:
                 main_config, _ = load_main_config()
-                user_config, user_config_path = load_user_config()
                 models_dict = {}
-                enabled_model_ids = []
 
                 for model_id, main_model in main_config.get("models", {}).items():
                     if not main_model.get("enabled", True):
                         continue
 
-                    enabled_model_ids.append(model_id)
                     models_dict[model_id] = ModelConfigResponse(
                         id=main_model["id"],
                         name=main_model["name"],
                         description=main_model["description"],
                         provider=main_model["provider"],
-                        base_url=main_model.get("config", {}).get("base_url", ""),
-                        api_key=main_model.get("config", {}).get("api_key", ""),
+                        base_url="",
+                        api_key=None,
                         status="online",
                         tags=main_model.get("capabilities", [])
                     )
 
-                current_model_id = user_config.get("current_model_id", "")
-                if current_model_id not in models_dict:
-                    current_model_id = enabled_model_ids[0] if enabled_model_ids else ""
-                    if user_config.get("current_model_id") != current_model_id:
-                        user_config["current_model_id"] = current_model_id
-                        save_user_config(user_config, user_config_path)
+                current_model_id = await resolve_user_model_id(req, current_user)
                 
                 response = ModelConfigsResponse(
                     current_model_id=current_model_id,
@@ -138,20 +161,25 @@ class ModelController(BaseController):
                 raise HTTPException(status_code=500, detail=f"获取模型配置失败: {str(e)}")
 
         @self.router.get("/current", response_model=BaseResponse[ModelConfigResponse])
-        async def getCurrentModel() -> BaseResponse[ModelConfigResponse]:
+        async def getCurrentModel(
+            req: Request,
+            current_user: UserVO = Depends(get_current_user),
+        ) -> BaseResponse[ModelConfigResponse]:
             """获取当前使用的模型"""
             try:
-                current_model = self.model_service.get_current_model()
+                model_id = await resolve_user_model_id(req, current_user)
+                main_config, _ = load_main_config()
+                current_model = main_config.get("models", {}).get(model_id)
                 if current_model:
                     model_response = ModelConfigResponse(
-                        id=current_model.id,
-                        name=current_model.name,
-                        description=current_model.description,
-                        provider=current_model.provider,
-                        base_url=current_model.base_url,
-                        api_key=current_model.api_key,
-                        status=current_model.status,
-                        tags=current_model.tags
+                        id=current_model["id"],
+                        name=current_model["name"],
+                        description=current_model["description"],
+                        provider=current_model["provider"],
+                        base_url="",
+                        api_key=None,
+                        status="online",
+                        tags=current_model.get("capabilities", []),
                     )
                     return ResultUtils.success(model_response)
                 else:
@@ -161,35 +189,26 @@ class ModelController(BaseController):
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"获取当前模型失败: {str(e)}")
 
-        from fastapi import Request as _FastRequest
         @self.router.post("/current", response_model=BaseResponse[bool])
-        async def setCurrentModel(req: _FastRequest, request: SetCurrentModelRequest) -> BaseResponse[bool]:
+        async def setCurrentModel(
+            req: Request,
+            request: SetCurrentModelRequest,
+            current_user: UserVO = Depends(get_current_user),
+        ) -> BaseResponse[bool]:
             """设置当前使用的模型"""
             try:
-                # 通过 app.state 的 provider 与 registry 完成原子切换
-                provider = req.app.state.config_provider
-                registry = req.app.state.runtime_registry
-                print(f"🔄 尝试切换模型: {request.model_id}")
-                success = provider.set_current_model(request.model_id)
-                print(f"🔄 ConfigProvider.set_current_model 返回: {success}")
-                
-                if success:
-                    snapshot = provider.get_snapshot()
-                    print(f"🔄 模型切换成功: {request.model_id}")
-                    print(f"🔄 快照信息: model={snapshot.current_model_id}, base_url={snapshot.base_url}")
-                    registry.refresh_runtime(snapshot)
-                    print(f"🔄 RuntimeRegistry 已刷新")
-                    return ResultUtils.success(True)
-                else:
-                    print(f"❌ 模型切换失败: {request.model_id}")
-                    raise HTTPException(status_code=400, detail=f"模型 {request.model_id} 不存在或状态异常")
+                await save_user_model_id(req, current_user, request.model_id)
+                return ResultUtils.success(True)
             except HTTPException:
                 raise
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"设置当前模型失败: {str(e)}")
 
         @self.router.post("/configs", response_model=BaseResponse[ModelConfigResponse])
-        async def createModelConfig(request: CreateModelConfigRequest) -> BaseResponse[ModelConfigResponse]:
+        async def createModelConfig(
+            request: CreateModelConfigRequest,
+            _admin: UserVO = Depends(get_current_admin_user),
+        ) -> BaseResponse[ModelConfigResponse]:
             """创建模型配置"""
             try:
                 # 创建新的模型配置
@@ -232,7 +251,11 @@ class ModelController(BaseController):
                 raise HTTPException(status_code=500, detail=f"创建模型配置失败: {str(e)}")
 
         @self.router.put("/configs/{model_id}", response_model=BaseResponse[ModelConfigResponse])
-        async def updateModelConfig(model_id: str, request: UpdateModelConfigRequest) -> BaseResponse[ModelConfigResponse]:
+        async def updateModelConfig(
+            model_id: str,
+            request: UpdateModelConfigRequest,
+            _admin: UserVO = Depends(get_current_admin_user),
+        ) -> BaseResponse[ModelConfigResponse]:
             """更新模型配置"""
             try:
                 if model_id not in self.model_service.model_configs:
@@ -283,7 +306,10 @@ class ModelController(BaseController):
                 raise HTTPException(status_code=500, detail=f"更新模型配置失败: {str(e)}")
 
         @self.router.delete("/configs/{model_id}", response_model=BaseResponse[bool])
-        async def deleteModelConfig(model_id: str) -> BaseResponse[bool]:
+        async def deleteModelConfig(
+            model_id: str,
+            _admin: UserVO = Depends(get_current_admin_user),
+        ) -> BaseResponse[bool]:
             """删除用户模型配置"""
             try:
                 # 加载用户配置
@@ -365,7 +391,9 @@ class ModelController(BaseController):
         # ==================== 管理员API ====================
         
         @self.router.get("/admin/models", response_model=BaseResponse[dict])
-        async def get_all_admin_models():
+        async def get_all_admin_models(
+            _admin: UserVO = Depends(get_current_admin_user),
+        ):
             """获取所有模型配置（管理员）"""
             try:
                 # TODO: 添加管理员权限检查
@@ -378,7 +406,10 @@ class ModelController(BaseController):
                 raise HTTPException(status_code=500, detail=f"获取模型配置失败: {str(e)}")
 
         @self.router.post("/admin/models", response_model=BaseResponse[dict])
-        async def create_admin_model(model_data: dict):
+        async def create_admin_model(
+            model_data: dict,
+            _admin: UserVO = Depends(get_current_admin_user),
+        ):
             """创建新模型（管理员）"""
             try:
                 # TODO: 添加管理员权限检查
@@ -435,7 +466,11 @@ class ModelController(BaseController):
                 raise HTTPException(status_code=500, detail=f"创建模型失败: {str(e)}")
 
         @self.router.put("/admin/models/{model_id}", response_model=BaseResponse[dict])
-        async def update_admin_model(model_id: str, model_data: dict):
+        async def update_admin_model(
+            model_id: str,
+            model_data: dict,
+            _admin: UserVO = Depends(get_current_admin_user),
+        ):
             """更新模型配置（管理员）"""
             try:
                 # TODO: 添加管理员权限检查
@@ -465,7 +500,10 @@ class ModelController(BaseController):
                 raise HTTPException(status_code=500, detail=f"更新模型失败: {str(e)}")
 
         @self.router.delete("/admin/models/{model_id}", response_model=BaseResponse[dict])
-        async def delete_admin_model(model_id: str):
+        async def delete_admin_model(
+            model_id: str,
+            _admin: UserVO = Depends(get_current_admin_user),
+        ):
             """删除模型（管理员）"""
             try:
                 # TODO: 添加管理员权限检查
@@ -488,7 +526,10 @@ class ModelController(BaseController):
                 raise HTTPException(status_code=500, detail=f"删除模型失败: {str(e)}")
 
         @self.router.put("/admin/models/{model_id}/toggle", response_model=BaseResponse[dict])
-        async def toggle_admin_model_status(model_id: str):
+        async def toggle_admin_model_status(
+            model_id: str,
+            _admin: UserVO = Depends(get_current_admin_user),
+        ):
             """切换模型启用状态（管理员）"""
             try:
                 # TODO: 添加管理员权限检查
@@ -517,7 +558,10 @@ class ModelController(BaseController):
         # ==================== 用户API ====================
         
         @self.router.get("/user/current-selection", response_model=BaseResponse[dict])
-        async def get_user_current_selection():
+        async def get_user_current_selection(
+            req: Request,
+            current_user: UserVO = Depends(get_current_user),
+        ):
             """获取用户当前的模型选择"""
             try:
                 # 加载用户配置和主配置
@@ -525,17 +569,9 @@ class ModelController(BaseController):
                 from pathlib import Path
                 
                 current_dir = Path(__file__).parent.parent
-                user_config_path = current_dir / "configs" / "model_configs.json"
                 main_config_path = current_dir / "configs" / "main_model_config.json"
                 
-                # 读取用户配置
-                try:
-                    with open(user_config_path, 'r', encoding='utf-8') as f:
-                        user_config = json.load(f)
-                except FileNotFoundError:
-                    user_config = {"current_model_id": ""}
-                
-                current_model_id = user_config.get("current_model_id", "")
+                current_model_id = await resolve_user_model_id(req, current_user)
                 current_model_config = None
                 model_status = "unknown"
                 status_message = ""
@@ -567,7 +603,7 @@ class ModelController(BaseController):
                     "current_model": current_model_config,
                     "model_status": model_status,
                     "status_message": status_message,
-                    "user_config": {}
+                    "user_config": {"current_model_id": current_model_id}
                 }
                 
                 return ResultUtils.success(response_data)
@@ -631,7 +667,11 @@ class ModelController(BaseController):
                 raise HTTPException(status_code=500, detail=f"获取分类信息失败: {str(e)}")
 
         @self.router.post("/user/select-model", response_model=BaseResponse[dict])
-        async def select_user_model(req: _FastRequest, selection_data: dict):
+        async def select_user_model(
+            req: Request,
+            selection_data: dict,
+            current_user: UserVO = Depends(get_current_user),
+        ):
             """用户选择模型"""
             try:
                 model_id = selection_data.get("current_model_id")
@@ -643,7 +683,6 @@ class ModelController(BaseController):
                 from pathlib import Path
                 
                 current_dir = Path(__file__).parent.parent
-                user_config_path = current_dir / "configs" / "model_configs.json"
                 main_config_path = current_dir / "configs" / "main_model_config.json"
                 
                 # 读取主配置，检查模型是否存在
@@ -663,26 +702,7 @@ class ModelController(BaseController):
                         message=f"模型 '{main_model.get('name', model_id)}' 当前处于离线状态，无法选择。请联系管理员启用该模型或选择其他在线模型。"
                     )
                 
-                # 读取用户配置
-                user_config, user_config_path = load_user_config()
-                
-                # 设置为当前模型
-                user_config["current_model_id"] = model_id
-                
-                # 保存用户配置
-                save_user_config(user_config, user_config_path)
-                
-                # 🔄 刷新 RuntimeRegistry
-                print(f"🔄 用户选择模型: {model_id}")
-                provider = req.app.state.config_provider
-                registry = req.app.state.runtime_registry
-                
-                # 重新加载配置并刷新运行时
-                provider.reload_from_disk()
-                snapshot = provider.get_snapshot()
-                print(f"🔄 新快照: model={snapshot.current_model_id}, base_url={snapshot.base_url}")
-                registry.refresh_runtime(snapshot)
-                print(f"🔄 RuntimeRegistry 已刷新")
+                await save_user_model_id(req, current_user, model_id)
                 
                 return ResultUtils.success({"success": True, "message": f"Model {model_id} selected successfully"})
                     

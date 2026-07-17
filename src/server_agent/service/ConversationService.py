@@ -27,11 +27,11 @@ class ConversationService:
     def _get_mapper(self, request) -> ConversationMapper:
         return request.app.state.conv_mapper
 
-    def _get_agent(self, request) -> ConversationAgent:
-        return request.app.state.runtime_registry.get_agent()
+    def _get_agent(self, request, model_id: Optional[str] = None) -> ConversationAgent:
+        return request.app.state.runtime_registry.get_agent(model_id)
 
-    def _get_react_agent(self, request):
-        return request.app.state.runtime_registry.get_react_agent()
+    def _get_react_agent(self, request, model_id: Optional[str] = None):
+        return request.app.state.runtime_registry.get_react_agent(model_id)
 
     def _get_kb_mapper(self, request):
         return getattr(request.app.state, "kb_mapper", None)
@@ -335,10 +335,17 @@ class ConversationService:
         self, request, conversation_uid: str, content: str,
         images: Optional[List[str]] = None,
         attachments: Optional[List[dict]] = None,
+        user_id: Optional[str] = None,
+        model_id: Optional[str] = None,
     ) -> dict:
         """同步发送：等待完整回复后返回 {reply, sources}"""
         mapper = self._get_mapper(request)
-        agent = self._get_agent(request)
+        if user_id and not await mapper.user_owns_conversation(conversation_uid, user_id):
+            raise AuthorizationError(
+                detail="无权访问该会话",
+                context={"conversation_uid": conversation_uid, "user_id": user_id},
+            )
+        agent = self._get_agent(request, model_id)
 
         rag_context, sources = await self._fetch_rag_context(request, content)
         history = await mapper.get_messages(conversation_uid)
@@ -355,11 +362,17 @@ class ConversationService:
         attachments: Optional[List[dict]] = None,
         user_id: Optional[str] = None,
         user_role: str = "user",
+        model_id: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         """流式发送：ReAct agent 自主决策是否查知识库，逐 token yield，完成后持久化"""
         import json
         mapper = self._get_mapper(request)
-        react_agent = self._get_react_agent(request)
+        if user_id and not await mapper.user_owns_conversation(conversation_uid, user_id):
+            raise AuthorizationError(
+                detail="无权访问该会话",
+                context={"conversation_uid": conversation_uid, "user_id": user_id},
+            )
+        react_agent = self._get_react_agent(request, model_id)
         kb_mapper = self._get_kb_mapper(request)
         validated_attachments, selected_files_context = self._prepare_dataset_attachments(
             attachments, user_id=user_id, user_role=user_role

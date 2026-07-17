@@ -170,6 +170,7 @@ const loadModelConfigs = async () => {
       // 如果没有设置当前模型，使用第一个可用模型
       modelId.value = modelProviders.value[0].models[0].id
     }
+    emit('update:value', modelId.value)
     
   } catch (err) {
     console.error('加载模型配置失败:', err)

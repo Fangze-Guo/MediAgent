@@ -84,7 +84,14 @@ class ConversationMapper:
                 CREATE INDEX IF NOT EXISTS idx_messages_conversation_uid
                 ON messages(conversation_uid, id)
             """)
-        logger.info("Conversation tables ready")
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS user_model_preferences (
+                    user_uid  TEXT PRIMARY KEY,
+                    model_id  TEXT NOT NULL,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+        logger.info("Conversation and user model preference tables ready")
 
     async def close(self) -> None:
         if self._pool:
@@ -150,6 +157,27 @@ class ConversationMapper:
                 uid, str(owner_uid),
             )
             return row is not None
+
+    # ==================== User model preference ====================
+
+    async def get_user_model_preference(self, user_uid: str) -> Optional[str]:
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            return await conn.fetchval(
+                "SELECT model_id FROM user_model_preferences WHERE user_uid=$1",
+                str(user_uid),
+            )
+
+    async def set_user_model_preference(self, user_uid: str, model_id: str) -> None:
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO user_model_preferences (user_uid, model_id, updated_at)
+                VALUES ($1, $2, NOW())
+                ON CONFLICT (user_uid) DO UPDATE SET
+                    model_id = EXCLUDED.model_id,
+                    updated_at = NOW()
+            """, str(user_uid), model_id)
 
     # ==================== Messages ====================
 

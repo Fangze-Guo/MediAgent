@@ -1,9 +1,10 @@
 /**
  * 模型配置管理API
  */
-import axios from 'axios'
+import { api as axios } from '@/utils/request'
 
-const API_BASE = `${(import.meta as any).env?.VITE_API_BASE || '/api'}/models`
+// `api` 客户端已经配置了 /api baseURL，这里只保留后端路由前缀。
+const API_BASE = '/models'
 
 // ==================== 数据类型定义 ====================
 

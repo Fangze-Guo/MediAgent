@@ -469,7 +469,7 @@ const showFileUpload = ref(false)
 /** 当前会话关联的文件信息 */
 const currentSessionFiles = ref<FileInfo[]>([])
 /** 当前选择的模型 */
-const selectedModel = ref('QWen-Plus')
+const selectedModel = ref('')
 /** 用户是否手动滚动了页面 */
 const userScrolled = ref(false)
 /** 自动滚动是否启用 */
@@ -1194,7 +1194,12 @@ const sendMessageToAI = async (
   sending.value = true
   try {
     await conversationsStore.streamMessageToAgent(
-      currentConversation.value.id, messageText, images, attachments, ctrl.signal
+      currentConversation.value.id,
+      messageText,
+      images,
+      attachments,
+      ctrl.signal,
+      selectedModel.value,
     )
   } catch (error) {
     if ((error as Error).name !== 'AbortError') {

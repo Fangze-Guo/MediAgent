@@ -353,6 +353,7 @@ export const useConversationsStore = defineStore('conversations', () => {
     images?: string[],
     attachments?: ConversationAttachment[],
     signal?: AbortSignal,
+    modelId?: string,
   ): Promise<void> {
     const conversation = getConversation(id)
     if (!conversation) throw new Error(`会话 ${id} 不存在`)
@@ -429,7 +430,7 @@ export const useConversationsStore = defineStore('conversations', () => {
           const idx = conversation.messages.length - 1
           conversation.messages[idx].typingComplete = true
         }
-      }, signal, images, attachments)
+      }, signal, images, attachments, modelId)
     } catch (error) {
       if (rafId !== null) cancelAnimationFrame(rafId)
       if ((error as Error).name === 'AbortError') {

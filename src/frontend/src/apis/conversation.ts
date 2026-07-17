@@ -54,6 +54,8 @@ export interface AddMessageRequest {
   conversation_id: string
   /** 消息内容 */
   content: string
+  /** 本次消息使用的模型配置 ID */
+  model_id?: string
 }
 
 /**
@@ -158,10 +160,15 @@ export async function createConversation(user_id: string): Promise<ConversationI
  * @param content 消息内容
  * @returns Promise<AgentMessageResult> 返回回复内容和来源引用
  */
-export async function addMessageToAgent(conversation_id: string, content: string, images?: string[]): Promise<AgentMessageResult> {
+export async function addMessageToAgent(
+  conversation_id: string,
+  content: string,
+  images?: string[],
+  model_id?: string,
+): Promise<AgentMessageResult> {
   try {
     const response = await post<BaseResponse<AgentMessageResult>>('/conversation/add', {
-      conversation_id, content, images: images ?? []
+      conversation_id, content, images: images ?? [], model_id
     })
     return response.data.data
   } catch (error) {
@@ -234,7 +241,8 @@ export async function streamMessageToAgent(
   },
   signal?: AbortSignal,
   images?: string[],
-  attachments?: ConversationAttachment[]
+  attachments?: ConversationAttachment[],
+  model_id?: string,
 ): Promise<void> {
   const url = `/api/conversation/stream`
   const token = localStorage.getItem('medwiser_token')
@@ -244,7 +252,13 @@ export async function streamMessageToAgent(
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ conversation_id, content, images: images ?? [], attachments: attachments ?? [] }),
+    body: JSON.stringify({
+      conversation_id,
+      content,
+      model_id,
+      images: images ?? [],
+      attachments: attachments ?? [],
+    }),
     signal,
   })
   if (!response.ok) throw new Error(`HTTP ${response.status}`)

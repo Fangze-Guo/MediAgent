@@ -170,6 +170,7 @@
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { message, Modal } from 'ant-design-vue'
+import { authenticatedFetch } from '@/utils/request'
 import { 
   RobotOutlined, 
   PlusOutlined, 
@@ -231,12 +232,12 @@ const loadModels = async () => {
     const baseURL = (import.meta as any).env?.VITE_API_BASE || '/api'
     
     // 获取模型列表
-    const listResponse = await fetch(`${baseURL}/models/configs`)
+    const listResponse = await authenticatedFetch(`${baseURL}/models/configs`)
     const listData = await listResponse.json()
     modelList.value = listData.data?.models ? Object.values(listData.data.models) : []
     
     // 获取当前模型
-    const currentResponse = await fetch(`${baseURL}/models/current`)
+    const currentResponse = await authenticatedFetch(`${baseURL}/models/current`)
     const currentData = await currentResponse.json()
     currentModel.value = currentData.data || []
     
@@ -250,7 +251,7 @@ const selectModel = async (model: ModelInfo) => {
   try {
     const baseURL = (import.meta as any).env?.VITE_API_BASE || '/api'
     
-    const response = await fetch(`${baseURL}/models/current`, {
+    const response = await authenticatedFetch(`${baseURL}/models/current`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -325,7 +326,7 @@ const handleSaveModel = async () => {
     
     if (isEdit.value) {
       // 更新模型
-      const response = await fetch(`${baseURL}/models/configs/${editFormData.value.id}`, {
+      const response = await authenticatedFetch(`${baseURL}/models/configs/${editFormData.value.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -350,7 +351,7 @@ const handleSaveModel = async () => {
       }
     } else {
       // 添加模型
-      const response = await fetch(`${baseURL}/models/configs`, {
+      const response = await authenticatedFetch(`${baseURL}/models/configs`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -400,7 +401,7 @@ const deleteModel = (modelId: string) => {
       try {
         const baseURL = (import.meta as any).env?.VITE_API_BASE || '/api'
         
-        const response = await fetch(`${baseURL}/models/configs/${modelId}`, {
+        const response = await authenticatedFetch(`${baseURL}/models/configs/${modelId}`, {
           method: 'DELETE'
         })
         
