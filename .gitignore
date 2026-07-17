@@ -53,8 +53,12 @@ __pycache__/
 
 /ref
 /tests
-/docs
+/docs/*
+!/docs/images/
+/docs/images/*
+!/docs/images/medwiser/
+/docs/images/medwiser/*
+!/docs/images/medwiser/*.png
 /scripts
 # Claude Code session logs at project root
 *-*-*-*-*.jsonl
-
