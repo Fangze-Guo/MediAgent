@@ -53,12 +53,22 @@ __pycache__/
 
 /ref
 /tests
+!/tests/
+!/tests/**
+/tests/__pycache__/
 /docs/*
+
 !/docs/images/
 /docs/images/*
 !/docs/images/medwiser/
 /docs/images/medwiser/*
 !/docs/images/medwiser/*.png
 /scripts
+!/scripts/
+/scripts/*
+!/scripts/audit_skill_contracts.py
+!/scripts/build_validation_inventory.py
+
+/validation
 # Claude Code session logs at project root
 *-*-*-*-*.jsonl
