@@ -149,7 +149,7 @@
                 @change="handleChunkSelect"
               >
                 <a-select-option
-                  v-for="(chunk, index) in chunks"
+                  v-for="(_, index) in chunks"
                   :key="index"
                   :value="index"
                 >

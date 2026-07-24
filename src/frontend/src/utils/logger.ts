@@ -51,7 +51,7 @@ class Logger {
   /**
    * 格式化日志消息
    */
-  private format(level: string, message: string, ...args: any[]): string {
+  private format(level: string, message: string): string {
     const timestamp = this.config.enableTimestamp 
       ? `[${new Date().toISOString()}]` 
       : ''

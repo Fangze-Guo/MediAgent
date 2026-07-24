@@ -309,11 +309,6 @@ const hasPendingFiles = computed(() =>
   files.value.some(f => f.status === 'pending')
 )
 
-const selectedDocumentFile = computed(() => {
-  if (!selectedDocumentId.value) return null
-  return uploadedFiles.value.find(f => f.uploadId === selectedDocumentId.value)?.file
-})
-
 // 获取任务状态
 const getTaskStatus = (uploadId: number) => {
   return taskStatuses.value[uploadId]

@@ -26,7 +26,6 @@
 </template>
 
 <script setup lang="ts">
-import { message } from 'ant-design-vue'
 import { useFileStore } from '@/store/files'
 import DatasetFileBrowser from '@/components/file/DatasetFileBrowser.vue'
 import { useI18n } from 'vue-i18n'

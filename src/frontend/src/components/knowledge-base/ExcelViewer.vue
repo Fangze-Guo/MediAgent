@@ -41,7 +41,7 @@ const init = () => {
     showToolbar: false,
     showContextmenu: false,
     row: { len: maxRows, height: 26 },
-    col: { len: maxCols, width: 120, indexWidth: 60 },
+    col: { len: maxCols, width: 120, indexWidth: 60, minWidth: 60 },
     view: {
       height: () => h,
       width: () => el.value?.clientWidth ?? 820,

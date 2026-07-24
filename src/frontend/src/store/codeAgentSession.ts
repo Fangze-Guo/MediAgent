@@ -4,7 +4,7 @@
  * 使用内存 Map 存储每个 sessionId 的消息
  * 通过 API 拉取历史消息，不再直接存储消息内容
  */
-import { ref, computed, watch } from 'vue'
+import { ref } from 'vue'
 import { authenticatedFetch } from '@/utils/request'
 
 // ─── NormalizedMessage 类型（与后端 MessageKind 一致）─────────────────────────
