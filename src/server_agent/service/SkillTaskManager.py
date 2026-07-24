@@ -394,7 +394,23 @@ class SkillTaskManager:
                 if "$" in text or "{" in text or "}" in text:
                     continue
             clean_params[key] = value
+
+        command = clean_params.get("command")
+        if isinstance(command, str) and command.strip():
+            derived = self._enrich_params({"command": command})
+            for key in (
+                "patient_id",
+                "run_id",
+                "run_dir",
+                "manifest_path",
+                "patient_context",
+                "skill_id",
+            ):
+                if derived.get(key) is not None:
+                    clean_params[key] = derived[key]
+
         task.params.update(clean_params)
+        task.refresh_from_manifest()
         self._persist(task)
         return True
 

@@ -14,9 +14,10 @@ import sys
 import tempfile
 import zipfile
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
-from src.server_agent.mapper.AgentMapper import AgentMapper
+if TYPE_CHECKING:
+    from src.server_agent.mapper.AgentMapper import AgentMapper
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +66,7 @@ def _as_list(value: Any) -> list[Any]:
 
 class SkillRegistryService:
 
-    def __init__(self, mapper: AgentMapper):
+    def __init__(self, mapper: "AgentMapper"):
         self._mapper = mapper
 
     def _load_role_registry(self) -> dict[str, Any]:

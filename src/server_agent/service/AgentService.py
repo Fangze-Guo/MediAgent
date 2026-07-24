@@ -8,9 +8,10 @@ import re
 import shutil
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
-from src.server_agent.mapper.AgentMapper import AgentMapper
+if TYPE_CHECKING:
+    from src.server_agent.mapper.AgentMapper import AgentMapper
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ def _make_agent_id(name: str) -> str:
 
 class AgentService:
 
-    def __init__(self, mapper: AgentMapper):
+    def __init__(self, mapper: "AgentMapper"):
         self._mapper = mapper
 
     async def register_existing_agent(

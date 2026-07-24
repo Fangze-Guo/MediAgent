@@ -10,7 +10,6 @@ import logging
 import re
 import uuid
 import time
-from datetime import datetime
 from pathlib import Path
 from typing import Any, AsyncGenerator, Optional
 
@@ -26,9 +25,11 @@ from claude_agent_sdk.types import (
 
 try:
     from .project_config import ProjectConfig
+    from .runner_command import RunnerCommandNormalizer
     from .tool_policy import ToolPolicy
 except ImportError:
     from project_config import ProjectConfig
+    from runner_command import RunnerCommandNormalizer
     from tool_policy import ToolPolicy
 
 logger = logging.getLogger(__name__)
@@ -221,6 +222,9 @@ class ClaudeAgent:
         """
         self._permission_mode = permission_mode  # type: ignore
         self._project_config = project_config
+        self._runner_command_normalizer = RunnerCommandNormalizer(
+            project_base_dir=project_config.base_dir if project_config else None,
+        )
         self._tool_policy: Optional[ToolPolicy] = None
         if project_config:
             self._tool_policy = ToolPolicy(project_config)
@@ -259,10 +263,6 @@ class ClaudeAgent:
         # task_id -> asyncio.Task 映射，追踪后台 PID 监控协程，
         # 会话取消/异常时可撤销，防止僵尸 watcher 改写已终态的任务
         self._bg_watchers: dict[str, asyncio.Task] = {}
-
-        # 当前用户请求内的阶段任务 run_id。一次 query 里触发多个
-        # run_skill_task.py 时复用同一个 run_id，让输出聚合到同一任务下。
-        self._query_stage_run_ids: dict[str, str] = {}
 
         # Skill 脚本映射缓存：{脚本文件名: skill_name | None}
         # 用于命令仅执行相对路径脚本时反查 skill。重名脚本标记为 None，避免误归类。
@@ -342,19 +342,11 @@ class ClaudeAgent:
 
         return self._skill_script_map.get(Path(script_path).name)
 
-    def _stage_run_id_for_query(self, session_id: Optional[str], task_slug: Optional[str]) -> str:
-        query_key = session_id or self._last_session_id or "__default__"
-        existing = self._query_stage_run_ids.get(query_key)
-        if existing:
-            return existing
-
-        slug = (task_slug or "skill_pipeline").strip().lower().replace("-", "_")
-        slug = re.sub(r"[^a-z0-9_]+", "_", slug).strip("_") or "skill_pipeline"
-        run_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{slug}"
-        self._query_stage_run_ids[query_key] = run_id
-        return run_id
-
-    def _ensure_runner_run_id(self, command: str, session_id: Optional[str] = None) -> str:
+    def _ensure_runner_run_id(
+        self,
+        command: str,
+        tool_use_id: Optional[Any] = None,
+    ) -> str:
         """Normalize standard runner commands so task tracking can bind manifest_path.
 
         ClaudeCode may wrap the runner with shell decorations such as
@@ -362,89 +354,7 @@ class ClaudeAgent:
         those commands, so we rebuild patient-level runner invocations into the
         single supported form before execution.
         """
-        import shlex
-
-        if not command:
-            return command
-        try:
-            parts = shlex.split(command)
-        except ValueError:
-            return command
-
-        runner_index = next(
-            (index for index, part in enumerate(parts) if Path(part).name == "run_skill_task.py"),
-            None,
-        )
-        if runner_index is None:
-            return command
-
-        previous = parts[runner_index - 1] if runner_index > 0 else ""
-        python_executable = previous if Path(previous).name.startswith("python") else "python"
-        runner_token = parts[runner_index]
-        if not Path(runner_token).is_absolute() and self._project_config:
-            runner_token = str((self._project_config.base_dir / runner_token).resolve())
-
-        shell_stop_tokens = {"|", ";", "&&", "||"}
-        option_parts: list[str] = []
-        for part in parts[runner_index + 1:]:
-            if (
-                part in shell_stop_tokens
-                or part.startswith("<")
-                or part.startswith(">")
-                or ">&" in part
-                or part.endswith(">")
-            ):
-                break
-            option_parts.append(part)
-
-        value_options = [
-            "--patient-id",
-            "--skill-id",
-            "--run-id",
-            "--task-slug",
-            "--phase",
-            "--mode",
-            "--model",
-            "--mask-role",
-            "--label-prompt",
-            "--device",
-            "--thoracic-start",
-            "--thoracic-end",
-        ]
-        flag_options = {"--overwrite", "--keep-workspace", "--dry-run"}
-
-        def option_value(name: str) -> Optional[str]:
-            for index, part in enumerate(option_parts):
-                if part == name and index + 1 < len(option_parts):
-                    return option_parts[index + 1]
-                prefix = f"{name}="
-                if part.startswith(prefix):
-                    return part[len(prefix):]
-            return None
-
-        patient_id = option_value("--patient-id")
-        skill_id = option_value("--skill-id")
-        if not patient_id or not skill_id:
-            return command
-
-        normalized = [python_executable, runner_token, "--patient-id", patient_id, "--skill-id", skill_id]
-        for name in value_options:
-            if name in {"--patient-id", "--skill-id", "--run-id"}:
-                continue
-            value = option_value(name)
-            if value is not None:
-                normalized.extend([name, value])
-
-        present_flags = {part for part in option_parts if part in flag_options}
-        for name in sorted(present_flags):
-            normalized.append(name)
-
-        run_id = option_value("--run-id")
-        phase = option_value("--phase") or "both"
-        if not run_id:
-            run_id = self._stage_run_id_for_query(session_id, option_value("--task-slug"))
-        normalized.extend(["--run-id", run_id])
-        return shlex.join(normalized)
+        return self._runner_command_normalizer.normalize(command, tool_use_id)
 
     def _register_skill_event_queue(self, conversation_id: Optional[str], queue: asyncio.Queue) -> None:
         if conversation_id:
@@ -474,7 +384,7 @@ class ClaudeAgent:
         source: str = "tool_use",
     ) -> Optional[str]:
         """Register a Skill task when ClaudeCode invokes the Bash runner."""
-        command = self._ensure_runner_run_id(command, session_id=session_id)
+        command = self._ensure_runner_run_id(command, tool_use_id)
         detected_skill = self._detect_skill_from_bash_command(command)
         if not detected_skill:
             return None
@@ -553,7 +463,6 @@ class ClaudeAgent:
             self._active_sessions,
             self._session_last_active,
             self._session_conversation_map,
-            self._query_stage_run_ids,
         ):
             if old_session_id in mapping:
                 mapping[new_session_id] = mapping.pop(old_session_id)
@@ -618,6 +527,7 @@ class ClaudeAgent:
         tool_name = input_data.get("tool_name") if isinstance(input_data, dict) else getattr(input_data, "tool_name", None)
         if tool_name != "Bash":
             return {"continue_": True}  # type: ignore
+        self._runner_command_normalizer.forget(tool_use_id)
 
         tool_input = input_data.get("tool_input", {}) if isinstance(input_data, dict) else getattr(input_data, "tool_input", {})
         if not isinstance(tool_input, dict):
@@ -819,7 +729,11 @@ class ClaudeAgent:
             hook_session_id = getattr(context, "session_id", None) or (
                 context.get("session_id") if isinstance(context, dict) else None
             ) or self._last_session_id or ""
-            command = self._ensure_runner_run_id(command, session_id=hook_session_id)
+            hook_tool_use_id = (
+                getattr(context, "tool_use_id", None) or
+                (context.get("tool_use_id") if isinstance(context, dict) else None)
+            )
+            command = self._ensure_runner_run_id(command, hook_tool_use_id)
             if isinstance(input_data, dict):
                 input_data["command"] = command
 
@@ -828,10 +742,6 @@ class ClaudeAgent:
                 logger.info(f"[PERMISSION] Skill detected: '{detected_skill}' (background={run_in_background})")
 
             if detected_skill:
-                hook_tool_use_id = (
-                    getattr(context, "tool_use_id", None) or
-                    (context.get("tool_use_id") if isinstance(context, dict) else None)
-                )
                 await self._submit_skill_task_from_bash(
                     command=command,
                     tool_use_id=hook_tool_use_id,
@@ -1156,6 +1066,7 @@ class ClaudeAgent:
             await self.close_client(session_id)
 
         self._tool_task_map.clear()
+        self._runner_command_normalizer.clear()
         self._permission_events.clear()
         self._permission_results.clear()
         self._question_events.clear()
@@ -1273,10 +1184,7 @@ class ClaudeAgent:
                                 tool_input = normalized.tool_input if isinstance(normalized.tool_input, dict) else {}
                                 command = tool_input.get("command", "")
                                 if command:
-                                    command = self._ensure_runner_run_id(
-                                        command,
-                                        session_id=normalized.session_id or captured_session_id,
-                                    )
+                                    command = self._ensure_runner_run_id(command, normalized.tool_id)
                                     tool_input["command"] = command
                                     await self._submit_skill_task_from_bash(
                                         command=command,
@@ -1406,7 +1314,6 @@ class ClaudeAgent:
                 is_error=True,
             )
         finally:
-            self._query_stage_run_ids.pop(captured_session_id, None)
             self._active_sessions.pop(captured_session_id, None)
 
     def _normalize_message(self, message, session_id: Optional[str]) -> list[NormalizedMessage]:
