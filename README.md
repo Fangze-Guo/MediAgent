@@ -78,7 +78,7 @@ flowchart LR
 ### 2. 专病临床智能体与 Skill 任务闭环
 
 - 创建和维护临床智能体，为不同专病项目配置独立的系统提示词与工作目录。
-- 默认注册 NICE-BCX 临床智能体，用于肺癌新辅助治疗前后影像分析场景。
+- NIT 临床智能体用于肺癌新辅助免疫治疗前后影像分析；SSC 临床智能体用于 Seed--Soil--Climate 特征构建。
 - 通过 Claude Agent SDK 执行 Code Agent 会话，支持任务规划、流式输出、会话恢复与结果导出。
 - 支持工具权限确认、取消、用户问题回应和任务中断。
 - 支持从全局 Skill 仓库查看、上传和删除 Skill，并为指定临床智能体安装或卸载 Skill。
@@ -334,6 +334,20 @@ npm run build
 ```
 
 构建产物位于 `src/frontend/dist/`，可交由 Nginx 等 Web 服务器部署；后端服务需单独运行并配置相应的 API 反向代理。
+
+### 7. 核心测试
+
+核心测试覆盖 Skill 契约校验、跨智能体安装与卸载隔离，以及基于运行记录的任务状态恢复：
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+可使用以下命令审计一个或多个智能体中已安装 Skill 的患者级契约与流水线就绪状态：
+
+```bash
+python scripts/audit_skill_contracts.py --agent NIT=<NIT智能体目录> --agent SSC=<SSC智能体目录>
+```
 
 ## 主要页面
 
