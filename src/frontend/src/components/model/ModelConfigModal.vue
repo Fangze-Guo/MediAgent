@@ -168,7 +168,6 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useI18n } from 'vue-i18n'
 import { message, Modal } from 'ant-design-vue'
 import { authenticatedFetch } from '@/utils/request'
 import { 

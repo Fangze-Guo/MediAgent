@@ -219,7 +219,6 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, reactive } from 'vue'
-import { useI18n } from 'vue-i18n'
 import type { FormInstance } from 'ant-design-vue'
 import type { ModelConfig, ModelCategory, ModelProvider } from '@/apis/modelConfig'
 

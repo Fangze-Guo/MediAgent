@@ -267,7 +267,7 @@
             <template v-else-if="column.key === 'status'">
               <a-switch
                 :checked="record.enabled"
-                @change="(checked) => handleToggleModel(record, checked)"
+                @change="handleTableToggle(record, $event)"
                 :loading="toggleLoading[record.id]"
               />
             </template>
@@ -569,6 +569,10 @@ const handleToggleModel = async (model: ModelConfig, nextEnabled: boolean) => {
   } finally {
     toggleLoading[model.id] = false
   }
+}
+
+const handleTableToggle = (model: ModelConfig, checked: boolean | string | number) => {
+  return handleToggleModel(model, Boolean(checked))
 }
 
 /**

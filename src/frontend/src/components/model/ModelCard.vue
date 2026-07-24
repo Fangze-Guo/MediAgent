@@ -52,7 +52,7 @@
         <a-switch 
           :checked="model.enabled" 
           :loading="toggleLoading"
-          @change="(checked) => $emit('toggle', model, checked)"
+          @change="handleToggleChange"
           size="small"
         />
         <a-dropdown>
@@ -188,10 +188,10 @@ interface Props {
   toggleLoading?: boolean
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
 
 // ==================== Emits ====================
-defineEmits<{
+const emit = defineEmits<{
   edit: [model: ModelConfig]
   delete: [model: ModelConfig]
   toggle: [model: ModelConfig, enabled: boolean]
@@ -199,6 +199,10 @@ defineEmits<{
 
 // ==================== 响应式数据 ====================
 const showDetails = ref(false)
+
+const handleToggleChange = (checked: boolean | string | number) => {
+  emit('toggle', props.model, Boolean(checked))
+}
 
 // API基础URL
 const API_BASE = 'http://localhost:8000'
